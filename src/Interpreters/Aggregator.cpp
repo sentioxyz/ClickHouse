@@ -728,6 +728,8 @@ AggregatedDataVariants::Type Aggregator::chooseAggregationMethod()
                 return AggregatedDataVariants::Type::nullable_keys128;
             if (std::tuple_size<KeysNullMap<UInt256>>::value + keys_bytes <= 32)
                 return AggregatedDataVariants::Type::nullable_keys256;
+            if (std::tuple_size<KeysNullMap<UInt512>>::value + keys_bytes <= 64)
+                return AggregatedDataVariants::Type::nullable_keys512;
         }
 
         if (has_low_cardinality && params.keys_size == 1)
@@ -779,6 +781,8 @@ AggregatedDataVariants::Type Aggregator::chooseAggregationMethod()
                 return AggregatedDataVariants::Type::low_cardinality_keys128;
             if (size_of_field == 32)
                 return AggregatedDataVariants::Type::low_cardinality_keys256;
+            if (size_of_field == 64)
+                return AggregatedDataVariants::Type::low_cardinality_keys512;
             throw Exception(ErrorCodes::LOGICAL_ERROR, "LowCardinality numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32.");
         }
 
@@ -794,6 +798,8 @@ AggregatedDataVariants::Type Aggregator::chooseAggregationMethod()
             return AggregatedDataVariants::Type::keys128;
         if (size_of_field == 32)
             return AggregatedDataVariants::Type::keys256;
+        if (size_of_field == 64)
+            return AggregatedDataVariants::Type::keys512;
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32.");
     }
 
@@ -813,6 +819,8 @@ AggregatedDataVariants::Type Aggregator::chooseAggregationMethod()
                 return AggregatedDataVariants::Type::low_cardinality_keys128;
             if (keys_bytes <= 32)
                 return AggregatedDataVariants::Type::low_cardinality_keys256;
+            if (keys_bytes <= 64)
+                return AggregatedDataVariants::Type::low_cardinality_keys512;
         }
 
         if (keys_bytes <= 2)
@@ -825,6 +833,8 @@ AggregatedDataVariants::Type Aggregator::chooseAggregationMethod()
             return AggregatedDataVariants::Type::keys128;
         if (keys_bytes <= 32)
             return AggregatedDataVariants::Type::keys256;
+        if (keys_bytes <= 64)
+            return AggregatedDataVariants::Type::keys512;
     }
 
     /// If single string key - will use hash table with references to it. Strings itself are stored separately in Arena.
@@ -3608,6 +3618,7 @@ Block Aggregator::mergeBlocks(BlocksList & blocks, bool final, std::atomic<bool>
         M(key_fixed_string)               \
         M(keys128)                        \
         M(keys256)                        \
+        M(keys512)                        \
         M(serialized)                     \
         M(nullable_serialized)            \
         M(prealloc_serialized)            \

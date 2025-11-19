@@ -1,0 +1,17 @@
+{
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "none",
+  "printWidth": 100,
+  "tabWidth": 4,
+  "useTabs": false,
+  "overrides": [
+    {
+      "files": ["*.cpp", "*.h", "*.hpp", "*.c", "*.cxx"],
+      "options": {
+        "parser": "cpp"
+      }
+    }
+  ]
+}
+

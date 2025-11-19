@@ -1164,6 +1164,7 @@ inline void writeBinary(const Decimal32 & x, WriteBuffer & buf) { writePODBinary
 inline void writeBinary(const Decimal64 & x, WriteBuffer & buf) { writePODBinary(x, buf); }
 inline void writeBinary(const Decimal128 & x, WriteBuffer & buf) { writePODBinary(x, buf); }
 inline void writeBinary(const Decimal256 & x, WriteBuffer & buf) { writePODBinary(x.value, buf); }
+inline void writeBinary(const Decimal512 & x, WriteBuffer & buf) { writePODBinary(x.value, buf); }
 inline void writeBinary(const LocalDate & x, WriteBuffer & buf) { writePODBinary(x, buf); }
 inline void writeBinary(const LocalDateTime & x, WriteBuffer & buf) { writePODBinary(x, buf); }
 inline void writeBinary(const LocalTime & x, WriteBuffer & buf) { writePODBinary(x, buf); }
@@ -1217,7 +1218,30 @@ void writeDecimalFractional(const T & x, UInt32 scale, WriteBuffer & ostr, bool 
 {
     /// If it's big integer, but the number of digits is small,
     /// use the implementation for smaller integers for more efficient arithmetic.
-    if constexpr (std::is_same_v<T, Int256>)
+    if constexpr (std::is_same_v<T, Int512>)
+    {
+        if (x <= std::numeric_limits<UInt32>::max())
+        {
+            writeDecimalFractional(static_cast<UInt32>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+            return;
+        }
+        if (x <= std::numeric_limits<UInt64>::max())
+        {
+            writeDecimalFractional(static_cast<UInt64>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+            return;
+        }
+        if (x <= std::numeric_limits<UInt128>::max())
+        {
+            writeDecimalFractional(static_cast<UInt128>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+            return;
+        }
+        if (x <= std::numeric_limits<UInt256>::max())
+        {
+            writeDecimalFractional(static_cast<UInt256>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+            return;
+        }
+    }
+    else if constexpr (std::is_same_v<T, Int256>)
     {
         if (x <= std::numeric_limits<UInt32>::max())
         {
@@ -1249,7 +1273,7 @@ void writeDecimalFractional(const T & x, UInt32 scale, WriteBuffer & ostr, bool 
         }
     }
 
-    constexpr size_t max_digits = std::numeric_limits<UInt256>::digits10;
+    constexpr size_t max_digits = std::numeric_limits<UInt512>::digits10;
     assert(scale <= max_digits);
     assert(fractional_length <= max_digits);
 
@@ -1261,7 +1285,7 @@ void writeDecimalFractional(const T & x, UInt32 scale, WriteBuffer & ostr, bool 
 
     if (fixed_fractional_length && fractional_length < scale)
     {
-        T new_value = value / DecimalUtils::scaleMultiplier<Int256>(scale - fractional_length - 1);
+        T new_value = value / DecimalUtils::scaleMultiplier<Int512>(scale - fractional_length - 1);
         auto round_carry = new_value % 10;
         value = new_value / 10;
         if (round_carry >= 5)

@@ -216,6 +216,8 @@ std::unique_ptr<ParquetColumnReader> ColReaderFactory::fromFLBA()
                     return makeDecimalLeafReader<Decimal128, ParquetByteArrayTypeStub>();
                 if (col_descriptor.type_length() <= static_cast<int>(sizeof(Decimal256)))
                     return makeDecimalLeafReader<Decimal256, ParquetByteArrayTypeStub>();
+                if (col_descriptor.type_length() <= static_cast<int>(sizeof(Decimal512)))
+                    return makeDecimalLeafReader<Decimal512, ParquetByteArrayTypeStub>();
             }
 
             return throwUnsupported(PreformattedMessage::create(

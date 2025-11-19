@@ -53,10 +53,10 @@ public:
                 return l == r;
 
             if constexpr (is_decimal_field<T> && is_arithmetic_v<U>)
-                return l == DecimalField<Decimal256>(Decimal256(r), 0);
+                return l == DecimalField<Decimal512>(Decimal512(r), 0);
 
             if constexpr (is_arithmetic_v<T> && is_decimal_field<U>)
-                return DecimalField<Decimal256>(Decimal256(l), 0) == r;
+                return DecimalField<Decimal512>(Decimal512(l), 0) == r;
 
             if constexpr (std::is_same_v<T, String> && is_arithmetic_v<U>)
             {
@@ -120,10 +120,10 @@ public:
                 return l < r;
 
             if constexpr (is_decimal_field<T> && is_arithmetic_v<U>)
-                return l < DecimalField<Decimal256>(Decimal256(r), 0);
+                return l < DecimalField<Decimal512>(Decimal512(r), 0);
 
             if constexpr (is_arithmetic_v<T> && is_decimal_field<U>)
-                return DecimalField<Decimal256>(Decimal256(l), 0) < r;
+                return DecimalField<Decimal512>(Decimal512(l), 0) < r;
 
             if constexpr (std::is_same_v<T, String> && is_arithmetic_v<U>)
             {

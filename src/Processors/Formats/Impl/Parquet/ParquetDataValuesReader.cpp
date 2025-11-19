@@ -374,7 +374,9 @@ template <typename TColumn>
 void ParquetFixedLenPlainReader<TColumn>::readBatch(
     MutableColumnPtr & col_ptr, LazyNullMap & null_map, UInt32 num_values)
 {
-    if constexpr (std::same_as<TColumn, ColumnDecimal<Decimal128>> || std::same_as<TColumn, ColumnDecimal<Decimal256>>)
+    if constexpr (
+        std::same_as<TColumn, ColumnDecimal<Decimal128>> || std::same_as<TColumn, ColumnDecimal<Decimal256>>
+        || std::same_as<TColumn, ColumnDecimal<Decimal512>>)
     {
         readOverBigDecimal(col_ptr, null_map, num_values);
     }
@@ -588,6 +590,7 @@ template class ParquetBitPlainReader<ColumnUInt8>;
 
 template class ParquetFixedLenPlainReader<ColumnDecimal<Decimal128>>;
 template class ParquetFixedLenPlainReader<ColumnDecimal<Decimal256>>;
+template class ParquetFixedLenPlainReader<ColumnDecimal<Decimal512>>;
 
 template class ParquetRleLCReader<ColumnUInt8>;
 template class ParquetRleLCReader<ColumnUInt16>;
@@ -603,6 +606,7 @@ template class ParquetRleDictReader<ColumnDecimal<Decimal32>>;
 template class ParquetRleDictReader<ColumnDecimal<Decimal64>>;
 template class ParquetRleDictReader<ColumnDecimal<Decimal128>>;
 template class ParquetRleDictReader<ColumnDecimal<Decimal256>>;
+template class ParquetRleDictReader<ColumnDecimal<Decimal512>>;
 template class ParquetRleDictReader<ColumnDecimal<DateTime64>>;
 template class ParquetRleDictReader<ColumnString>;
 

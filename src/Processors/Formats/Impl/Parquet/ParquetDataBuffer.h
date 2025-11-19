@@ -4,6 +4,8 @@
 
 #include <arrow/util/bit_stream_utils.h>
 #include <arrow/util/decimal.h>
+#include <algorithm>
+#include <type_traits>
 #include <parquet/types.h>
 
 namespace DB
@@ -118,15 +120,39 @@ public:
     template <is_over_big_decimal TDecimal>
     void ALWAYS_INLINE readOverBigDecimal(TDecimal * out, Int32 elem_bytes_num)
     {
-        using TArrowDecimal = typename ToArrowDecimal<TDecimal>::ArrowDecimal;
+        if constexpr (std::is_same_v<TDecimal, Decimal512>)
+        {
+            checkAvailable(elem_bytes_num);
 
-        checkAvailable(elem_bytes_num);
+            constexpr size_t value_size = sizeof(typename TDecimal::NativeType);
+            if (elem_bytes_num <= 0 || static_cast<size_t>(elem_bytes_num) > value_size)
+                throw Exception(ErrorCodes::PARQUET_EXCEPTION,
+                                "Invalid decimal byte length {} for type with {}-byte storage",
+                                elem_bytes_num, value_size);
 
-        // refer to: RawBytesToDecimalBytes in reader_internal.cc, Decimal128::FromBigEndian in decimal.cc
-        auto status = TArrowDecimal::FromBigEndian(getArrowData(), elem_bytes_num);
-        assert(status.ok());
-        status.ValueUnsafe().ToBytes(reinterpret_cast<uint8_t *>(out));
-        consume(elem_bytes_num);
+            auto * value_bytes = reinterpret_cast<uint8_t *>(&out->value);
+            const auto * src = getArrowData();
+
+            const UInt8 sign_fill = (src[0] & 0x80) ? 0xFF : 0x00;
+            std::fill(value_bytes, value_bytes + value_size, sign_fill);
+
+            for (Int32 i = 0; i < elem_bytes_num; ++i)
+                value_bytes[i] = src[elem_bytes_num - 1 - i];
+
+            consume(elem_bytes_num);
+        }
+        else
+        {
+            using TArrowDecimal = typename ToArrowDecimal<TDecimal>::ArrowDecimal;
+
+            checkAvailable(elem_bytes_num);
+
+            // refer to: RawBytesToDecimalBytes in reader_internal.cc, Decimal128::FromBigEndian in decimal.cc
+            auto status = TArrowDecimal::FromBigEndian(getArrowData(), elem_bytes_num);
+            assert(status.ok());
+            status.ValueUnsafe().ToBytes(reinterpret_cast<uint8_t *>(out));
+            consume(elem_bytes_num);
+        }
     }
 
 private:

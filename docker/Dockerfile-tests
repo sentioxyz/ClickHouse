@@ -1,0 +1,120 @@
+# docker/Dockerfile.clickhouse-tests
+# 统一可复现的 ClickHouse 构建与测试环境：
+# - Ubuntu 24.04 (noble) - 官方推荐的最低版本
+# - Clang/LLVM 19+ 使用官方自动安装脚本
+# - CMake 来自 Kitware APT（>= 3.31，避免 CMP0177）
+# - Rust 工具链（可选，但推荐）
+# - Python 测试工具（pytest/xdist 等）
+# - Docker CLI + Compose 插件（容器内可调用宿主机 docker.sock 跑集成测试）
+# 使用方式见你仓库中的 scripts/* 与 docs/testing-in-docker.md
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ------------------------------------------------------------------------------
+# 0) 基础工具 & 常用排障工具
+# ------------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git cmake ccache python3 python3-pip ninja-build nasm yasm gawk \
+    lsb-release wget software-properties-common gnupg ca-certificates curl pkg-config \
+    xz-utils sudo iproute2 procps netcat-openbsd lsof \
+ && rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------------------
+# 1) 安装 Clang/LLVM 19+（使用官方推荐的自动安装脚本）
+# ------------------------------------------------------------------------------
+RUN bash -c "$(wget -O - https://apt.llvm.org/llvm.sh)" && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends clang-19 lld-19 llvm-19-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------------------
+# 2) 安装 CMake（多种安装方式，应对网络访问问题）
+#    优先使用 Kitware APT，失败时回退到系统包管理器或手动安装
+# ------------------------------------------------------------------------------
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates wget gnupg software-properties-common lsb-release; \
+    # 尝试从 Kitware APT 安装最新版本 CMake \
+    if wget -q --spider https://apt.kitware.com/keys/kitware-archive-latest.asc; then \
+        echo "Installing CMake from Kitware APT..."; \
+        wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc \
+          | gpg --dearmor - \
+          | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null; \
+        echo "deb https://apt.kitware.com/ubuntu/ $(lsb_release -cs) main" \
+          > /etc/apt/sources.list.d/kitware.list; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends cmake; \
+    else \
+        echo "Kitware APT not accessible, trying system package manager..."; \
+        # 回退到系统包管理器 \
+        apt-get install -y --no-install-recommends cmake; \
+        # 如果系统版本太旧，尝试手动安装 \
+        CMAKE_VERSION=$(cmake --version | head -n1 | cut -d' ' -f3); \
+        CMAKE_MAJOR=$(echo $CMAKE_VERSION | cut -d'.' -f1); \
+        CMAKE_MINOR=$(echo $CMAKE_VERSION | cut -d'.' -f2); \
+        if [ "$CMAKE_MAJOR" -lt 3 ] || ([ "$CMAKE_MAJOR" -eq 3 ] && [ "$CMAKE_MINOR" -lt 20 ]); then \
+            echo "System CMake version too old ($CMAKE_VERSION), installing manually..."; \
+            cd /tmp; \
+            wget https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-aarch64.tar.gz || \
+            wget https://github.com/Kitware/CMake/releases/download/v3.31.0/cmake-3.31.0-linux-x86_64.tar.gz; \
+            tar -xzf cmake-*.tar.gz; \
+            cp -r cmake-*/bin/* /usr/local/bin/; \
+            cp -r cmake-*/share/* /usr/local/share/; \
+            rm -rf cmake-*; \
+        fi; \
+    fi; \
+    cmake --version; \
+    rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------------------
+# 3) 安装 Rust 工具链（可选但推荐，用于 ClickHouse 的 Rust 组件）
+# ------------------------------------------------------------------------------
+ARG ENABLE_RUST=ON
+RUN if [ "$ENABLE_RUST" = "ON" ]; then \
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
+    . ~/.cargo/env && \
+    rustup toolchain install nightly-2025-07-07 && \
+    rustup default nightly-2025-07-07 && \
+    rustup component add rust-src; \
+    fi
+
+# ------------------------------------------------------------------------------
+# 4) Python 测试工具（功能测/集成测需要）
+# ------------------------------------------------------------------------------
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
+      pytest pytest-xdist requests docker pyyaml
+
+# ------------------------------------------------------------------------------
+# 5) Docker CLI + Compose 插件（用于集成测试在容器内拉起其它容器）
+#    注意：运行集成测试时请把宿主机 /var/run/docker.sock 挂进来
+# ------------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      docker.io docker-compose \
+ && rm -rf /var/lib/apt/lists/*
+
+# ------------------------------------------------------------------------------
+# 6) 非 root 用户（免密 sudo，便于 tests/config/install.sh 等脚本）
+# ------------------------------------------------------------------------------
+RUN useradd -m builder && echo "builder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+USER builder
+WORKDIR /work
+
+# ------------------------------------------------------------------------------
+# 7) 工具链环境变量（ClickHouse 推荐 Clang/LLD）
+# ------------------------------------------------------------------------------
+ENV CC=/usr/bin/clang-19 \
+    CXX=/usr/bin/clang++-19 \
+    LD=/usr/bin/ld.lld-19
+
+# 如果启用了Rust，添加Rust环境变量
+RUN if [ "$ENABLE_RUST" = "ON" ]; then echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc; fi
+
+# ------------------------------------------------------------------------------
+# 8) 默认进入交互 shell，具体构建/测试由外部脚本驱动
+#    例如：
+#      -v $PWD:/work/src -v $PWD/.build-tests:/work/build ch-tests bash -lc "cd /work/build && cmake ... && ctest ..."
+# ------------------------------------------------------------------------------
+CMD ["/bin/bash"]

@@ -89,6 +89,16 @@ RUN if [ -n "${single_binary_location_url}" ]; then \
 # The rest is the same in the official docker and in our build system
 #docker-official-library:on
 
+### ===== custom begin: install locally built binary from build/ =====
+# 你本地编译产物所在路径（相对于构建上下文）
+ARG LOCAL_CLICKHOUSE_BINARY="build/programs/clickhouse"
+# 拷贝并设置属主，避免运行时权限问题
+COPY --chown=clickhouse:clickhouse ${LOCAL_CLICKHOUSE_BINARY} /usr/bin/clickhouse
+# 执行官方安装脚本：创建目录、权限以及基本配置结构
+RUN /usr/bin/clickhouse --version \
+ && /usr/bin/clickhouse install --user "clickhouse" --group "clickhouse"
+### ===== custom end =====
+
 # A fallback to installation from ClickHouse repository
 # It works unless the clickhouse binary already exists
 RUN clickhouse local -q 'SELECT 1' >/dev/null 2>&1 && exit 0 || : \
@@ -132,8 +142,8 @@ ENV TZ=UTC
 
 RUN mkdir /docker-entrypoint-initdb.d
 
-COPY docker_related_config.xml /etc/clickhouse-server/config.d/
-COPY entrypoint.sh /entrypoint.sh
+COPY docker/server/docker_related_config.xml /etc/clickhouse-server/config.d/
+COPY docker/server/entrypoint.sh /entrypoint.sh
 
 EXPOSE 9000 8123 9009
 VOLUME /var/lib/clickhouse

@@ -669,6 +669,7 @@ template class ParquetLeafColReader<ColumnDecimal<Decimal32>, int32_t>;
 template class ParquetLeafColReader<ColumnDecimal<Decimal64>, int64_t>;
 template class ParquetLeafColReader<ColumnDecimal<Decimal128>, ParquetByteArrayTypeStub>;
 template class ParquetLeafColReader<ColumnDecimal<Decimal256>, ParquetByteArrayTypeStub>;
+template class ParquetLeafColReader<ColumnDecimal<Decimal512>, ParquetByteArrayTypeStub>;
 template class ParquetLeafColReader<ColumnDecimal<DateTime64>, ParquetInt96TypeStub>;
 template class ParquetLeafColReader<ColumnDecimal<DateTime64>, int64_t>;
 

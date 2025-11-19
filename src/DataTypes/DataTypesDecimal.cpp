@@ -21,6 +21,7 @@ namespace ErrorCodes
     extern const int ILLEGAL_TYPE_OF_ARGUMENT;
     extern const int DECIMAL_OVERFLOW;
     extern const int NOT_IMPLEMENTED;
+    extern const int ARGUMENT_OUT_OF_BOUND;
 }
 
 
@@ -43,7 +44,9 @@ DataTypePtr DataTypeDecimal<T>::promoteNumericType() const
 {
     if (sizeof(T) <= sizeof(Decimal128))
         return std::make_shared<DataTypeDecimal<Decimal128>>(DataTypeDecimal<Decimal128>::maxPrecision(), this->scale);
-    return std::make_shared<DataTypeDecimal<Decimal256>>(DataTypeDecimal<Decimal256>::maxPrecision(), this->scale);
+    if (sizeof(T) <= sizeof(Decimal256))
+        return std::make_shared<DataTypeDecimal<Decimal256>>(DataTypeDecimal<Decimal256>::maxPrecision(), this->scale);
+    return std::make_shared<DataTypeDecimal<Decimal512>>(DataTypeDecimal<Decimal512>::maxPrecision(), this->scale);
 }
 
 template <is_decimal T>
@@ -100,12 +103,12 @@ static DataTypePtr createExact(const ASTPtr & arguments)
 {
     if (!arguments || arguments->children.size() != 1)
         throw Exception(ErrorCodes::NUMBER_OF_ARGUMENTS_DOESNT_MATCH,
-        "Decimal32 | Decimal64 | Decimal128 | Decimal256 data type family must have exactly one arguments: scale");
+        "Decimal32 | Decimal64 | Decimal128 | Decimal256 | Decimal512 data type family must have exactly one arguments: scale");
     const auto * scale_arg = arguments->children[0]->as<ASTLiteral>();
 
     if (!scale_arg || !(scale_arg->value.getType() == Field::Types::Int64 || scale_arg->value.getType() == Field::Types::UInt64))
         throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
-        "Decimal32 | Decimal64 | Decimal128 | Decimal256 data type family must have a one number as its argument");
+        "Decimal32 | Decimal64 | Decimal128 | Decimal256 | Decimal512 data type family must have a one number as its argument");
 
     UInt64 precision = DecimalUtils::max_precision<T>;
     UInt64 scale = scale_arg->value.safeGet<UInt64>();
@@ -353,6 +356,10 @@ FOR_EACH_DECIMAL_TYPE(INVOKE);
 template <typename T>
 DataTypePtr createDecimalMaxPrecision(UInt64 scale)
 {
+    if (scale > DecimalUtils::max_precision<T>)
+        throw Exception(ErrorCodes::ARGUMENT_OUT_OF_BOUND,
+                        "Scale {} is out of bounds (max scale: {})",
+                        std::to_string(scale), DecimalUtils::max_precision<T>);
     return std::make_shared<DataTypeDecimal<T>>(DecimalUtils::max_precision<T>, scale);
 }
 
@@ -360,12 +367,14 @@ template DataTypePtr createDecimalMaxPrecision<Decimal32>(UInt64 scale);
 template DataTypePtr createDecimalMaxPrecision<Decimal64>(UInt64 scale);
 template DataTypePtr createDecimalMaxPrecision<Decimal128>(UInt64 scale);
 template DataTypePtr createDecimalMaxPrecision<Decimal256>(UInt64 scale);
+template DataTypePtr createDecimalMaxPrecision<Decimal512>(UInt64 scale);
 
 /// Explicit template instantiations.
 template class DataTypeDecimal<Decimal32>;
 template class DataTypeDecimal<Decimal64>;
 template class DataTypeDecimal<Decimal128>;
 template class DataTypeDecimal<Decimal256>;
+template class DataTypeDecimal<Decimal512>;
 
 void registerDataTypeDecimal(DataTypeFactory & factory)
 {
@@ -373,6 +382,7 @@ void registerDataTypeDecimal(DataTypeFactory & factory)
     factory.registerDataType("Decimal64", createExact<Decimal64>, DataTypeFactory::Case::Insensitive);
     factory.registerDataType("Decimal128", createExact<Decimal128>, DataTypeFactory::Case::Insensitive);
     factory.registerDataType("Decimal256", createExact<Decimal256>, DataTypeFactory::Case::Insensitive);
+    factory.registerDataType("Decimal512", createExact<Decimal512>, DataTypeFactory::Case::Insensitive);
 
     factory.registerDataType("Decimal", create, DataTypeFactory::Case::Insensitive);
     factory.registerAlias("DEC", "Decimal", DataTypeFactory::Case::Insensitive);
