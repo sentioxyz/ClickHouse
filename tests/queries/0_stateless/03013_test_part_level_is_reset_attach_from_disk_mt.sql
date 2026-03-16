@@ -1,4 +1,5 @@
--- Tags: no-shared-merge-tree
+-- Tags: no-shared-merge-tree, no-random-detach
+-- Random DETACH/ATTACH changes part levels, making part names non-deterministic
 SET alter_sync = 2;
 -- {echoOn}
 DROP TABLE IF EXISTS test;
