@@ -88,7 +88,10 @@ bool ActionLocksManager::hasAny(const StorageID & table_id) const
 bool ActionLocksManager::hasAny(const StoragePtr & table) const
 {
     std::lock_guard lock(mutex);
-    return storage_locks.contains(table.get());
+    auto it = storage_locks.find(table.get());
+    if (it == storage_locks.end())
+        return false;
+    return !it->second.empty();
 }
 
 void ActionLocksManager::cleanExpired()

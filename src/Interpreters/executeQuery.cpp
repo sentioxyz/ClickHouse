@@ -1582,12 +1582,12 @@ static BlockIO executeQueryImpl(
 
         bool is_initial_query = client_info.query_kind == ClientInfo::QueryKind::INITIAL_QUERY;
         bool has_transaction = context->getCurrentTransaction() || settings[Setting::implicit_transaction];
-        if (!internal && is_initial_query && !has_transaction)
+        if (!internal && is_initial_query && !has_transaction && out_ast)
         {
             bool need_reattach_tables = settings[Setting::reattach_tables_before_query_execution];
             auto reattach_probability = settings[Setting::reattach_tables_before_query_execution_probability];
 
-            if (!need_reattach_tables && reattach_probability > 0.0)
+            if (!need_reattach_tables && reattach_probability > 0.0 && reattach_probability <= 1.0)
             {
                 std::bernoulli_distribution distribution(reattach_probability);
                 need_reattach_tables |= distribution(thread_local_rng);
