@@ -1,3 +1,6 @@
+-- Tags: no-random-detach
+-- no-random-detach: TTL may fire during reattach, causing data to be removed unexpectedly
+
 DROP TABLE IF EXISTS alter_modify_column_ttl_without_type;
 
 SET allow_suspicious_ttl_expressions = 1;
