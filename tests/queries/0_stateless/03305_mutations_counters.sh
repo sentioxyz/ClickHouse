@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tags: no-parallel, no-random-detach
-# no-random-detach: test checks mutation state and relies on SYSTEM STOP MERGES
+# no-random-detach: test checks mutation state and relies on stopping merges globally
 
 CUR_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=../shell_config.sh
