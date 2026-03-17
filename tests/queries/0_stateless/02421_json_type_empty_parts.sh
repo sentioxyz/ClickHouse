@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tags: no-fasttest
+# Tags: no-fasttest, no-random-detach
+# no-random-detach: test checks system.parts and relies on uninterrupted background cleanup
 
 set -euo pipefail
 
