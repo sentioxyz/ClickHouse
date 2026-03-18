@@ -1163,19 +1163,6 @@ static void reattachTablesUsedInQuery(const ASTPtr & query, ContextMutablePtr co
     auto old_settings = context->getSettingsCopy();
     SCOPE_EXIT({ context->setSettings(old_settings); });
 
-    /// Suppress forwarding of log messages to the client during DETACH/ATTACH.
-    /// Internal DETACH/ATTACH queries may produce error-level log messages
-    /// (e.g., when a concurrent query interferes), and those messages would be
-    /// forwarded to the client via `send_logs_level`, causing unexpected stderr output.
-    auto old_logs_queue = CurrentThread::getInternalTextLogsQueue();
-    auto old_logs_level = CurrentThread::isInitialized() ? CurrentThread::get().getClientLogsLevel() : LogsLevel::none;
-    if (old_logs_queue)
-        CurrentThread::attachInternalTextLogsQueue(old_logs_queue, LogsLevel::none);
-    SCOPE_EXIT({
-        if (old_logs_queue)
-            CurrentThread::attachInternalTextLogsQueue(old_logs_queue, old_logs_level);
-    });
-
     for (const auto & table_id : data.tables)
     {
         if (table_id.getDatabaseName() == "system")
@@ -1214,8 +1201,23 @@ static void reattachTablesUsedInQuery(const ASTPtr & query, ContextMutablePtr co
         auto detach_query = fmt::format("DETACH TABLE {}", full_name);
         auto attach_query = fmt::format("ATTACH TABLE {}", full_name);
 
+        LOG_DEBUG(getLogger("reattachTablesUsedInQuery"), "{}", detach_query);
+
         try
         {
+            /// Suppress forwarding of log messages to the client during DETACH/ATTACH.
+            /// Internal DETACH/ATTACH queries may produce error-level log messages
+            /// (e.g., when a concurrent query interferes), and those messages would be
+            /// forwarded to the client via `send_logs_level`, causing unexpected stderr output.
+            auto old_logs_queue = CurrentThread::getInternalTextLogsQueue();
+            auto old_logs_level = CurrentThread::isInitialized() ? CurrentThread::get().getClientLogsLevel() : LogsLevel::none;
+            if (old_logs_queue)
+                CurrentThread::attachInternalTextLogsQueue(old_logs_queue, LogsLevel::none);
+            SCOPE_EXIT({
+                if (old_logs_queue)
+                    CurrentThread::attachInternalTextLogsQueue(old_logs_queue, old_logs_level);
+            });
+
             {
                 auto detach = executeQuery(detach_query, context, QueryFlags{.internal = true}).second;
                 executeTrivialBlockIO(detach, context);
