@@ -1728,11 +1728,16 @@ class TestCase:
 
     def add_effective_settings(self, client_options):
         new_options = ""
+        all_http_settings = []
         if self.randomize_detach:
             new_options += f" --reattach_tables_before_query_execution_probability {self.reattach_tables_probability}"
+            all_http_settings.append(("reattach_tables_before_query_execution_probability", self.reattach_tables_probability))
 
         if self.effective_settings:
-            http_params = self.http_format_settings(self.effective_settings)
+            all_http_settings.extend(self.effective_settings)
+
+        if all_http_settings:
+            http_params = self.http_format_settings(all_http_settings)
             if len(self.base_url_params) == 0:
                 os.environ["CLICKHOUSE_URL_PARAMS"] = http_params
             else:
@@ -1740,6 +1745,7 @@ class TestCase:
                     self.base_url_params + "&" + http_params
                 )
 
+        if self.effective_settings:
             new_options += f" {self.cli_format_settings(self.effective_settings)}"
 
         if self.effective_merge_tree_settings:
