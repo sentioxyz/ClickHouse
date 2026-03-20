@@ -23,3 +23,16 @@ WHERE current_database = currentDatabase()
     AND type = 'QueryFinish'
 ORDER BY event_time_microseconds DESC
 LIMIT 1;
+
+-- 3 shards, one unavailable (non-routable address), skip_unavailable_shards = 1
+-- The event should still report 3 (total expected shards, including the skipped one)
+SELECT count() FROM remote('192.0.2.1,127.0.0.{1,2}', system.one) FORMAT Null SETTINGS skip_unavailable_shards = 1, connect_timeout_with_failover_ms = 100, log_comment = '04039_profile_event_shards_3';
+SYSTEM FLUSH LOGS query_log;
+
+SELECT ProfileEvents['Shards']
+FROM system.query_log
+WHERE current_database = currentDatabase()
+    AND log_comment = '04039_profile_event_shards_3'
+    AND type = 'QueryFinish'
+ORDER BY event_time_microseconds DESC
+LIMIT 1;
