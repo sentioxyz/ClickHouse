@@ -50,7 +50,7 @@ ALWAYS_INLINE BloomFilterHashPair makeXXH3HashPair(const char * data, size_t siz
 
 ALWAYS_INLINE UInt64 hashWithSeedXXH3(UInt64 hash, UInt64 hash_seed)
 {
-    return XXH3_64bits_withSeed(reinterpret_cast<const char *>(&hash), sizeof(hash), hash_seed);
+    return XXH3_64bits_withSeed(reinterpret_cast<const char *>(&hash_seed), sizeof(hash_seed), hash);
 }
 #if defined(__clang__)
 #    pragma clang diagnostic pop
