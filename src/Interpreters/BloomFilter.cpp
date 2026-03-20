@@ -15,7 +15,7 @@
 #ifndef XXH_INLINE_ALL
 #    define XXH_INLINE_ALL
 #endif
-#include "../../contrib/xxHash/xxhash.h"
+#include <../../contrib/xxHash/xxhash.h>
 #if defined(__clang__)
 #    pragma clang diagnostic pop
 #endif
