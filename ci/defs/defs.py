@@ -250,7 +250,7 @@ DOCKERS = [
     ),
     Docker.Config(
         name="clickhouse/postgresql-dotnet-client",
-        path="./docker/test/integration/postgresql_dotnet_client",
+        path="./ci/docker/integration/postgresql_dotnet_client",
         platforms=Docker.Platforms.arm_amd,
         depends_on=[],
     ),
