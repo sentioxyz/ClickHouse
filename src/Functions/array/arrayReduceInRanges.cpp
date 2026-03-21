@@ -345,7 +345,10 @@ public:
 
     FunctionBasePtr buildImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & return_type) const override
     {
-        auto aggregate_function = resolveAggregateFunction(arguments);
+        /// buildImpl receives the original arguments which may still have Nullable types/columns,
+        /// because the framework only unwraps Nullable for getReturnTypeImpl, not for buildImpl.
+        auto args_without_nullable = createBlockWithNestedColumns(arguments);
+        auto aggregate_function = resolveAggregateFunction(args_without_nullable);
         auto function = std::make_shared<FunctionArrayReduceInRanges>(std::move(aggregate_function));
 
         DataTypes data_types(arguments.size());

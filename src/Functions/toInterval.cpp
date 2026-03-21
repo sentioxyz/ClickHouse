@@ -6,6 +6,7 @@
 #include <DataTypes/DataTypeInterval.h>
 #include <Functions/DateTimeTransforms.h>
 #include <Functions/FunctionFactory.h>
+#include <Functions/FunctionHelpers.h>
 
 namespace DB
 {
@@ -97,7 +98,9 @@ public:
 
     FunctionBasePtr buildImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type) const override
     {
-        const ColumnConst * kind_column = checkAndGetColumnConst<ColumnString>(arguments[1].column.get());
+        /// buildImpl receives original arguments which may still have Nullable types/columns.
+        auto args = createBlockWithNestedColumns(arguments);
+        const ColumnConst * kind_column = checkAndGetColumnConst<ColumnString>(args[1].column.get());
         if (!kind_column)
             throw Exception(ErrorCodes::BAD_ARGUMENTS, "Second argument for function {} must be constant string: "
                 "name of interval kind", getName());

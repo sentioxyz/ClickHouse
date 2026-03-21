@@ -9,6 +9,7 @@
 #include <DataTypes/DataTypeInterval.h>
 #include <Functions/DateTimeTransforms.h>
 #include <Functions/FunctionFactory.h>
+#include <Functions/FunctionHelpers.h>
 #include <Functions/IFunction.h>
 #include <Functions/IFunctionAdaptors.h>
 #include <IO/WriteHelpers.h>
@@ -489,9 +490,12 @@ public:
 
     FunctionBasePtr buildImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & return_type) const override
     {
-        /// Determine the overload from argument types (same logic as in getReturnTypeImpl)
+        /// buildImpl receives original arguments which may still have Nullable types/columns,
+        /// because the framework only unwraps Nullable for getReturnTypeImpl, not for buildImpl.
+        auto args = createBlockWithNestedColumns(arguments);
+
         ToStartOfIntervalOverload overload = ToStartOfIntervalOverload::Default;
-        if (arguments.size() >= 3 && isDateOrDate32OrDateTimeOrDateTime64(arguments[2].type))
+        if (args.size() >= 3 && isDateOrDate32OrDateTimeOrDateTime64(args[2].type))
             overload = ToStartOfIntervalOverload::Origin;
 
         auto function = std::make_shared<FunctionToStartOfInterval>(overload);

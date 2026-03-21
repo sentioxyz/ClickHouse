@@ -217,7 +217,9 @@ public:
 
     FunctionBasePtr buildImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & return_type) const override
     {
-        const ColumnConst * datepart_column = checkAndGetColumnConst<ColumnString>(arguments[0].column.get());
+        /// buildImpl receives original arguments which may still have Nullable types/columns.
+        auto args = createBlockWithNestedColumns(arguments);
+        const ColumnConst * datepart_column = checkAndGetColumnConst<ColumnString>(args[0].column.get());
         if (!datepart_column)
             throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "First argument for function {} must be constant string: "
                 "name of datepart", getName());
