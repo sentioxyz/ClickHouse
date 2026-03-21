@@ -413,7 +413,7 @@ public:
         {
             if (overload != ToStartOfIntervalOverload::Origin) /// sanity check
                 throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Illegal type {} of 3rd argument of function {}. "
-                    "The third argument must a Date/Date32/DateTime/DateTime64 with a constant origin",
+                    "The third argument must be a Date/Date32/DateTime/DateTime64 with a constant origin",
                     arguments[2].type->getName(), getName());
 
             const DataTypePtr & type_arg4 = arguments[3].type;

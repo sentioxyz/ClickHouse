@@ -157,7 +157,7 @@ namespace
             if (!ret)
                 throw Exception(
                     ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
-                    "Function {} have signature: "
+                    "Function {} has signature: "
                     "transform(T, Array(T), Array(U), U) -> U; "
                     "or transform(T, Array(T), Array(T)) -> T; where T and U are types",
                     getName());
@@ -169,12 +169,11 @@ namespace
         {
             /// If cache was not initialized at build time (e.g. columns were not available during analysis),
             /// initialize it now from the actual arguments.
-            if (!cache)
+            std::call_once(cache_once_flag, [&]
             {
-                std::lock_guard lock(cache_mutex);
                 if (!cache)
                     cache = initializeTransformCache(arguments, result_type);
-            }
+            });
 
             const auto * in = arguments[0].column.get();
 
@@ -672,7 +671,7 @@ namespace
         }
 
         mutable TransformCachePtr cache;
-        mutable std::mutex cache_mutex;
+        mutable std::once_flag cache_once_flag;
 
     public:
         static void checkAllowedType(const DataTypePtr & type)
@@ -899,7 +898,7 @@ namespace
             if (!ret)
                 throw Exception(
                     ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
-                    "Function {} have signature: "
+                    "Function {} has signature: "
                     "transform(T, Array(T), Array(U), U) -> U; "
                     "or transform(T, Array(T), Array(T)) -> T; where T and U are types",
                     getName());
