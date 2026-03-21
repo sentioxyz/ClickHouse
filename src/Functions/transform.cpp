@@ -31,6 +31,7 @@ namespace ErrorCodes
     extern const int NUMBER_OF_ARGUMENTS_DOESNT_MATCH;
     extern const int ILLEGAL_COLUMN;
     extern const int LOGICAL_ERROR;
+    extern const int NOT_IMPLEMENTED;
 }
 
 namespace
@@ -695,7 +696,7 @@ namespace
                     return;
             }
 
-            throw Exception(ErrorCodes::BAD_ARGUMENTS, "Unexpected type {} in function 'transform'", type->getName());
+            throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Unexpected type {} in function 'transform'", type->getName());
         }
 
     };
