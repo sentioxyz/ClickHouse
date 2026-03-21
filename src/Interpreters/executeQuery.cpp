@@ -1108,10 +1108,13 @@ public:
             if (table.empty())
                 return;
 
-            if (database.empty())
-                tables.emplace_back(context->getCurrentDatabase(), table);
-            else
-                tables.emplace_back(database, table);
+            auto resolved = context->tryResolveStorageID(StorageID(database, table));
+            /// Skip temporary and external tables — they don't have persistent storage on disk,
+            /// and attempting to DETACH them would lose their data.
+            if (resolved.getDatabaseName().empty())
+                return;
+
+            tables.emplace_back(std::move(resolved));
         }
     };
 
