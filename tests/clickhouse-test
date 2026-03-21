@@ -1783,7 +1783,7 @@ class TestCase:
             all_http_settings.append(("reattach_tables_before_query_execution_probability", self.reattach_tables_probability))
 
         if self.effective_settings:
-            all_http_settings.extend(self.effective_settings)
+            all_http_settings.extend(self.effective_settings.items())
 
         if all_http_settings:
             http_params = self.http_format_settings(all_http_settings)
