@@ -1109,9 +1109,10 @@ public:
                 return;
 
             auto resolved = context->tryResolveStorageID(StorageID(database, table));
-            /// Skip temporary and external tables — they don't have persistent storage on disk,
+            /// Skip temporary and external tables — they live in an in-memory database,
             /// and attempting to DETACH them would lose their data.
-            if (resolved.getDatabaseName().empty())
+            if (resolved.getDatabaseName().empty()
+                || resolved.getDatabaseName() == DatabaseCatalog::TEMPORARY_DATABASE)
                 return;
 
             tables.emplace_back(std::move(resolved));
