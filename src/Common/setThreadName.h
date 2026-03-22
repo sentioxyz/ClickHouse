@@ -74,6 +74,7 @@ namespace DB
     M(KEEPER_RESPONSE, "KeeperResponse") \
     M(KEEPER_SNAPSHOT, "KeeperSnapshot") \
     M(KEEPER_SNAPSHOT_S3, "KeeperSnapS3") \
+    M(KEEPER_TTL_GARBAGE_COLLECTOR, "KeeperTTLGC") \
     M(KAFKA_BACKGROUND, "KafkaBackgrd") \
     M(KAFKA_BROKER, "KafkaBroker") \
     M(KAFKA_CLEANUP, "KafkaClnup") \

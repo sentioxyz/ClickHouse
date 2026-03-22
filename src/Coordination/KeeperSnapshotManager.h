@@ -33,9 +33,10 @@ enum SnapshotVersion : uint8_t
     V4 = 4, /// add Node size to snapshots
     V5 = 5, /// add ZXID and digest to snapshots
     V6 = 6, /// remove is_sequential, per node size, data length
+    V7 = 7, /// add destroy_time and ttl for TTL nodes
 };
 
-static constexpr auto CURRENT_SNAPSHOT_VERSION = SnapshotVersion::V6;
+static constexpr auto CURRENT_SNAPSHOT_VERSION = SnapshotVersion::V7;
 
 /// What is stored in binary snapshot
 template<typename Storage>

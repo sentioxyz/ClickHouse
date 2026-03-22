@@ -1402,4 +1402,9 @@ void KeeperServer::recalculateStorageStats()
     state_machine->recalculateStorageStats();
 }
 
+std::vector<std::string> KeeperServer::getExpiredTTLPathsForGarbageCollector() const
+{
+    return state_machine->getExpiredTTLPathsForGarbageCollector();
+}
+
 }
