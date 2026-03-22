@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tags: race, no-parallel
+# Tags: race, no-parallel, no-random-detach
+# no-random-detach: race condition test, concurrent DETACH/ATTACH interferes with table operations
 # no-parallel because we run many concurrent mutations, which may break other tests by delaying their
 # mutations for a long time.
 
