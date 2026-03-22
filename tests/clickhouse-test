@@ -78,6 +78,10 @@ MESSAGES_TO_RETRY = [
 
 IGNORED_SANITIZER_ERRORS = [
     "ASan doesn't fully support makecontext/swapcontext functions and may produce false positives in some cases!",
+    # These warnings accompany the above message and are part of the same known limitation
+    # (https://github.com/google/sanitizers/issues/189). They are not real errors.
+    "False positive error reports may follow",
+    "For details see https://github.com/google/sanitizers/issues/189",
     # This warning appears when the virtual stack size is too large for ASan to track __asan_handle_no_return.
     # It is a known limitation (https://github.com/google/sanitizers/issues/189) and not a real error.
     "ASan is ignoring requested __asan_handle_no_return",
