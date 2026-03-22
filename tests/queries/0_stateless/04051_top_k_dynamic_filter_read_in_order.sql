@@ -33,8 +33,9 @@ SELECT read_rows < 100000
 FROM system.query_log
 WHERE
     current_database = currentDatabase()
-    AND query LIKE 'SELECT x FROM t_topk_rio ORDER BY x LIMIT 5%'
+    AND query LIKE '%SELECT x FROM t_topk_rio ORDER BY x LIMIT 5%'
     AND query NOT LIKE '%system.query_log%'
+    AND query NOT LIKE '%EXPLAIN%'
     AND type = 'QueryFinish'
 ORDER BY event_time_microseconds DESC
 LIMIT 1;
