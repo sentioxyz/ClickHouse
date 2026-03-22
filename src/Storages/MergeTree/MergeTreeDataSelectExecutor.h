@@ -276,10 +276,6 @@ public:
         const StorageMetadataPtr & metadata_snapshot,
         const NameSet & all_updated_columns);
 
-    static std::expected<void, PreformattedMessage> canUseMergedIndex(
-        const std::vector<MergeTreeIndexPtr> & indices,
-        const StorageMetadataPtr & metadata_snapshot,
-        const NameSet & all_updated_columns);
 
 };
 

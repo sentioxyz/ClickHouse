@@ -713,18 +713,6 @@ std::expected<void, PreformattedMessage> MergeTreeDataSelectExecutor::canUseInde
         index->index.name, it->getNameInStorage()));
 }
 
-std::expected<void, PreformattedMessage> MergeTreeDataSelectExecutor::canUseMergedIndex(
-    const std::vector<MergeTreeIndexPtr> & indices,
-    const StorageMetadataPtr & metadata_snapshot,
-    const NameSet & all_updated_columns)
-{
-    for (const auto & index : indices)
-    {
-        if (auto result = canUseIndex(index, metadata_snapshot, all_updated_columns); !result)
-            return result;
-    }
-    return {};
-}
 
 RangesInDataParts MergeTreeDataSelectExecutor::filterPartsByPrimaryKeyAndSkipIndexes(IndexAnalysisContext & filter_context, RangesInDataParts parts_with_ranges, ReadFromMergeTree::IndexStats & index_stats)
 {
