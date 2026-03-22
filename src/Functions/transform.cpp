@@ -190,7 +190,7 @@ namespace
                         "Fourth argument of function {} must be a constant or at least as big as the second and third arguments",
                         getName());
                 }
-                default_non_const = castColumn(arguments[3], result_type);
+                default_non_const = castColumn(arguments[3], result_type)->convertToFullColumnIfConst();
             }
 
             ColumnPtr in_cast = arguments[0].column;
