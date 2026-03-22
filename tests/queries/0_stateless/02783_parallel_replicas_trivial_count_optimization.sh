@@ -26,7 +26,8 @@ function run_query_with_pure_parallel_replicas () {
     $CLICKHOUSE_CLIENT \
         --query "$2" \
         --query_id "${1}_disabled" \
-        --max_parallel_replicas 1
+        --max_parallel_replicas 1 \
+        --optimize_trivial_count_query 1
 
     $CLICKHOUSE_CLIENT \
         --query "$2" \
@@ -37,7 +38,8 @@ function run_query_with_pure_parallel_replicas () {
         --automatic_parallel_replicas_mode 0 \
         --enable_parallel_replicas 1 \
         --enable_analyzer 0 \
-        --parallel_replicas_only_with_analyzer 0
+        --parallel_replicas_only_with_analyzer 0 \
+        --optimize_trivial_count_query 1
 
     $CLICKHOUSE_CLIENT \
         --query "$2" \
@@ -47,7 +49,8 @@ function run_query_with_pure_parallel_replicas () {
         --cluster_for_parallel_replicas 'test_cluster_one_shard_three_replicas_localhost' \
         --automatic_parallel_replicas_mode 0 \
         --enable_parallel_replicas 1 \
-        --enable_analyzer 1
+        --enable_analyzer 1 \
+        --optimize_trivial_count_query 1
 }
 
 function run_query_with_custom_key_parallel_replicas () {
