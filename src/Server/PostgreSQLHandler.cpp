@@ -20,7 +20,6 @@
 #include <Common/randomSeed.h>
 #include <Common/setThreadName.h>
 #include <Core/PostgreSQLProtocol.h>
-#include <IO/WriteBufferFromString.h>
 #include <Parsers/ASTCopyQuery.h>
 #include <Parsers/ParserCopyQuery.h>
 #include <Core/Settings.h>
@@ -873,7 +872,9 @@ void PostgreSQLHandler::processCloseQuery()
         std::unique_ptr<PostgreSQLProtocol::Messaging::CloseQuery> query =
             message_transport->receive<PostgreSQLProtocol::Messaging::CloseQuery>();
 
-        prepared_statements_manager.deleteStatement(query->function_name);
+        if (query->isStatement())
+            prepared_statements_manager.deleteStatement(query->function_name);
+
         prepared_statements_manager.resetBindQuery();
     }
     catch (const Exception & e)
@@ -930,17 +931,15 @@ Int32 PostgreSQLHandler::parseNumberColumns(const std::vector<char> & output)
 
 void PostgreSQLHandler::initializeSystemTables(ContextMutablePtr query_context)
 {
-    String out_str;
-    auto out_buffer = WriteBufferFromString(out_str);
-
-    auto execute_query = [&](const String & query)
+    auto execute_internal_query = [&](const String & query)
     {
-        QueryScope query_scope = QueryScope::create(query_context);
-        ReadBufferFromString read_buf(query);
-        executeQuery(read_buf, out_buffer, query_context, {});
+        query_context->setCurrentQueryId("");
+        auto [ast, io] = executeQuery(query, query_context, QueryFlags{.internal = true});
+        if (io.pipeline.initialized())
+            executeTrivialBlockIO(io, query_context);
     };
 
-    execute_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_type AS
+    execute_internal_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_type AS
 SELECT * FROM VALUES(
     'oid UInt32, typnamespace UInt32, typname String, typrelid UInt32, typnotnull UInt8, typtype String, typreceive UInt32, typelem UInt32, typbasetype UInt32, typcategory String',
     (16,   11, 'bool',      0, 0, 'b', 246, 0, 0, 'B'),
@@ -958,7 +957,7 @@ SELECT * FROM VALUES(
     (1114, 11, 'timestamp', 0, 0, 'b', 253, 0, 0, 'D')
 ))");
 
-    execute_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_namespace AS
+    execute_internal_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_namespace AS
 SELECT * FROM VALUES(
     'oid UInt32, nspname String',
     (11,    'pg_catalog'),
@@ -969,7 +968,7 @@ SELECT * FROM VALUES(
     (100,   'pg_toast_temp_1')
 ))");
 
-    execute_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_class AS
+    execute_internal_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_class AS
 SELECT * FROM VALUES(
     'oid UInt32, relkind String',
     (1259, 'r'),
@@ -982,7 +981,7 @@ SELECT * FROM VALUES(
     (3074, 'S')
 ))");
 
-    execute_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_proc AS
+    execute_internal_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_proc AS
 SELECT * FROM VALUES(
     'oid UInt32, proname String',
     (1247, 'boolin'),
@@ -1011,7 +1010,7 @@ SELECT * FROM VALUES(
     (1116, 'timestamp_out')
 ))");
 
-    execute_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_range AS
+    execute_internal_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_range AS
 SELECT * FROM VALUES(
     'rngtypid UInt32, rngsubtype UInt32, rngmultitypid UInt32',
     (3904, 23,   3905),
@@ -1022,7 +1021,7 @@ SELECT * FROM VALUES(
     (3926, 21,   3927)
 ))");
 
-    execute_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_attribute AS
+    execute_internal_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_attribute AS
 SELECT * FROM VALUES(
     'atttypid UInt32, attrelid UInt32, attname String, attnum Int32, attisdropped UInt8',
     (19, 1247, 'typname',      1, 0),
@@ -1036,7 +1035,7 @@ SELECT * FROM VALUES(
     (18, 1247, 'typcategory',  9, 0)
 ))");
 
-    execute_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_enum AS
+    execute_internal_query(R"(CREATE TEMPORARY VIEW IF NOT EXISTS pg_enum AS
 SELECT * FROM VALUES(
     'oid UInt32, enumtypid UInt32, enumsortorder Float64, enumlabel String',
     (50000, 40000, 1.0, 'sad'),

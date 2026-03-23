@@ -882,15 +882,19 @@ class CloseQuery : FrontMessage
 {
 public:
     String function_name;
+    /// 'S' for prepared statement, 'P' for portal
+    Int8 close_type = 0;
 
     void deserialize(ReadBuffer & in) override
     {
         Int32 sz;
         readBinaryBigEndian(sz, in);
-        Int8 byte;
-        readBinaryBigEndian(byte, in);
+        readBinaryBigEndian(close_type, in);
         readNullTerminated(function_name, in);
     }
+
+    bool isStatement() const { return close_type == 'S'; }
+    bool isPortal() const { return close_type == 'P'; }
 
     MessageType getMessageType() const override
     {
