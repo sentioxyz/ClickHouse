@@ -1102,6 +1102,7 @@ public:
 
         const ContextPtr context;
         std::vector<StorageID> tables;
+        std::unordered_set<StorageID, StorageID::DatabaseAndTableNameHash, StorageID::DatabaseAndTableNameEqual> seen;
 
         void addTableIfNotEmpty(const String & database, const String & table)
         {
@@ -1115,6 +1116,10 @@ public:
                 || resolved.getDatabaseName() == DatabaseCatalog::TEMPORARY_DATABASE)
                 return;
 
+            if (seen.contains(resolved))
+                return;
+
+            seen.insert(resolved);
             tables.emplace_back(std::move(resolved));
         }
     };
