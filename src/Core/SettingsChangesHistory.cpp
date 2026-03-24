@@ -44,6 +44,7 @@ const VersionToSettingsChangesMap & getSettingsChangesHistory()
             {"max_wkb_geometry_elements", 1'000'000, 1'000'000, "New setting to limit element counts in WKB geometry parsing, preventing excessive memory allocation on malformed data."},
             {"max_rand_distribution_trials", 0, 1'000'000'000, "New setting to limit trial counts in random distribution functions, preventing hangs with extreme inputs."},
             {"max_rand_distribution_parameter", 0, 1e6, "New setting to limit shape parameters in random distribution functions, preventing hangs with extreme inputs."},
+            {"distributed_index_analysis_only_on_coordinator", false, false, "New setting."},
             {"enable_materialized_cte", false, false, "New setting"},
             {"finalize_projection_parts_synchronously", false, false, "New setting to finalize projection parts synchronously during INSERT to reduce peak memory usage."},
         });
