@@ -306,6 +306,8 @@ struct ZooKeeperCreateIfNotExistsResponse : ZooKeeperCreateResponse
 
 struct ZooKeeperCreateTTLResponse : ZooKeeperCreate2Response
 {
+    using ZooKeeperCreate2Response::ZooKeeperCreate2Response;
+
     void readImpl(ReadBuffer & in) override;
 
     void writeImpl(WriteBuffer & out) const override;
