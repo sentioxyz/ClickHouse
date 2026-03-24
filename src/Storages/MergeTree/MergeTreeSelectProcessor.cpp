@@ -260,17 +260,80 @@ MergeTreeSelectProcessor::readCurrentTask(MergeTreeReadTask & current_task, IMer
         }
 
         return ChunkAndProgress{
-            .chunk = std::move(chunk), .num_read_rows = res.num_read_rows, .num_read_bytes = res.num_read_bytes, .is_finished = false};
+            .chunk = std::move(chunk), .num_read_rows = res.num_read_rows, .num_read_bytes = res.num_read_bytes,
+            .is_finished = false, .read_mark_ranges = std::move(res.read_mark_ranges)};
     }
 
     if (reader_settings.use_query_condition_cache && prewhere_info)
         current_task.addPrewhereUnmatchedMarks(res.read_mark_ranges);
 
-    return {Chunk(), res.num_read_rows, res.num_read_bytes, false};
+    return {Chunk(), res.num_read_rows, res.num_read_bytes, false, std::move(res.read_mark_ranges)};
+}
+
+void MergeTreeSelectProcessor::setVirtualRowConversions(
+    ExpressionActionsPtr virtual_row_conversions_, KeyDescription primary_key_, bool read_in_reverse_order_)
+{
+    virtual_row_conversions = std::move(virtual_row_conversions_);
+    primary_key = std::move(primary_key_);
+    num_pk_columns_for_virtual_row = virtual_row_conversions->getRequiredColumnsWithTypes().size();
+    read_in_reverse_order = read_in_reverse_order_;
+}
+
+ChunkAndProgress MergeTreeSelectProcessor::buildVirtualRowFromIndex(
+    const MergeTreeReadTask & current_task, const MarkRanges & read_mark_ranges) const
+{
+    if (!virtual_row_conversions || read_mark_ranges.empty())
+        return {};
+
+    const auto & data_part = current_task.getInfo().data_part;
+    const auto & index = data_part->getIndex();
+
+    /// Forward order: the source will next produce data starting at back().end.
+    /// Reverse order: MergeTreeInReverseOrderSelectAlgorithm returns chunks in reverse.
+    /// After returning a chunk from marks [a, b), the next chunk covers earlier marks ending at a.
+    /// So front().begin is the boundary of the next output.
+    size_t next_mark = read_in_reverse_order
+        ? read_mark_ranges.front().begin
+        : read_mark_ranges.back().end;
+
+    if (index->size() < num_pk_columns_for_virtual_row)
+        return {};
+
+    bool has_value = std::ranges::all_of(*index, [&](const auto & col) { return col->size() > next_mark; });
+    if (!has_value)
+        return {};
+
+    ColumnsWithTypeAndName pk_columns;
+    pk_columns.reserve(num_pk_columns_for_virtual_row);
+    for (size_t j = 0; j < num_pk_columns_for_virtual_row; ++j)
+    {
+        auto column = primary_key.data_types[j]->createColumn()->cloneEmpty();
+        column->insert((*(*index)[j])[next_mark]);
+        pk_columns.push_back({std::move(column), primary_key.data_types[j], primary_key.column_names[j]});
+    }
+    Block pk_block(std::move(pk_columns));
+
+    Columns empty_columns;
+    empty_columns.reserve(result_header.columns());
+    for (size_t i = 0; i < result_header.columns(); ++i)
+        empty_columns.push_back(result_header.getByPosition(i).type->createColumn()->cloneEmpty());
+
+    Chunk chunk(std::move(empty_columns), 0);
+    auto part_level = data_part->info.level;
+    chunk.getChunkInfos().add(std::make_shared<MergeTreeReadInfo>(part_level, pk_block, virtual_row_conversions));
+
+    return {std::move(chunk), 0, 0, false, {}};
 }
 
 ChunkAndProgress MergeTreeSelectProcessor::read()
 {
+    if (pending_virtual_row)
+    {
+        auto result = std::move(*pending_virtual_row);
+        pending_virtual_row.reset();
+        return result;
+    }
+
     while (!is_cancelled)
     {
         try
@@ -320,10 +383,23 @@ ChunkAndProgress MergeTreeSelectProcessor::read()
             throw;
         }
 
-        return readCurrentTask(*task, *algorithm);
+        auto result = readCurrentTask(*task, *algorithm);
+
+        /// Emit a virtual row update after each block, carrying the next mark's PK boundary.
+        /// This allows MergingSortedTransform to reprioritize sources when:
+        /// - PREWHERE filters all rows (merge gets updated position without actual data)
+        /// - A downstream filter (WHERE, JOIN) removes all rows (virtual row passes through filters)
+        if (virtual_row_conversions && !result.is_finished)
+        {
+            auto vrow = buildVirtualRowFromIndex(*task, result.read_mark_ranges);
+            if (vrow.chunk)
+                pending_virtual_row.emplace(std::move(vrow));
+        }
+
+        return result;
     }
 
-    return {Chunk(), 0, 0, true};
+    return {Chunk(), 0, 0, true, {}};
 }
 
 /// Cancels all internal operations for this select processor, including cancelling any ongoing index reads.

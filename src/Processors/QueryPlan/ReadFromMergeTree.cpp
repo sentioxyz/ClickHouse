@@ -736,6 +736,11 @@ Pipe ReadFromMergeTree::readInOrder(
 
         processor->addPartLevelToChunk(isQueryWithFinal());
 
+        if (virtual_row_conversion)
+            processor->setVirtualRowConversions(
+                virtual_row_conversion, storage_snapshot->metadata->primary_key,
+                read_type == ReadType::InReverseOrder);
+
         auto source = std::make_shared<MergeTreeSource>(std::move(processor), data.getLogName());
         if (set_total_rows_approx)
             source->addTotalRowsApprox(total_rows);

@@ -6,6 +6,7 @@
 #include <Storages/MergeTree/MergeTreeSelectAlgorithms.h>
 #include <Storages/MergeTree/RangesInDataPart.h>
 #include <Storages/MergeTree/RequestResponse.h>
+#include <Storages/KeyDescription.h>
 #include <Processors/Chunk.h>
 
 namespace DB
@@ -24,6 +25,8 @@ struct ChunkAndProgress
     /// Explicitly indicate that we have read all data.
     /// This is needed to occasionally return empty chunk to indicate the progress while the rows are filtered out in PREWHERE.
     bool is_finished = false;
+    /// Mark ranges that were read in this call (used for per-block virtual row generation).
+    MarkRanges read_mark_ranges;
 };
 
 class ParallelReadingExtension
@@ -141,6 +144,11 @@ public:
 
     void addPartLevelToChunk(bool add_part_level_) { add_part_level = add_part_level_; }
 
+    /// Enable per-block virtual row generation for read-in-order optimization.
+    /// When set, after each block read, a virtual row carrying the next mark's PK boundary
+    /// is emitted so that MergingSortedTransform can reprioritize sources.
+    void setVirtualRowConversions(ExpressionActionsPtr virtual_row_conversions_, KeyDescription primary_key_, bool read_in_reverse_order_);
+
     void onFinish() const;
 
 private:
@@ -173,6 +181,15 @@ private:
     MergeTreeIndexBuildContextPtr merge_tree_index_build_context;
 
     LazyMaterializingRowsPtr lazy_materializing_rows;
+
+    /// For per-block virtual row generation (read-in-order optimization).
+    ExpressionActionsPtr virtual_row_conversions;
+    KeyDescription primary_key;
+    size_t num_pk_columns_for_virtual_row = 0;
+    bool read_in_reverse_order = false;
+    std::optional<ChunkAndProgress> pending_virtual_row;
+
+    ChunkAndProgress buildVirtualRowFromIndex(const MergeTreeReadTask & current_task, const MarkRanges & read_mark_ranges) const;
 
     LoggerPtr log = getLogger("MergeTreeSelectProcessor");
     std::atomic<bool> is_cancelled{false};
