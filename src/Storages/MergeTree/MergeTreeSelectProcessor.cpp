@@ -271,11 +271,10 @@ MergeTreeSelectProcessor::readCurrentTask(MergeTreeReadTask & current_task, IMer
 }
 
 void MergeTreeSelectProcessor::setVirtualRowConversions(
-    ExpressionActionsPtr virtual_row_conversions_, KeyDescription primary_key_, bool read_in_reverse_order_)
+    ExpressionActionsPtr virtual_row_conversions_, Block pk_block_header_, bool read_in_reverse_order_)
 {
     virtual_row_conversions = std::move(virtual_row_conversions_);
-    primary_key = std::move(primary_key_);
-    num_pk_columns_for_virtual_row = virtual_row_conversions->getRequiredColumnsWithTypes().size();
+    pk_block_header = std::move(pk_block_header_);
     read_in_reverse_order = read_in_reverse_order_;
 }
 
@@ -296,7 +295,8 @@ ChunkAndProgress MergeTreeSelectProcessor::buildVirtualRowFromIndex(
         ? read_mark_ranges.front().begin
         : read_mark_ranges.back().end;
 
-    if (index->size() < num_pk_columns_for_virtual_row)
+    size_t num_pk_columns = pk_block_header.columns();
+    if (index->size() < num_pk_columns)
         return {};
 
     bool has_value = std::ranges::all_of(*index, [&](const auto & col) { return col->size() > next_mark; });
@@ -304,12 +304,13 @@ ChunkAndProgress MergeTreeSelectProcessor::buildVirtualRowFromIndex(
         return {};
 
     ColumnsWithTypeAndName pk_columns;
-    pk_columns.reserve(num_pk_columns_for_virtual_row);
-    for (size_t j = 0; j < num_pk_columns_for_virtual_row; ++j)
+    pk_columns.reserve(num_pk_columns);
+    for (size_t j = 0; j < num_pk_columns; ++j)
     {
-        auto column = primary_key.data_types[j]->createColumn()->cloneEmpty();
+        const auto & header_col = pk_block_header.getByPosition(j);
+        auto column = header_col.column->cloneEmpty();
         column->insert((*(*index)[j])[next_mark]);
-        pk_columns.push_back({std::move(column), primary_key.data_types[j], primary_key.column_names[j]});
+        pk_columns.push_back({std::move(column), header_col.type, header_col.name});
     }
     Block pk_block(std::move(pk_columns));
 

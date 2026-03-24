@@ -736,10 +736,22 @@ Pipe ReadFromMergeTree::readInOrder(
 
         processor->addPartLevelToChunk(isQueryWithFinal());
 
-        if (virtual_row_conversion)
-            processor->setVirtualRowConversions(
-                virtual_row_conversion, storage_snapshot->metadata->primary_key,
-                read_type == ReadType::InReverseOrder);
+        bool use_virtual_row = virtual_row_conversion && (read_type == ReadType::InOrder || read_type == ReadType::InReverseOrder);
+
+        Block pk_header;
+        if (use_virtual_row)
+        {
+            const auto & primary_key = storage_snapshot->metadata->primary_key;
+            size_t num_pk_columns_required = virtual_row_conversion->getRequiredColumnsWithTypes().size();
+
+            ColumnsWithTypeAndName pk_header_columns;
+            pk_header_columns.reserve(num_pk_columns_required);
+            for (size_t j = 0; j < num_pk_columns_required; ++j)
+                pk_header_columns.push_back({primary_key.data_types[j]->createColumn(), primary_key.data_types[j], primary_key.column_names[j]});
+
+            pk_header = Block(std::move(pk_header_columns));
+            processor->setVirtualRowConversions(virtual_row_conversion, pk_header, read_type == ReadType::InReverseOrder);
+        }
 
         auto source = std::make_shared<MergeTreeSource>(std::move(processor), data.getLogName());
         if (set_total_rows_approx)
@@ -747,10 +759,9 @@ Pipe ReadFromMergeTree::readInOrder(
 
         Pipe pipe(source);
 
-        if (virtual_row_conversion && (read_type == ReadType::InOrder || read_type == ReadType::InReverseOrder))
+        if (use_virtual_row)
         {
             const auto & index = part_with_ranges.data_part->getIndex();
-            const auto & primary_key = storage_snapshot->metadata->primary_key;
 
             bool has_final_mark = part_with_ranges.data_part->index_granularity->hasFinalMark();
             bool read_in_direct_order = read_type == ReadType::InOrder;
@@ -760,21 +771,13 @@ Pipe ReadFromMergeTree::readInOrder(
             /// The index may have fewer columns than the primary key if suffix columns were
             /// removed by optimizeIndexColumns (controlled by primary_key_ratio_of_unique_prefix_values_to_skip_suffix_columns).
             /// In that case, we cannot apply virtual row optimization because we don't have all required columns.
-            size_t num_pk_columns_required = virtual_row_conversion->getRequiredColumnsWithTypes().size();
-            if (index->size() >= num_pk_columns_required && has_pk_value)
+            auto pk_columns = pk_header.cloneEmptyColumns();
+            if (index->size() >= pk_columns.size() && has_pk_value)
             {
-                ColumnsWithTypeAndName pk_columns;
-                pk_columns.reserve(num_pk_columns_required);
+                for (size_t j = 0; j < pk_columns.size(); ++j)
+                    pk_columns[j]->insert((*(*index)[j])[mark_range_pos]);
 
-                for (size_t j = 0; j < num_pk_columns_required; ++j)
-                {
-                    auto column = primary_key.data_types[j]->createColumn()->cloneEmpty();
-                    column->insert((*(*index)[j])[mark_range_pos]);
-                    pk_columns.push_back({std::move(column), primary_key.data_types[j], primary_key.column_names[j]});
-                }
-
-                Block pk_block(std::move(pk_columns));
-
+                Block pk_block = pk_header.cloneWithColumns(std::move(pk_columns));
                 pipe.addSimpleTransform([&](const SharedHeader & header)
                 {
                     return std::make_shared<VirtualRowTransform>(header, pk_block, virtual_row_conversion);
