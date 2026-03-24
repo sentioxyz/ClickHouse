@@ -54,7 +54,7 @@ void traverse(NodePtr node)
     if (node->all_childs_are_outdated.has_value())
         return;
     node->all_childs_are_outdated = node->outdated;
-    for (auto child : node->children)
+    for (const auto & child : node->children)
     {
         traverse(child);
         *node->all_childs_are_outdated &= *child->all_childs_are_outdated;
