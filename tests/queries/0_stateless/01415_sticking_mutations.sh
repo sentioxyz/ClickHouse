@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tags: no-replicated-database, no-random-detach
+# Tags: no-replicated-database, no-random-detach, no-flaky-check
 # no-random-detach: test checks mutation state which is disrupted by random table reattach
 
 set -e
