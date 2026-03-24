@@ -1,3 +1,6 @@
+-- Tags: no-random-detach
+-- no-random-detach: test uses materialized views with async inserts; random DETACH disrupts MV processing
+
 set async_insert = 1;
 set wait_for_async_insert = 0;
 set async_insert_deduplicate = 1;
