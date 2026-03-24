@@ -29,6 +29,7 @@
 #include <Coordination/KeeperDispatcher.h>
 #include <Coordination/KeeperReconfiguration.h>
 #include <Coordination/KeeperStorage.h>
+#include <Coordination/Utils.h>
 
 #include <limits>
 #include <shared_mutex>
@@ -4145,26 +4146,20 @@ uint64_t KeeperStorage<Container>::getNodesCount() const
 template<typename Container>
 std::vector<std::string> KeeperStorage<Container>::collectExpiredTTLPaths(int64_t now_ms) const
 {
-    std::vector<std::string> out;
-    for (auto it = ttl_paths.begin(); it != ttl_paths.end(); )
+    std::vector<std::pair<String, bool>> nodes;
+    
+    for (const auto & ttl_path : ttl_paths)
     {
-        const std::string & path = *it;
-        auto node_it = container.find(path);
+        auto node_it = container.find(ttl_path);
         if (node_it == container.end())
-        {
-            it = ttl_paths.erase(it);
             continue;
-        }
         const Node & node = node_it->value;
-        if (node.stats.numChildren() != 0)
-        {
-            ++it;
-            continue;
-        }
         if (node.destroy_time.has_value() && now_ms >= *node.destroy_time)
-            out.push_back(path);
-        ++it;
+            nodes.push_back({ttl_path, true});
+        else
+            nodes.push_back({ttl_path, false});       
     }
+    auto out = findOldNodes(nodes);
     return out;
 }
 

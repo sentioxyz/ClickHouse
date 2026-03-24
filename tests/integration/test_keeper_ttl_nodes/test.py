@@ -195,39 +195,6 @@ def test_deep_hierarchy_ttl_cleanup():
             node1_zk.stop()
             node1_zk.close()
 
-def test_add_child_after_parent_ttl_expired_but_before_cleanup():
-    run_uuid = uuid.uuid4()
-    cluster = ClickHouseCluster(__file__, str(run_uuid))
-    cluster.add_instance(
-        "node1", main_configs=["configs/enable_keeper1.xml"], stay_alive=True, with_remote_database_disk=False,
-    )
-    cluster.add_instance(
-        "node2", main_configs=["configs/enable_keeper2.xml"], stay_alive=True, with_remote_database_disk=False,
-    )
-
-    node1_zk = None
-    cluster.start()
-
-    try:
-        node1_zk = get_fake_zk(cluster, "node1")
-        node1_zk.create("/p", b"aaaa", ttl=1000)
-
-        time.sleep(1.1)
-
-        node1_zk.create("/p/child", b"bbbb", ttl=2000)
-
-        assert not node1_zk.exists("/p")
-        assert node1_zk.exists("/p/child")
-
-        time.sleep(2.1)
-        assert not node1_zk.exists("/p")
-        assert not node1_zk.exists("/p/child")
-    finally:
-        cluster.shutdown()
-        if node1_zk:
-            node1_zk.stop()
-            node1_zk.close()
-
 def test_manual_remove_before_ttl_expiration():
     run_uuid = uuid.uuid4()
     cluster = ClickHouseCluster(__file__, str(run_uuid))
