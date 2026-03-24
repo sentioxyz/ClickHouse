@@ -212,7 +212,6 @@ struct KeeperMemNode
     std::unique_ptr<char[]> data{nullptr};
     mutable uint64_t cached_digest = 0;
 
-    uint64_t acl_id = 0; /// 0 -- no ACL by default
     /// Absolute expiry for TTL GC
     mutable std::optional<int64_t> destroy_time;
     /// TTL interval in ms
