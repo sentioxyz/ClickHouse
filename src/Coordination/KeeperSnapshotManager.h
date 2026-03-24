@@ -3,6 +3,7 @@
 
 #include <Common/CopyableAtomic.h>
 #include <Common/ZooKeeper/IKeeper.h>
+#include <Coordination/ACLMap.h>
 #include <Coordination/KeeperCommon.h>
 #include <Coordination/KeeperStorage_fwd.h>
 #include <libnuraft/nuraft.hxx>
@@ -33,10 +34,11 @@ enum SnapshotVersion : uint8_t
     V4 = 4, /// add Node size to snapshots
     V5 = 5, /// add ZXID and digest to snapshots
     V6 = 6, /// remove is_sequential, per node size, data length
-    V7 = 7, /// add destroy_time and ttl for TTL nodes
+    V7 = 7, /// acl_id narrowed from uint64_t to uint32_t, seq_num widened from int32_t to int64_t
+    V8 = 8, /// add destroy_time and ttl for TTL nodes
 };
 
-static constexpr auto CURRENT_SNAPSHOT_VERSION = SnapshotVersion::V7;
+static constexpr auto MAX_SUPPORTED_SNAPSHOT_VERSION = SnapshotVersion::V8;
 
 /// What is stored in binary snapshot
 template<typename Storage>
@@ -72,10 +74,10 @@ struct KeeperStorageSnapshot
 #endif
 
 public:
-    KeeperStorageSnapshot(Storage * storage_, uint64_t up_to_log_idx_, const ClusterConfigPtr & cluster_config_ = nullptr);
+    KeeperStorageSnapshot(Storage * storage_, uint64_t up_to_log_idx_, const ClusterConfigPtr & cluster_config_, SnapshotVersion version_);
 
     KeeperStorageSnapshot(
-        Storage * storage_, const SnapshotMetadataPtr & snapshot_meta_, const ClusterConfigPtr & cluster_config_ = nullptr);
+        Storage * storage_, const SnapshotMetadataPtr & snapshot_meta_, const ClusterConfigPtr & cluster_config_, SnapshotVersion version_);
 
     KeeperStorageSnapshot(const KeeperStorageSnapshot<Storage>&) = delete;
     KeeperStorageSnapshot(KeeperStorageSnapshot<Storage>&&) = default;
@@ -88,7 +90,7 @@ public:
 
     Storage * storage;
 
-    SnapshotVersion version = CURRENT_SNAPSHOT_VERSION;
+    SnapshotVersion version;
     /// Snapshot metadata
     SnapshotMetadataPtr snapshot_meta;
     /// Max session id
@@ -103,7 +105,7 @@ public:
     /// Sessions credentials
     Storage::SessionAndAuth session_and_auth;
     /// ACLs cache for better performance. Without we cannot deserialize storage.
-    std::unordered_map<uint64_t, Coordination::ACLs> acl_map;
+    std::unordered_map<ACLId, Coordination::ACLs> acl_map;
     /// Cluster config from snapshot, can be empty
     ClusterConfigPtr cluster_config;
     /// Last committed ZXID
