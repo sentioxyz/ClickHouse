@@ -9,6 +9,7 @@
 #include <Common/SettingSource.h>
 #include <IO/WriteHelpers.h>
 
+#include <bitset>
 #include <string_view>
 #include <unordered_map>
 
@@ -215,13 +216,12 @@ void SettingsConstraints::check(const Settings & current_settings, const Setting
 
 void SettingsConstraints::check(const Settings & current_settings, SettingsChanges & changes, SettingSource source) const
 {
-    /// When `compatibility` is present, keep all settings (even if they match current values). This ensures they're applied
-    /// and marked as `changed`, preventing `compatibility` from overriding explicit user values with its own defaults.
-    if (changes.tryGet("compatibility") == nullptr)
-        std::erase_if(changes, [&](SettingChange & change) { return !checkImpl(current_settings, change, THROW_ON_VIOLATION, source); });
-    else
-        for (auto & change : changes)
-            checkImpl(current_settings, change, THROW_ON_VIOLATION, source);
+    std::erase_if(
+        changes,
+        [&](SettingChange & change) -> bool
+        {
+            return !checkImpl(current_settings, change, THROW_ON_VIOLATION, source);
+        });
 }
 
 void SettingsConstraints::check(const MergeTreeSettings & current_settings, const SettingChange & change) const
@@ -263,7 +263,7 @@ bool getNewValueToCheck(const SettingsT & current_settings, SettingChange & chan
         {
             new_value = SettingsT::castValueUtil(change.name, change.value);
         }
-        catch (...)
+        catch (const Exception &)
         {
             return false;
         }
@@ -344,7 +344,7 @@ bool SettingsConstraints::Checker::check(SettingChange & change,
         {
             return accurateLess(left, right);
         }
-        catch (...)
+        catch (const Exception &)
         {
             return true;
         }
@@ -358,7 +358,7 @@ bool SettingsConstraints::Checker::check(SettingChange & change,
         {
             return accurateEquals(left, right);
         }
-        catch (...)
+        catch (const Exception &)
         {
             return true;
         }
