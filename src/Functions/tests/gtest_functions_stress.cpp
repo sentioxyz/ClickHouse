@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#if defined(MEMORY_SANITIZER)
+#include <sanitizer/msan_interface.h>
+#endif
+
 #include <absl/log/globals.h>
 #include <boost/program_options.hpp>
 #include <fmt/ranges.h>
@@ -1259,16 +1263,71 @@ struct FunctionsStressTestThread
                     }
                     catch (Exception & e)
                     {
-                        /// Exceptions during validation checks (determinism, monotonicity, comparison)
-                        /// are not bugs in the function itself - the function already executed successfully.
-                        /// Type errors, overflow, and comparison failures in the validation infrastructure
-                        /// are tolerated: they arise from edge cases like IPv6 Field comparison,
-                        /// Date vs DateTime in monotonicity checks, or decimal overflow during re-execution.
-                        if (e.code() != ErrorCodes::MEMORY_LIMIT_EXCEEDED
-                            && e.code() != ErrorCodes::LOGICAL_ERROR)
+                        if (e.code() == ErrorCodes::MEMORY_LIMIT_EXCEEDED || e.code() == ErrorCodes::LOGICAL_ERROR)
+                            throw;
+
+                        /// Only downgrade exceptions with known error codes that arise from
+                        /// the validation infrastructure itself (e.g. type mismatches during
+                        /// single-row re-execution, decimal overflow in Field comparison,
+                        /// Date vs DateTime in monotonicity checks). Other exceptions are
+                        /// real bugs and should be reported as unexpected errors.
+                        static const std::unordered_set<int> validation_tolerated_errors = {
+                            ErrorCodes::BAD_TYPE_OF_FIELD,
+                            ErrorCodes::ILLEGAL_COLUMN,
+                            ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
+                            ErrorCodes::NO_COMMON_TYPE,
+                            ErrorCodes::NOT_IMPLEMENTED,
+                            ErrorCodes::NUMBER_OF_ARGUMENTS_DOESNT_MATCH,
+                            ErrorCodes::TOO_FEW_ARGUMENTS_FOR_FUNCTION,
+                            ErrorCodes::TOO_MANY_ARGUMENTS_FOR_FUNCTION,
+                            ErrorCodes::TYPE_MISMATCH,
+                            ErrorCodes::CANNOT_INSERT_NULL_IN_ORDINARY_COLUMN,
+                            ErrorCodes::DECIMAL_OVERFLOW,
+                            ErrorCodes::BAD_ARGUMENTS,
+                            ErrorCodes::BAD_GET,
+                            ErrorCodes::CANNOT_CONVERT_TYPE,
+                            ErrorCodes::ILLEGAL_DIVISION,
+                            ErrorCodes::ARGUMENT_OUT_OF_BOUND,
+                            ErrorCodes::INCORRECT_DATA,
+                            ErrorCodes::TOO_LARGE_ARRAY_SIZE,
+                            ErrorCodes::TOO_LARGE_STRING_SIZE,
+                            ErrorCodes::CANNOT_PARSE_NUMBER,
+                            ErrorCodes::CANNOT_PARSE_TEXT,
+                            ErrorCodes::CANNOT_PARSE_DATE,
+                            ErrorCodes::CANNOT_PARSE_DATETIME,
+                            ErrorCodes::CANNOT_PARSE_BOOL,
+                            ErrorCodes::CANNOT_PARSE_UUID,
+                            ErrorCodes::CANNOT_PARSE_IPV4,
+                            ErrorCodes::CANNOT_PARSE_IPV6,
+                            ErrorCodes::CANNOT_PARSE_INPUT_ASSERTION_FAILED,
+                            ErrorCodes::CANNOT_PARSE_ESCAPE_SEQUENCE,
+                            ErrorCodes::CANNOT_READ_ALL_DATA,
+                            ErrorCodes::CANNOT_READ_ARRAY_FROM_TEXT,
+                            ErrorCodes::ATTEMPT_TO_READ_AFTER_EOF,
+                            ErrorCodes::SIZES_OF_ARRAYS_DONT_MATCH,
+                            ErrorCodes::PARAMETER_OUT_OF_BOUND,
+                            ErrorCodes::ZERO_ARRAY_OR_TUPLE_INDEX,
+                            ErrorCodes::INDEX_OF_POSITIONAL_ARGUMENT_IS_OUT_OF_RANGE,
+                            ErrorCodes::CANNOT_FORMAT_DATETIME,
+                            ErrorCodes::CANNOT_PRINT_FLOAT_OR_DOUBLE_NUMBER,
+                            ErrorCodes::CANNOT_COMPILE_REGEXP,
+                            ErrorCodes::CANNOT_NORMALIZE_STRING,
+                            ErrorCodes::CANNOT_CREATE_CHARSET_CONVERTER,
+                            ErrorCodes::DATA_TYPE_CANNOT_BE_PROMOTED,
+                            ErrorCodes::SYNTAX_ERROR,
+                            ErrorCodes::UNEXPECTED_AST_STRUCTURE,
+                            ErrorCodes::UNKNOWN_ELEMENT_OF_ENUM,
+                            ErrorCodes::UNKNOWN_TYPE,
+                            ErrorCodes::UNSUPPORTED_METHOD,
+                            ErrorCodes::UNICODE_ERROR,
+                            ErrorCodes::FUNCTION_THROW_IF_VALUE_IS_NON_ZERO,
+                            ErrorCodes::CANNOT_SET_SIGNAL_HANDLER,
+                        };
+
+                        if (validation_tolerated_errors.contains(e.code()))
                             stats.reportProblem(P_LATE_TYPECHECK, fmt::format("exception during validation: {} {}", operation.describe(), getCurrentExceptionMessage(false)));
                         else
-                            throw;
+                            handle_unexpected_exception();
                     }
                 }
             }
@@ -2122,8 +2181,25 @@ void __tsan_on_report(void * /*report*/) // NOLINT(bugprone-reserved-identifier,
 #pragma clang diagnostic pop
 }
 
+#if defined(MEMORY_SANITIZER)
+static void msanDeathCallback()
+{
+    if (current_stress_thread)
+        current_stress_thread->got_sanitizer_error = true;
+}
+#endif
+
 TEST(FunctionsStress, stress)
 {
+#if defined(MEMORY_SANITIZER)
+    /// Allow the stress test to continue past MSan errors instead of aborting.
+    /// Some third-party libraries (e.g. h3) or functions may read from partially-initialized
+    /// buffers when given random input. Errors are still reported to stderr, and the
+    /// `got_sanitizer_error` flag is set via the death callback so the test can track them.
+    __msan_set_keep_going(1);
+    __msan_set_death_callback(msanDeathCallback);
+#endif
+
     chassert(!logger);
     logger = getLogger("stress");
 
