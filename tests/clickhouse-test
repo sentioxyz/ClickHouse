@@ -1414,10 +1414,14 @@ class SettingsRandomizer:
 
     @staticmethod
     def adjust_settings_for_autopr(args, tags, random_settings):
+        # Disable automatic parallel replicas for tests that are incompatible with parallel replicas
+        if "no-parallel-replicas" in tags:
+            random_settings["automatic_parallel_replicas_mode"] = 0
+            return
+
         # no_parallel_replicas is set for runs with enabled parallel replicas. In this case we should not reset `cluster_for_parallel_replicas`
         if (
             not args.no_parallel_replicas
-            and "no-parallel-replicas" not in tags
             and random_settings["automatic_parallel_replicas_mode"] == 2
         ):
             # parallel replicas won't actually be used: since `automatic_parallel_replicas_mode` is 2 we will only collect statistics
@@ -1838,11 +1842,16 @@ class TestCase:
 
     def add_effective_settings(self, client_options):
         new_options = ""
+        all_http_settings = []
         if self.randomize_detach:
             new_options += f" --reattach_tables_before_query_execution_probability {self.reattach_tables_probability}"
+            all_http_settings.append(("reattach_tables_before_query_execution_probability", self.reattach_tables_probability))
 
         if self.effective_settings:
-            http_params = self.http_format_settings(self.effective_settings)
+            all_http_settings.extend(self.effective_settings.items())
+
+        if all_http_settings:
+            http_params = self.http_format_settings(all_http_settings)
             if len(self.base_url_params) == 0:
                 os.environ["CLICKHOUSE_URL_PARAMS"] = http_params
             else:
@@ -1850,6 +1859,7 @@ class TestCase:
                     self.base_url_params + "&" + http_params
                 )
 
+        if self.effective_settings:
             new_options += f" {self.cli_format_settings(self.effective_settings)}"
 
         if self.effective_merge_tree_settings:
@@ -5474,11 +5484,7 @@ if __name__ == "__main__":
         else:
             os.environ["CLICKHOUSE_CLIENT_OPT"] = ""
 
-        print('---------')
-        print(os.environ["CLICKHOUSE_CLIENT_OPT"])
-        print(get_additional_client_options(args))
         os.environ["CLICKHOUSE_CLIENT_OPT"] += get_additional_client_options(args)
-        print('---------')
 
         if args.secure:
             os.environ["CLICKHOUSE_CLIENT_OPT"] += " --secure "

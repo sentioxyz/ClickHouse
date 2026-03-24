@@ -42,6 +42,8 @@ const VersionToSettingsChangesMap & getSettingsChangesHistory()
         addSettingsChanges(settings_changes_history, "26.4",
         {
             {"distributed_index_analysis_only_on_coordinator", false, false, "New setting."},
+            {"reattach_tables_before_query_execution", false, false, "New setting for testing table reattachment before query execution."},
+            {"reattach_tables_before_query_execution_probability", 0., 0., "New setting for testing table reattachment before query execution."},
             {"enable_materialized_cte", false, false, "New setting"},
             {"finalize_projection_parts_synchronously", false, false, "New setting to finalize projection parts synchronously during INSERT to reduce peak memory usage."},
         });

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Tags: no-random-detach
+# no-random-detach: DETACH/ATTACH interferes with TTL mutation and part cleanup
 set -euo pipefail
 
 CURDIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

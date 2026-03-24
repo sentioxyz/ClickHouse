@@ -1,5 +1,6 @@
--- Tags: no-random-detach
+-- Tags: no-random-detach, no-parallel-replicas
 -- no-random-detach: test checks system.parts
+-- no-parallel-replicas: test checks exact row counts after partition operations
 
 DROP TABLE IF EXISTS src;
 DROP TABLE IF EXISTS dst;

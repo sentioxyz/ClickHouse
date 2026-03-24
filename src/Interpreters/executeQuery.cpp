@@ -1102,16 +1102,25 @@ public:
 
         const ContextPtr context;
         std::vector<StorageID> tables;
+        std::unordered_set<StorageID, StorageID::DatabaseAndTableNameHash, StorageID::DatabaseAndTableNameEqual> seen;
 
         void addTableIfNotEmpty(const String & database, const String & table)
         {
             if (table.empty())
                 return;
 
-            if (database.empty())
-                tables.emplace_back(context->getCurrentDatabase(), table);
-            else
-                tables.emplace_back(database, table);
+            auto resolved = context->tryResolveStorageID(StorageID(database, table));
+            /// Skip temporary and external tables — they live in an in-memory database,
+            /// and attempting to DETACH them would lose their data.
+            if (resolved.getDatabaseName().empty()
+                || resolved.getDatabaseName() == DatabaseCatalog::TEMPORARY_DATABASE)
+                return;
+
+            if (seen.contains(resolved))
+                return;
+
+            seen.insert(resolved);
+            tables.emplace_back(std::move(resolved));
         }
     };
 
@@ -1204,8 +1213,23 @@ static void reattachTablesUsedInQuery(const ASTPtr & query, ContextMutablePtr co
         auto detach_query = fmt::format("DETACH TABLE {}", full_name);
         auto attach_query = fmt::format("ATTACH TABLE {}", full_name);
 
+        LOG_DEBUG(getLogger("reattachTablesUsedInQuery"), "{}", detach_query);
+
         try
         {
+            /// Suppress forwarding of log messages to the client during DETACH/ATTACH.
+            /// Internal DETACH/ATTACH queries may produce error-level log messages
+            /// (e.g., when a concurrent query interferes), and those messages would be
+            /// forwarded to the client via `send_logs_level`, causing unexpected stderr output.
+            auto old_logs_queue = CurrentThread::getInternalTextLogsQueue();
+            auto old_logs_level = CurrentThread::isInitialized() ? CurrentThread::get().getClientLogsLevel() : LogsLevel::none;
+            if (old_logs_queue)
+                CurrentThread::attachInternalTextLogsQueue(old_logs_queue, LogsLevel::none);
+            SCOPE_EXIT({
+                if (old_logs_queue)
+                    CurrentThread::attachInternalTextLogsQueue(old_logs_queue, old_logs_level);
+            });
+
             {
                 auto detach = executeQuery(detach_query, context, QueryFlags{.internal = true}).second;
                 executeTrivialBlockIO(detach, context);
@@ -1223,7 +1247,7 @@ static void reattachTablesUsedInQuery(const ASTPtr & query, ContextMutablePtr co
             /// The DETACH/ATTACH may fail for various reasons
             /// (e.g., a concurrent query interfered).
             /// Since this is a testing-only feature, we just skip this table.
-            tryLogCurrentException("reattachTablesUsedInQuery", "", LogsLevel::warning);
+            tryLogCurrentException("reattachTablesUsedInQuery", "", LogsLevel::information);
         }
     }
 }
@@ -1587,12 +1611,12 @@ static BlockIO executeQueryImpl(
 
         bool is_initial_query = client_info.query_kind == ClientInfo::QueryKind::INITIAL_QUERY;
         bool has_transaction = context->getCurrentTransaction() || settings[Setting::implicit_transaction];
-        if (!internal && is_initial_query && !has_transaction)
+        if (!internal && is_initial_query && !has_transaction && out_ast)
         {
             bool need_reattach_tables = settings[Setting::reattach_tables_before_query_execution];
             auto reattach_probability = settings[Setting::reattach_tables_before_query_execution_probability];
 
-            if (!need_reattach_tables && reattach_probability > 0.0)
+            if (!need_reattach_tables && reattach_probability > 0.0 && reattach_probability <= 1.0)
             {
                 std::bernoulli_distribution distribution(reattach_probability);
                 need_reattach_tables |= distribution(thread_local_rng);
