@@ -3,8 +3,6 @@
 #include <filesystem>
 #include <unordered_map>
 
-#include <iostream>
-
 namespace DB
 {
 
@@ -39,9 +37,7 @@ std::vector<NodePtr> buildGraph(const std::vector<std::pair<String, bool>> & nod
         result.push_back(initial_node);
         while (path.has_parent_path() && path != path.parent_path())
         {
-            std::cerr << "path before " << path << '\n'; 
             path = path.parent_path();
-            std::cerr << "path after " << path << '\n'; 
             if (path_to_node.contains(path))
             {
                 path_to_node[path]->children.push_back(initial_node);
@@ -67,22 +63,14 @@ void traverse(NodePtr node)
 
 std::vector<String> findOldNodes(const std::vector<std::pair<String, bool>> & nodes)
 {
-    std::cerr << "bp1\n";
     auto tree_nodes = buildGraph(nodes);
-    std::cerr << "bp2\n";
     for (const auto & node : tree_nodes)
         traverse(node);
-    std::cerr << "bp3\n";
     std::vector<String> result;
     for (const auto & node : tree_nodes)
         if (*node->all_childs_are_outdated)
         {
-            std::cerr << "all_childs_are_outdated\n";
             result.push_back(node->path);
-        }
-        else
-        {
-            std::cerr << "all_childs_are_not_outdated\n";
         }
     return result;
 }

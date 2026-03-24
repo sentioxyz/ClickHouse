@@ -562,6 +562,7 @@ struct UpdateNodeStatDelta
     NodeStats old_stats;
     NodeStats new_stats;
     int32_t version{-1};
+    std::optional<int64_t> new_destroy_time;
 };
 
 struct UpdateNodeDataDelta
@@ -1329,7 +1330,11 @@ Coordination::Error KeeperStorage<Container>::commit(KeeperStorageBase::DeltaRan
                     auto updated_node = container.updateValue(path, [&](auto & node)
                     {
                         if constexpr (std::same_as<DeltaType, UpdateNodeStatDelta>)
+                        {
                             node.stats = operation.new_stats;
+                            if (operation.new_destroy_time.has_value())
+                                node.destroy_time = operation.new_destroy_time;
+                        }
                         else
                             node.setData(std::move(operation.new_data));
 
@@ -1431,10 +1436,8 @@ bool KeeperStorage<Container>::createNode(
     created_node.acl_id = acl_id;
     created_node.copyStats(stat);
     created_node.setData(data);
-    if (destroy_time)
-        created_node.destroy_time = destroy_time;
-    if (ttl)
-        created_node.ttl = *ttl;
+    created_node.destroy_time = destroy_time;
+    created_node.ttl = ttl;
 
     if (destroy_time)
         ttl_paths.insert(path);
@@ -2562,6 +2565,8 @@ std::list<KeeperStorageBase::Delta> preprocess(
     new_stats.mzxid = zxid;
     new_stats.mtime = time;
     new_stats.data_size = static_cast<uint32_t>(zk_request.data.size());
+    if (node->ttl.has_value())
+        node_delta.new_destroy_time = time + *node->ttl;
     new_deltas.emplace_back(zk_request.path, zxid, std::move(node_delta));
 
     auto parent_path = Coordination::parentNodePath(zk_request.path);
@@ -2592,16 +2597,6 @@ Coordination::ZooKeeperResponsePtr process(const Coordination::ZooKeeperSetReque
 
     node_it->value.setResponseStat(response->stat);
     response->error = Coordination::Error::ZOK;
-
-    if (node_it->value.ttl.has_value())
-    {
-        auto now = std::chrono::system_clock::now();
-        auto desctroy_point = now + std::chrono::milliseconds(*node_it->value.ttl);
-        auto duration = desctroy_point.time_since_epoch();
-        auto count_ms = std::chrono::duration_cast<std::chrono::milliseconds>(duration);
-        int64_t deadline_ms = count_ms.count();
-        node_it->value.destroy_time = deadline_ms;
-    }
 
     return response;
 }
@@ -4147,7 +4142,7 @@ template<typename Container>
 std::vector<std::string> KeeperStorage<Container>::collectExpiredTTLPaths(int64_t now_ms) const
 {
     std::vector<std::pair<String, bool>> nodes;
-    
+
     for (const auto & ttl_path : ttl_paths)
     {
         auto node_it = container.find(ttl_path);
@@ -4157,7 +4152,7 @@ std::vector<std::string> KeeperStorage<Container>::collectExpiredTTLPaths(int64_
         if (node.destroy_time.has_value() && now_ms >= *node.destroy_time)
             nodes.push_back({ttl_path, true});
         else
-            nodes.push_back({ttl_path, false});       
+            nodes.push_back({ttl_path, false});
     }
     auto out = findOldNodes(nodes);
     return out;
