@@ -82,7 +82,7 @@ public:
             const UInt64 index = data[row];
             Float64 res = 0;
             if (validator.validateEdge(index))
-                res = exactEdgeLengthM(index);
+                edgeLengthM(index, &res);
             dst_data[row] = res;
         }
 

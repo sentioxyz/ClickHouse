@@ -84,7 +84,7 @@ public:
             const UInt64 edge = data_hindex_edge[row];
             if (validator.validateEdge(edge))
             {
-                std::array<H3Index, 2> res;
+                std::array<H3Index, 2> res{};
                 directedEdgeToCells(edge, res.data());
                 origin_data[row] = res[0];
                 destination_data[row] = res[1];

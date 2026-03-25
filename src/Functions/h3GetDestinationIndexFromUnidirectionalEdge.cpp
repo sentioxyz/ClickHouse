@@ -84,7 +84,11 @@ public:
             const UInt64 edge = data_hindex_edge[row];
             UInt64 res = 0;
             if (validator.validateEdge(edge))
-                res = getDirectedEdgeDestination(edge);
+            {
+                H3Index dest = 0;
+                getDirectedEdgeDestination(edge, &dest);
+                res = dest;
+            }
             dst_data[row] = res;
         }
 
