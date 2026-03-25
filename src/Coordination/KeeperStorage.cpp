@@ -4175,6 +4175,10 @@ std::vector<std::string> KeeperStorage<Container>::collectExpiredTTLPaths(int64_
             nodes.push_back({ttl_path, false});
     }
     auto out = findOldNodes(nodes);
+    std::sort(out.begin(), out.end(), [](const std::string & a, const std::string & b)
+    {
+        return std::count(a.begin(), a.end(), '/') > std::count(b.begin(), b.end(), '/');
+    });
     return out;
 }
 
