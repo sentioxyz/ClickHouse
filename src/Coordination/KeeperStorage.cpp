@@ -1877,7 +1877,7 @@ Coordination::ZooKeeperResponsePtr process(const Coordination::ZooKeeperCreateRe
     if (create_delta_it != deltas.end())
     {
         created_path = create_delta_it->path;
-        if (response->getOpNum() == Coordination::OpNum::Create2)
+        if (response->getOpNum() == Coordination::OpNum::Create2 || response->getOpNum() == Coordination::OpNum::CreateTTL)
             static_cast<Coordination::ZooKeeperCreate2Response &>(*response).zstat = std::get<CreateNodeDelta>(create_delta_it->operation).stat;
     }
     if (const auto result = storage.commit(std::move(deltas)); result != Coordination::Error::ZOK)
@@ -4177,7 +4177,7 @@ std::vector<std::string> KeeperStorage<Container>::collectExpiredTTLPaths(int64_
     auto out = findOldNodes(nodes);
     std::sort(out.begin(), out.end(), [](const std::string & a, const std::string & b)
     {
-        return std::count(a.begin(), a.end(), '/') > std::count(b.begin(), b.end(), '/');
+        return std::ranges::count(a, '/') > std::ranges::count(b, '/');
     });
     return out;
 }
