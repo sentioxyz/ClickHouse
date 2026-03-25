@@ -220,6 +220,9 @@ void KeeperDispatcher::requestThread()
                     if (req.request->getOpNum() != Coordination::OpNum::Close
                         && req.request->getOpNum() != Coordination::OpNum::SessionID)
                     {
+                        if (req.session_id == keeper_internal_ttl_garbage_collector_session_id)
+                            return false;
+
                         ProfiledMutexLock lock(live_sessions_mutex, ProfileEvents::KeeperLiveSessionsLockWaitMicroseconds, ProfileEvents::KeeperLiveSessionsLockHoldMicroseconds);
                         if (!live_sessions.contains(req.session_id))
                         {
