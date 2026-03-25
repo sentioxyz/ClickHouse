@@ -1,9 +1,5 @@
 #include <gtest/gtest.h>
 
-#if defined(MEMORY_SANITIZER)
-#include <sanitizer/msan_interface.h>
-#endif
-
 #include <absl/log/globals.h>
 #include <boost/program_options.hpp>
 #include <fmt/ranges.h>
