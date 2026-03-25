@@ -114,7 +114,12 @@ function (build_clang_builtin target_triple OUT_VARIABLE)
                 "-DCMAKE_TOOLCHAIN_FILE=${BUILTINS_TOOLCHAIN_FILE}"
                 # Trick the build into using libc++ from our clang instead of the sysroot one (which isn't there)
                 # Needed for xray (sanitizers use C headers only)
-                "-DSANITIZER_COMMON_CFLAGS=-isystem;${BUILTINS_SOURCE_DIR}/../libcxx/include"
+                # The query profiler uses frame-pointer-based stack unwinding under sanitizers
+                # (via abseil), so sanitizer runtime frames need frame pointers too.
+                # We both disable compiler-rt's default -fomit-frame-pointer AND explicitly
+                # add -fno-omit-frame-pointer, because -O3 omits frame pointers by default.
+                "-DSANITIZER_COMMON_CFLAGS=-isystem;${BUILTINS_SOURCE_DIR}/../libcxx/include;-fno-omit-frame-pointer"
+                "-DCOMPILER_RT_HAS_FOMIT_FRAME_POINTER_FLAG=OFF"
                 "-S ${BUILTINS_SOURCE_DIR}"
                 "-B ${BUILTINS_BINARY_DIR}"
                 WORKING_DIRECTORY ${BUILTINS_BINARY_DIR}
