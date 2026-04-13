@@ -29,9 +29,8 @@ TEST(ReadBufferFromFileDescriptor, RewindResetsBufferState)
 
     /// First read should work.
     String line;
-    readString(line, buf);
+    readStringUntilEOF(line, buf);
     ASSERT_FALSE(line.empty());
-    ASSERT_TRUE(buf.eof());
 
     /// Simulate what happens when `nextImpl` throws: manually cancel the buffer.
     buf.cancel();
@@ -46,7 +45,7 @@ TEST(ReadBufferFromFileDescriptor, RewindResetsBufferState)
 
     /// Reading after rewind must return the same content.
     String line2;
-    readString(line2, buf);
+    readStringUntilEOF(line2, buf);
     ASSERT_EQ(line, line2);
 }
 
@@ -66,9 +65,8 @@ TEST(AsynchronousReadBufferFromFileDescriptor, RewindResetsBufferState)
 
     /// First read should work.
     String line;
-    readString(line, buf);
+    readStringUntilEOF(line, buf);
     ASSERT_FALSE(line.empty());
-    ASSERT_TRUE(buf.eof());
 
     /// Simulate what happens when `nextImpl` throws: manually cancel the buffer.
     buf.cancel();
@@ -83,6 +81,6 @@ TEST(AsynchronousReadBufferFromFileDescriptor, RewindResetsBufferState)
 
     /// Reading after rewind must return the same content.
     String line2;
-    readString(line2, buf);
+    readStringUntilEOF(line2, buf);
     ASSERT_EQ(line, line2);
 }
