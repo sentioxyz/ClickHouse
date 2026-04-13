@@ -78,6 +78,7 @@ TEST(AsynchronousReadBufferFromFileDescriptor, RewindResetsBufferState)
     buf.rewind();
 
     ASSERT_FALSE(buf.isCanceled()) << "rewind() must reset the canceled flag";
+    ASSERT_EQ(buf.getPosition(), 0) << "rewind() must reset file position to zero";
     ASSERT_EQ(buf.available(), 0) << "rewind() must clear the working buffer";
 
     /// Reading after rewind must return the same content.
