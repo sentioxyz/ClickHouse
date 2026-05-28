@@ -42,6 +42,7 @@ void callWithType(TypeIndex type, F && f)
     DISPATCH(Decimal64)
     DISPATCH(Decimal128)
     DISPATCH(Decimal256)
+    DISPATCH(Decimal512)
     DISPATCH(DateTime64)
 #undef DISPATCH
 
@@ -273,6 +274,7 @@ std::optional<TypeIndex> SortedLookupVectorBase::getTypeSize(const IColumn & aso
     DISPATCH(Decimal64)
     DISPATCH(Decimal128)
     DISPATCH(Decimal256)
+    DISPATCH(Decimal512)
     DISPATCH(DateTime64)
 #undef DISPATCH
 

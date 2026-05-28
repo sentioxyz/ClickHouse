@@ -1,0 +1,39 @@
+# 依赖和构建产物
+vendor/
+node_modules/
+build/
+build-*/
+cmake-build-*/
+contrib/
+
+# 数据和日志
+data/
+logs/
+*.log
+_ck_data/
+
+# 测试和临时文件
+testdata/
+tmp/
+*.tmp
+
+# 生成的文件
+*.pb.go
+*.gen.go
+*.pb.cc
+*.pb.h
+
+# IDE 和编辑器
+.vscode/
+.idea/
+
+# Git
+.git/
+
+# ClickHouse 特定
+metadata/
+metadata_dropped/
+preprocessed_configs/
+format_schemas/
+store/
+

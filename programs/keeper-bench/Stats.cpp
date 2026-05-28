@@ -1,10 +1,10 @@
-#include <Stats.h>
 #include <iostream>
+#include <Stats.h>
 
 #include <rapidjson/document.h>
 #include <rapidjson/rapidjson.h>
-#include <rapidjson/writer.h>
 #include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
 void Stats::StatsCollector::add(uint64_t microseconds, size_t requests_inc, size_t bytes_inc)
 {
@@ -85,7 +85,7 @@ void Stats::report()
 
     std::cerr << "read requests " << read_requests << ", write requests " << write_requests << ", ";
     if (errors)
-        std::cerr << "errors " << errors << ", ";
+        std::cerr << "errors " << errors.load() << ", ";
 
     if (0 != read_requests)
     {
@@ -99,10 +99,9 @@ void Stats::report()
 
     if (0 != write_requests)
     {
-        std::cerr
-            << "Write RPS: " << write_rps << ", "
-            << "Write MiB/s: " << write_bps / 1048576 << ". "
-            << "\n";
+        std::cerr << "Write RPS: " << write_rps << ", "
+                  << "Write MiB/s: " << write_bps / 1048576 << ". "
+                  << "\n";
     }
     std::cerr << "\n";
 

@@ -1195,6 +1195,7 @@ enum SQLFunc {
     FUNCreinterpretAsInt128 = 1190;
     FUNCreinterpretAsInt16 = 1191;
     FUNCreinterpretAsInt256 = 1192;
+    FUNCreinterpretAsInt512 = 1568;
     FUNCreinterpretAsInt32 = 1193;
     FUNCreinterpretAsInt64 = 1194;
     FUNCreinterpretAsInt8 = 1195;
@@ -1202,6 +1203,7 @@ enum SQLFunc {
     FUNCreinterpretAsUInt128 = 1197;
     FUNCreinterpretAsUInt16 = 1198;
     FUNCreinterpretAsUInt256 = 1199;
+    FUNCreinterpretAsUInt512 = 1569;
     FUNCreinterpretAsUInt32 = 1200;
     FUNCreinterpretAsUInt64 = 1201;
     FUNCreinterpretAsUInt8 = 1202;
