@@ -56,6 +56,12 @@ struct ReplicatedMergeTreeLogEntryData
     String znode_name;
     String log_entry_id;
 
+    /// HOUSEKEEPER_DEMO: authorization summary carried by the RMT log entry.
+    String housekeeper_operation_id;
+    String housekeeper_finality_id;
+    String housekeeper_signature_hash;
+    UInt64 housekeeper_policy_version = 0;
+
     Type type = EMPTY;
     String source_replica; /// Empty string means that this entry was added to the queue immediately, and not copied from the log.
     String source_shard;

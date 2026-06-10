@@ -371,6 +371,10 @@ public:
     using ShutdownDeadline = std::chrono::time_point<std::chrono::system_clock>;
     void waitForUniquePartsToBeFetchedByOtherReplicas(ShutdownDeadline shutdown_deadline);
 
+    /// HOUSEKEEPER_DEMO: narrow accessors used by the patched replica-side authorization check.
+    zkutil::ZooKeeperPtr houseKeeperDemoGetZooKeeper() const { return getZooKeeper(); }
+    const String & houseKeeperDemoGetZooKeeperPath() const { return zookeeper_path; }
+
 private:
     std::atomic_bool are_restoring_replica {false};
 

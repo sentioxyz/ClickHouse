@@ -126,6 +126,14 @@ void ReplicatedMergeTreeLogEntryData::writeText(WriteBuffer & out) const
             if (cleanup)
                 out << "\ncleanup: " << cleanup;
 
+            if (!housekeeper_operation_id.empty())
+            {
+                out << "\nhousekeeper_operation_id: " << escape << housekeeper_operation_id;
+                out << "\nhousekeeper_finality_id: " << escape << housekeeper_finality_id;
+                out << "\nhousekeeper_signature_hash: " << escape << housekeeper_signature_hash;
+                out << "\nhousekeeper_policy_version: " << housekeeper_policy_version;
+            }
+
             if (!patch_parts.empty())
             {
                 out << "\napply_patches: " << patch_parts.size();
@@ -314,6 +322,13 @@ void ReplicatedMergeTreeLogEntryData::readText(ReadBuffer & in, MergeTreeDataFor
                 else if (checkString("cleanup: ", in))
                 {
                     in >> cleanup;
+                }
+                else if (checkString("housekeeper_operation_id: ", in))
+                {
+                    in >> escape >> housekeeper_operation_id;
+                    in >> "\nhousekeeper_finality_id: " >> escape >> housekeeper_finality_id;
+                    in >> "\nhousekeeper_signature_hash: " >> escape >> housekeeper_signature_hash;
+                    in >> "\nhousekeeper_policy_version: " >> housekeeper_policy_version;
                 }
                 else if (checkString("apply_patches:", in))
                 {

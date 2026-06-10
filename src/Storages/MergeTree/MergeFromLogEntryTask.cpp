@@ -3,6 +3,7 @@
 #include <Storages/MergeTree/MergeTreeSettings.h>
 #include <Storages/MergeTree/Compaction/CompactionStatistics.h>
 #include <Storages/StorageReplicatedMergeTree.h>
+#include <Common/ZooKeeper/ZooKeeper.h>
 #include <Interpreters/Context.h>
 
 #include <Common/logger_useful.h>
@@ -46,6 +47,98 @@ namespace ErrorCodes
 {
     extern const int BAD_DATA_PART_NAME;
     extern const int LOGICAL_ERROR;
+    extern const int BAD_ARGUMENTS;
+}
+
+
+namespace
+{
+constexpr std::string_view HOUSEKEEPER_DEMO_ZK_PATH = "/clickhouse/tables/storage/events";
+constexpr std::string_view HOUSEKEEPER_DEMO_OPERATION_LOG_ROOT = "/housekeeper_demo/storage/events/operation_log";
+constexpr std::string_view HOUSEKEEPER_DEMO_QUARANTINE_ROOT = "/housekeeper_demo/storage/events/quarantine";
+
+String houseKeeperDemoOperationLogPath(const String & operation_id)
+{
+    return fmt::format("{}/{}", HOUSEKEEPER_DEMO_OPERATION_LOG_ROOT, operation_id);
+}
+
+String houseKeeperDemoQuarantinePath(const String & part_name)
+{
+    return fmt::format("{}/{}", HOUSEKEEPER_DEMO_QUARANTINE_ROOT, part_name);
+}
+
+String houseKeeperDemoExpectedOperationLogData(const ReplicatedMergeTreeLogEntryData & entry)
+{
+    return fmt::format(
+        "operation_id: {}\n"
+        "finality_id: {}\n"
+        "signature_hash: {}\n"
+        "policy_version: {}\n"
+        "new_part: {}\n"
+        "source_parts: {}\n",
+        entry.housekeeper_operation_id,
+        entry.housekeeper_finality_id,
+        entry.housekeeper_signature_hash,
+        entry.housekeeper_policy_version,
+        entry.new_part_name,
+        fmt::join(entry.source_parts, ","));
+}
+
+void houseKeeperDemoQuarantine(StorageReplicatedMergeTree & storage, const ReplicatedMergeTreeLogEntryData & entry, const String & reason)
+{
+    try
+    {
+        auto zookeeper = storage.houseKeeperDemoGetZooKeeper();
+        const auto path = houseKeeperDemoQuarantinePath(entry.new_part_name);
+        zookeeper->createAncestors(path);
+        zookeeper->createOrUpdate(
+            path,
+            fmt::format(
+                "status: quarantined\n"
+                "reason: {}\n"
+                "operation_id: {}\n"
+                "new_part: {}\n",
+                reason,
+                entry.housekeeper_operation_id,
+                entry.new_part_name),
+            zkutil::CreateMode::Persistent);
+    }
+    catch (...)
+    {
+        tryLogCurrentException("houseKeeperDemoQuarantine");
+    }
+}
+
+void houseKeeperDemoValidateMergeAuthorization(StorageReplicatedMergeTree & storage, const ReplicatedMergeTreeLogEntryData & entry)
+{
+    if (storage.houseKeeperDemoGetZooKeeperPath() != HOUSEKEEPER_DEMO_ZK_PATH)
+        return;
+
+    if (entry.housekeeper_operation_id.empty()
+        || entry.housekeeper_finality_id.empty()
+        || entry.housekeeper_signature_hash.empty()
+        || entry.housekeeper_policy_version == 0)
+    {
+        houseKeeperDemoQuarantine(storage, entry, "missing_authorization_summary");
+        throw Exception(
+            ErrorCodes::BAD_ARGUMENTS,
+            "[housekeeper-demo] missing authorization summary for merge {}",
+            entry.new_part_name);
+    }
+
+    String actual;
+    const auto expected = houseKeeperDemoExpectedOperationLogData(entry);
+    auto zookeeper = storage.houseKeeperDemoGetZooKeeper();
+    if (!zookeeper->tryGet(houseKeeperDemoOperationLogPath(entry.housekeeper_operation_id), actual) || actual != expected)
+    {
+        houseKeeperDemoQuarantine(storage, entry, "authorization_summary_mismatch");
+        throw Exception(
+            ErrorCodes::BAD_ARGUMENTS,
+            "[housekeeper-demo] authorization summary mismatch for merge {} operation {}",
+            entry.new_part_name,
+            entry.housekeeper_operation_id);
+    }
+}
 }
 
 MergeFromLogEntryTask::MergeFromLogEntryTask(
@@ -66,6 +159,8 @@ ReplicatedMergeMutateTaskBase::PrepareResult MergeFromLogEntryTask::prepare()
 {
     LOG_TRACE(log, "Executing log entry to merge parts {} to {}",
         fmt::join(entry.source_parts, ", "), entry.new_part_name);
+
+    houseKeeperDemoValidateMergeAuthorization(storage, entry);
 
     fiu_do_on(FailPoints::rmt_merge_task_sleep_in_prepare,
     {

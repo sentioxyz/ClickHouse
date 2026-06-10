@@ -4658,6 +4658,14 @@ StorageReplicatedMergeTree::CreateMergeEntryResult StorageReplicatedMergeTree::c
     for (const auto & patch : patch_parts)
         entry.patch_parts.push_back(patch->name);
 
+    if (zookeeper_path == "/clickhouse/tables/storage/events")
+    {
+        entry.housekeeper_operation_id = "hk-op-" + merged_name;
+        entry.housekeeper_finality_id = "hk-finality-" + merged_name;
+        entry.housekeeper_signature_hash = "hk-signature-" + merged_name;
+        entry.housekeeper_policy_version = 1;
+    }
+
     Coordination::Requests ops;
     Coordination::Responses responses;
 
