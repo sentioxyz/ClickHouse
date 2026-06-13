@@ -656,43 +656,89 @@ struct HouseKeeperDemoDecision
     std::optional<Coordination::Error> error;
     std::optional<HouseKeeperDemoLogEntry> entry;
     String reason;
+    String root;
 };
 
-constexpr std::string_view HOUSEKEEPER_DEMO_TABLE_LOG_PREFIX = "/clickhouse/tables/storage/events/log/log-";
-constexpr std::string_view HOUSEKEEPER_DEMO_ROOT = "/housekeeper_demo/storage/events";
-constexpr std::string_view HOUSEKEEPER_DEMO_PART_STATE_ROOT = "/housekeeper_demo/storage/events/part_states";
-constexpr std::string_view HOUSEKEEPER_DEMO_PART_LINEAGE_ROOT = "/housekeeper_demo/storage/events/part_lineage";
-constexpr std::string_view HOUSEKEEPER_DEMO_OPERATION_LOG_ROOT = "/housekeeper_demo/storage/events/operation_log";
-constexpr std::string_view HOUSEKEEPER_DEMO_QUARANTINE_ROOT = "/housekeeper_demo/storage/events/quarantine";
+constexpr std::string_view HOUSEKEEPER_DEMO_ROOT_PREFIX = "/housekeeper_demo/";
+constexpr std::string_view HOUSEKEEPER_DEMO_STORAGE_EVENTS_LOG_PREFIX = "/clickhouse/tables/storage/events/log/log-";
+constexpr std::string_view HOUSEKEEPER_DEMO_STORAGE_EVENTS_ROOT = "/housekeeper_demo/storage/events";
+constexpr std::string_view HOUSEKEEPER_DEMO_DEMO_BALANCES_LOG_PREFIX = "/clickhouse/tables/demo/balances/log/log-";
+constexpr std::string_view HOUSEKEEPER_DEMO_DEMO_BALANCES_MUTATION_PREFIX = "/clickhouse/tables/demo/balances/mutations/";
+constexpr std::string_view HOUSEKEEPER_DEMO_DEMO_BALANCES_ROOT = "/housekeeper_demo/demo/balances";
 
 bool houseKeeperDemoStartsWith(std::string_view value, std::string_view prefix)
 {
     return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
 }
 
-String houseKeeperDemoPartStatePath(const String & part_name)
+std::optional<String> houseKeeperDemoRootForLogPath(std::string_view path_created)
 {
-    return fmt::format("{}/{}", HOUSEKEEPER_DEMO_PART_STATE_ROOT, part_name);
+    if (houseKeeperDemoStartsWith(path_created, HOUSEKEEPER_DEMO_STORAGE_EVENTS_LOG_PREFIX))
+        return String{HOUSEKEEPER_DEMO_STORAGE_EVENTS_ROOT};
+    if (houseKeeperDemoStartsWith(path_created, HOUSEKEEPER_DEMO_DEMO_BALANCES_LOG_PREFIX))
+        return String{HOUSEKEEPER_DEMO_DEMO_BALANCES_ROOT};
+    return std::nullopt;
 }
 
-String houseKeeperDemoPartLineagePath(const String & part_name)
+std::optional<String> houseKeeperDemoRootForMutationPath(std::string_view path_created)
 {
-    return fmt::format("{}/{}", HOUSEKEEPER_DEMO_PART_LINEAGE_ROOT, part_name);
+    if (houseKeeperDemoStartsWith(path_created, HOUSEKEEPER_DEMO_DEMO_BALANCES_MUTATION_PREFIX))
+        return String{HOUSEKEEPER_DEMO_DEMO_BALANCES_ROOT};
+    return std::nullopt;
 }
 
-String houseKeeperDemoOperationLogPath(const String & operation_id)
+String houseKeeperDemoPartStatePath(const String & root, const String & part_name)
 {
-    return fmt::format("{}/{}", HOUSEKEEPER_DEMO_OPERATION_LOG_ROOT, operation_id);
+    return fmt::format("{}/part_states/{}", root, part_name);
 }
 
-String houseKeeperDemoQuarantinePath(const String & name)
+String houseKeeperDemoPartLineagePath(const String & root, const String & part_name)
 {
-    return fmt::format("{}/{}", HOUSEKEEPER_DEMO_QUARANTINE_ROOT, name);
+    return fmt::format("{}/part_lineage/{}", root, part_name);
 }
+
+String houseKeeperDemoOperationLogPath(const String & root, const String & operation_id)
+{
+    return fmt::format("{}/operation_log/{}", root, operation_id);
+}
+
+String houseKeeperDemoQuarantinePath(const String & root, const String & name)
+{
+    return fmt::format("{}/quarantine/{}", root, name);
+}
+
+String houseKeeperDemoAdmissionPartPath(const String & root, const String & part_name)
+{
+    return fmt::format("{}/admission_parts/{}", root, part_name);
+}
+
+String houseKeeperDemoAdmissionMergePath(const String & root, const String & part_name)
+{
+    return fmt::format("{}/admission_merges/{}", root, part_name);
+}
+
+String houseKeeperDemoAdmissionMutationPath(const String & root, const String & mutation_name)
+{
+    return fmt::format("{}/admission_mutations/{}", root, mutation_name);
+}
+
+struct HouseKeeperDemoAdmissionMetadata
+{
+    String type;
+    String housegate_id;
+    String part_name;
+    String new_part_name;
+    String mutation_name;
+    String source_parts;
+    String operation_id;
+    String finality_id;
+    String signature_hash;
+    UInt64 policy_version = 0;
+};
 
 bool houseKeeperDemoIsInternalSideEffectDelta(const KeeperStorageBase::Delta & delta)
 {
-    return !delta.path.empty() && houseKeeperDemoStartsWith(delta.path, HOUSEKEEPER_DEMO_ROOT);
+    return !delta.path.empty() && houseKeeperDemoStartsWith(delta.path, HOUSEKEEPER_DEMO_ROOT_PREFIX);
 }
 
 std::list<KeeperStorageBase::Delta> houseKeeperDemoExtractInternalSideEffectDeltas(std::list<KeeperStorageBase::Delta> & deltas)
@@ -743,18 +789,6 @@ std::optional<HouseKeeperDemoLogEntry> houseKeeperDemoParseReplicatedLogEntry(st
 {
     const auto lines = houseKeeperDemoSplitLines(data);
     HouseKeeperDemoLogEntry metadata;
-    for (const auto line : lines)
-    {
-        if (const auto operation_id = houseKeeperDemoValueAfterPrefix(line, "housekeeper_operation_id: "); !operation_id.empty())
-            metadata.operation_id = operation_id;
-        else if (const auto finality_id = houseKeeperDemoValueAfterPrefix(line, "housekeeper_finality_id: "); !finality_id.empty())
-            metadata.finality_id = finality_id;
-        else if (const auto signature_hash = houseKeeperDemoValueAfterPrefix(line, "housekeeper_signature_hash: "); !signature_hash.empty())
-            metadata.signature_hash = signature_hash;
-        else if (const auto policy_version = houseKeeperDemoValueAfterPrefix(line, "housekeeper_policy_version: "); !policy_version.empty())
-            metadata.policy_version = parse<UInt64>(policy_version);
-    }
-
     for (size_t i = 0; i < lines.size(); ++i)
     {
         if (lines[i] == "get")
@@ -805,9 +839,9 @@ String houseKeeperDemoJoinParts(const std::vector<String> & parts)
 }
 
 template <typename Storage>
-String houseKeeperDemoPartState(Storage & storage, const String & part_name)
+String houseKeeperDemoPartState(Storage & storage, const String & root, const String & part_name)
 {
-    const auto node = storage.uncommitted_state.getNode(houseKeeperDemoPartStatePath(part_name));
+    const auto node = storage.uncommitted_state.getNode(houseKeeperDemoPartStatePath(root, part_name));
     if (node == nullptr || node->getData().empty())
         return "unknown";
     return String{node->getData()};
@@ -894,6 +928,65 @@ void houseKeeperDemoAppendUpsertZNodeDeltas(
         CreateNodeDelta{stat, storage.uncommitted_state.getACLs(parent_path), data});
 }
 
+std::optional<HouseKeeperDemoAdmissionMetadata> houseKeeperDemoParseAdmissionMetadata(std::string_view data)
+{
+    HouseKeeperDemoAdmissionMetadata metadata;
+    auto assign_string_field = [](std::string_view line, std::string_view prefix, String & field)
+    {
+        const auto parsed_value = houseKeeperDemoValueAfterPrefix(line, prefix);
+        if (parsed_value.empty())
+            return false;
+        field = parsed_value;
+        return true;
+    };
+
+    for (const auto line : houseKeeperDemoSplitLines(data))
+    {
+        if (assign_string_field(line, "type: ", metadata.type))
+            continue;
+        if (assign_string_field(line, "housegate_id: ", metadata.housegate_id))
+            continue;
+        if (assign_string_field(line, "part: ", metadata.part_name))
+            continue;
+        if (assign_string_field(line, "new_part: ", metadata.new_part_name))
+            continue;
+        if (assign_string_field(line, "mutation: ", metadata.mutation_name))
+            continue;
+        if (assign_string_field(line, "source_parts: ", metadata.source_parts))
+            continue;
+        if (assign_string_field(line, "operation_id: ", metadata.operation_id))
+            continue;
+        if (assign_string_field(line, "finality_id: ", metadata.finality_id))
+            continue;
+        if (assign_string_field(line, "signature_hash: ", metadata.signature_hash))
+            continue;
+        const auto policy_version = houseKeeperDemoValueAfterPrefix(line, "policy_version: ");
+        if (!policy_version.empty())
+            metadata.policy_version = parse<UInt64>(policy_version);
+    }
+
+    if (metadata.type.empty())
+        return std::nullopt;
+    return metadata;
+}
+
+template <typename Storage>
+std::optional<String> houseKeeperDemoNodeData(Storage & storage, const String & path)
+{
+    const auto node = storage.uncommitted_state.getNode(path);
+    if (node == nullptr)
+        return std::nullopt;
+    return String{node->getData()};
+}
+
+void houseKeeperDemoApplyAdmission(HouseKeeperDemoLogEntry & entry, const HouseKeeperDemoAdmissionMetadata & admission)
+{
+    entry.operation_id = admission.operation_id;
+    entry.finality_id = admission.finality_id;
+    entry.signature_hash = admission.signature_hash;
+    entry.policy_version = admission.policy_version;
+}
+
 template <typename Storage>
 HouseKeeperDemoDecision houseKeeperDemoCheckCreateRequest(
     const Coordination::ZooKeeperCreateRequest & zk_request,
@@ -901,39 +994,141 @@ HouseKeeperDemoDecision houseKeeperDemoCheckCreateRequest(
     const String & path_created)
 {
     HouseKeeperDemoDecision decision;
-    if (!houseKeeperDemoStartsWith(path_created, HOUSEKEEPER_DEMO_TABLE_LOG_PREFIX))
+    if (const auto mutation_root = houseKeeperDemoRootForMutationPath(path_created))
+    {
+        decision.root = *mutation_root;
+        const auto mutation_name = String{Coordination::getBaseNodeName(path_created)};
+        auto reject_mutation = [&](String reason)
+        {
+            decision.error = Coordination::Error::ZBADARGUMENTS;
+            decision.reason = std::move(reason);
+        };
+
+        if (mutation_name.empty())
+        {
+            reject_mutation("invalid_mutation_name");
+            return decision;
+        }
+
+        const auto admission_path = houseKeeperDemoAdmissionMutationPath(decision.root, mutation_name);
+        const auto admission_data = houseKeeperDemoNodeData(storage, admission_path);
+        if (!admission_data)
+        {
+            reject_mutation("missing_mutation_admission");
+            return decision;
+        }
+
+        const auto admission = houseKeeperDemoParseAdmissionMetadata(*admission_data);
+        if (!admission)
+        {
+            reject_mutation("invalid_mutation_admission");
+            return decision;
+        }
+
+        const bool missing_signed_metadata = admission->operation_id.empty()
+            || admission->finality_id.empty()
+            || admission->signature_hash.empty()
+            || admission->policy_version == 0;
+        if (missing_signed_metadata)
+        {
+            reject_mutation("missing_mutation_signed_metadata");
+            return decision;
+        }
+
+        if (admission->type != "mutation" || (!admission->mutation_name.empty() && admission->mutation_name != mutation_name))
+        {
+            reject_mutation("mutation_admission_mismatch");
+            return decision;
+        }
+
         return decision;
+    }
+
+    const auto root = houseKeeperDemoRootForLogPath(path_created);
+    if (!root)
+        return decision;
+    decision.root = *root;
 
     const auto parsed = houseKeeperDemoParseReplicatedLogEntry(zk_request.data);
     if (!parsed)
         return decision;
 
-    decision.entry = parsed;
-    if (parsed->type != HouseKeeperDemoLogEntry::Type::MergeParts)
-        return decision;
+    HouseKeeperDemoLogEntry entry = *parsed;
+    decision.entry = entry;
 
     auto reject = [&](String reason)
     {
+        decision.entry = entry;
         decision.error = Coordination::Error::ZBADARGUMENTS;
         decision.reason = std::move(reason);
     };
 
-    if (parsed->operation_id.empty() || parsed->finality_id.empty() || parsed->signature_hash.empty() || parsed->policy_version == 0)
+    const bool is_new_part = entry.type == HouseKeeperDemoLogEntry::Type::NewPart;
+    const auto admission_path = is_new_part
+        ? houseKeeperDemoAdmissionPartPath(decision.root, entry.new_part_name)
+        : houseKeeperDemoAdmissionMergePath(decision.root, entry.new_part_name);
+    const auto admission_data = houseKeeperDemoNodeData(storage, admission_path);
+    if (!admission_data)
     {
-        reject("missing_authorization_summary");
+        reject(is_new_part ? "missing_statement_linkage" : "missing_authorization_summary");
         return decision;
     }
 
+    const auto admission = houseKeeperDemoParseAdmissionMetadata(*admission_data);
+    if (!admission)
+    {
+        reject(is_new_part ? "invalid_statement_linkage" : "invalid_authorization_summary");
+        return decision;
+    }
+
+    const bool missing_signed_metadata = admission->operation_id.empty()
+        || admission->finality_id.empty()
+        || admission->signature_hash.empty()
+        || admission->policy_version == 0;
+    if (missing_signed_metadata)
+    {
+        reject(is_new_part ? "missing_statement_linkage" : "missing_authorization_summary");
+        return decision;
+    }
+
+    if (is_new_part)
+    {
+        if (admission->type != "get" || (!admission->part_name.empty() && admission->part_name != entry.new_part_name))
+        {
+            reject("statement_linkage_mismatch");
+            return decision;
+        }
+        houseKeeperDemoApplyAdmission(entry, *admission);
+        decision.entry = entry;
+        return decision;
+    }
+
+    if (admission->type != "merge" || (!admission->new_part_name.empty() && admission->new_part_name != entry.new_part_name))
+    {
+        reject("authorization_summary_mismatch");
+        return decision;
+    }
+
+    const auto source_parts = houseKeeperDemoJoinParts(entry.source_parts);
+    if (!admission->source_parts.empty() && admission->source_parts != source_parts)
+    {
+        reject("authorization_source_parts_mismatch");
+        return decision;
+    }
+
+    houseKeeperDemoApplyAdmission(entry, *admission);
+    decision.entry = entry;
+
     std::vector<String> states;
-    states.reserve(parsed->source_parts.size());
-    for (const auto & source_part : parsed->source_parts)
-        states.push_back(houseKeeperDemoPartState(storage, source_part));
+    states.reserve(entry.source_parts.size());
+    for (const auto & source_part : entry.source_parts)
+        states.push_back(houseKeeperDemoPartState(storage, decision.root, source_part));
 
     for (size_t i = 0; i < states.size(); ++i)
     {
         if (states[i] != "safe")
         {
-            reject(fmt::format("source_part_not_safe:{}:{}", parsed->source_parts[i], states[i]));
+            reject(fmt::format("source_part_not_safe:{}:{}", entry.source_parts[i], states[i]));
             return decision;
         }
     }
@@ -963,9 +1158,9 @@ void houseKeeperDemoAppendRejectedMergeDeltas(
         entry.new_part_name,
         houseKeeperDemoJoinParts(entry.source_parts));
 
-    houseKeeperDemoAppendUpsertZNodeDeltas(deltas, storage, houseKeeperDemoQuarantinePath(quarantine_name), data, zxid, time);
+    houseKeeperDemoAppendUpsertZNodeDeltas(deltas, storage, houseKeeperDemoQuarantinePath(decision.root, quarantine_name), data, zxid, time);
     if (!entry.new_part_name.empty())
-        houseKeeperDemoAppendUpsertZNodeDeltas(deltas, storage, houseKeeperDemoPartStatePath(entry.new_part_name), "quarantined", zxid, time);
+        houseKeeperDemoAppendUpsertZNodeDeltas(deltas, storage, houseKeeperDemoPartStatePath(decision.root, entry.new_part_name), "quarantined", zxid, time);
 }
 
 template <typename Storage>
@@ -983,21 +1178,21 @@ void houseKeeperDemoAppendAllowedMergeDeltas(
     houseKeeperDemoAppendUpsertZNodeDeltas(
         deltas,
         storage,
-        houseKeeperDemoOperationLogPath(entry.operation_id),
+        houseKeeperDemoOperationLogPath(decision.root, entry.operation_id),
         houseKeeperDemoOperationLogData(entry),
         zxid,
         time);
     houseKeeperDemoAppendUpsertZNodeDeltas(
         deltas,
         storage,
-        houseKeeperDemoPartLineagePath(entry.new_part_name),
+        houseKeeperDemoPartLineagePath(decision.root, entry.new_part_name),
         houseKeeperDemoJoinParts(entry.source_parts),
         zxid,
         time);
     houseKeeperDemoAppendUpsertZNodeDeltas(
         deltas,
         storage,
-        houseKeeperDemoPartStatePath(entry.new_part_name),
+        houseKeeperDemoPartStatePath(decision.root, entry.new_part_name),
         "safe",
         zxid,
         time);
