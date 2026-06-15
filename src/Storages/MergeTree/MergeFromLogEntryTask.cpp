@@ -56,6 +56,7 @@ namespace
 constexpr std::string_view HOUSEKEEPER_DEMO_ZK_PATH = "/clickhouse/tables/storage/events";
 constexpr std::string_view HOUSEKEEPER_DEMO_OPERATION_LOG_ROOT = "/housekeeper_demo/storage/events/operation_log";
 constexpr std::string_view HOUSEKEEPER_DEMO_QUARANTINE_ROOT = "/housekeeper_demo/storage/events/quarantine";
+constexpr std::string_view HOUSEKEEPER_DEMO_PART_STATE_ROOT = "/housekeeper_demo/storage/events/part_states";
 
 String houseKeeperDemoOperationLogPath(const String & operation_id)
 {
@@ -65,6 +66,50 @@ String houseKeeperDemoOperationLogPath(const String & operation_id)
 String houseKeeperDemoQuarantinePath(const String & part_name)
 {
     return fmt::format("{}/{}", HOUSEKEEPER_DEMO_QUARANTINE_ROOT, part_name);
+}
+
+String houseKeeperDemoPartStatePath(const String & part_name)
+{
+    return fmt::format("{}/{}", HOUSEKEEPER_DEMO_PART_STATE_ROOT, part_name);
+}
+
+bool houseKeeperDemoStartsWith(std::string_view value, std::string_view prefix)
+{
+    return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
+}
+
+String houseKeeperDemoMetadataValue(std::string_view data, std::string_view key)
+{
+    const auto prefix = fmt::format("{}: ", key);
+    size_t start = 0;
+    while (start <= data.size())
+    {
+        size_t end = data.find_first_of("\n;", start);
+        const auto line = end == std::string_view::npos ? data.substr(start) : data.substr(start, end - start);
+        auto trimmed_line = line;
+        while (!trimmed_line.empty() && (trimmed_line.front() == ' ' || trimmed_line.front() == '\t'))
+            trimmed_line.remove_prefix(1);
+        if (houseKeeperDemoStartsWith(trimmed_line, prefix))
+            return String{trimmed_line.substr(prefix.size())};
+        if (end == std::string_view::npos)
+            break;
+        start = end + 1;
+    }
+    return {};
+}
+
+String houseKeeperDemoPartStateLabel(const String & data)
+{
+    if (data == "safe" || data == "quarantined")
+        return data;
+
+    const auto expected_rowset_root = houseKeeperDemoMetadataValue(data, "expected_rowset_root");
+    const auto observed_rowset_root = houseKeeperDemoMetadataValue(data, "observed_rowset_root");
+    if (!expected_rowset_root.empty() && !observed_rowset_root.empty() && expected_rowset_root != observed_rowset_root)
+        return "root_mismatch";
+
+    const auto state = houseKeeperDemoMetadataValue(data, "state");
+    return state.empty() ? String{"unknown"} : state;
 }
 
 String houseKeeperDemoExpectedOperationLogData(const ReplicatedMergeTreeLogEntryData & entry)
@@ -137,6 +182,25 @@ void houseKeeperDemoValidateMergeAuthorization(StorageReplicatedMergeTree & stor
             "[housekeeper-demo] authorization summary mismatch for merge {} operation {}",
             entry.new_part_name,
             entry.housekeeper_operation_id);
+    }
+
+    for (const auto & source_part : entry.source_parts)
+    {
+        String source_state_data;
+        const auto source_state_path = houseKeeperDemoPartStatePath(source_part);
+        const auto source_state = zookeeper->tryGet(source_state_path, source_state_data)
+            ? houseKeeperDemoPartStateLabel(source_state_data)
+            : String{"unknown"};
+        if (source_state != "safe")
+        {
+            houseKeeperDemoQuarantine(storage, entry, fmt::format("source_part_not_safe:{}:{}", source_part, source_state));
+            throw Exception(
+                ErrorCodes::BAD_ARGUMENTS,
+                "[housekeeper-demo] source part {} is not safe for merge {}: {}",
+                source_part,
+                entry.new_part_name,
+                source_state);
+        }
     }
 }
 }

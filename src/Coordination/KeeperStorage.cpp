@@ -733,6 +733,9 @@ struct HouseKeeperDemoAdmissionMetadata
     String operation_id;
     String finality_id;
     String signature_hash;
+    String expected_rowset_root;
+    String observed_rowset_root;
+    String verification_result;
     UInt64 policy_version = 0;
 };
 
@@ -766,7 +769,7 @@ std::vector<std::string_view> houseKeeperDemoSplitLines(std::string_view text)
     size_t start = 0;
     while (start <= text.size())
     {
-        size_t end = text.find('\n', start);
+        size_t end = text.find_first_of("\n;", start);
         if (end == std::string_view::npos)
         {
             lines.push_back(houseKeeperDemoTrimCR(text.substr(start)));
@@ -780,9 +783,23 @@ std::vector<std::string_view> houseKeeperDemoSplitLines(std::string_view text)
 
 String houseKeeperDemoValueAfterPrefix(std::string_view line, std::string_view prefix)
 {
+    while (!line.empty() && (line.front() == ' ' || line.front() == '\t'))
+        line.remove_prefix(1);
     if (!houseKeeperDemoStartsWith(line, prefix))
         return {};
     return String{line.substr(prefix.size())};
+}
+
+String houseKeeperDemoMetadataValue(std::string_view data, std::string_view key)
+{
+    const auto prefix = fmt::format("{}: ", key);
+    for (const auto line : houseKeeperDemoSplitLines(data))
+    {
+        const auto value = houseKeeperDemoValueAfterPrefix(line, prefix);
+        if (!value.empty())
+            return value;
+    }
+    return {};
 }
 
 std::optional<HouseKeeperDemoLogEntry> houseKeeperDemoParseReplicatedLogEntry(std::string_view data)
@@ -844,7 +861,21 @@ String houseKeeperDemoPartState(Storage & storage, const String & root, const St
     const auto node = storage.uncommitted_state.getNode(houseKeeperDemoPartStatePath(root, part_name));
     if (node == nullptr || node->getData().empty())
         return "unknown";
-    return String{node->getData()};
+
+    const auto data = String{node->getData()};
+    if (data == "safe" || data == "quarantined")
+        return data;
+
+    const auto expected_rowset_root = houseKeeperDemoMetadataValue(data, "expected_rowset_root");
+    const auto observed_rowset_root = houseKeeperDemoMetadataValue(data, "observed_rowset_root");
+    if (!expected_rowset_root.empty() && !observed_rowset_root.empty() && expected_rowset_root != observed_rowset_root)
+        return "root_mismatch";
+
+    const auto state = houseKeeperDemoMetadataValue(data, "state");
+    if (!state.empty())
+        return state;
+
+    return "unknown";
 }
 
 String houseKeeperDemoOperationLogData(const HouseKeeperDemoLogEntry & entry)
@@ -960,6 +991,12 @@ std::optional<HouseKeeperDemoAdmissionMetadata> houseKeeperDemoParseAdmissionMet
             continue;
         if (assign_string_field(line, "signature_hash: ", metadata.signature_hash))
             continue;
+        if (assign_string_field(line, "expected_rowset_root: ", metadata.expected_rowset_root))
+            continue;
+        if (assign_string_field(line, "observed_rowset_root: ", metadata.observed_rowset_root))
+            continue;
+        if (assign_string_field(line, "verification_result: ", metadata.verification_result))
+            continue;
         const auto policy_version = houseKeeperDemoValueAfterPrefix(line, "policy_version: ");
         if (!policy_version.empty())
             metadata.policy_version = parse<UInt64>(policy_version);
@@ -985,6 +1022,22 @@ void houseKeeperDemoApplyAdmission(HouseKeeperDemoLogEntry & entry, const HouseK
     entry.finality_id = admission.finality_id;
     entry.signature_hash = admission.signature_hash;
     entry.policy_version = admission.policy_version;
+}
+
+std::optional<String> houseKeeperDemoVerifierAdmissionError(const HouseKeeperDemoAdmissionMetadata & admission)
+{
+    if (!admission.verification_result.empty() && admission.verification_result != "Match")
+        return fmt::format("verifier_result_not_match:{}", admission.verification_result);
+
+    if (!admission.expected_rowset_root.empty() || !admission.observed_rowset_root.empty())
+    {
+        if (admission.expected_rowset_root.empty() || admission.observed_rowset_root.empty())
+            return "verifier_root_missing_pair";
+        if (admission.expected_rowset_root != admission.observed_rowset_root)
+            return "verifier_root_mismatch";
+    }
+
+    return std::nullopt;
 }
 
 template <typename Storage>
@@ -1070,6 +1123,9 @@ HouseKeeperDemoDecision houseKeeperDemoCheckCreateRequest(
     const auto admission_data = houseKeeperDemoNodeData(storage, admission_path);
     if (!admission_data)
     {
+        if (is_new_part)
+            return decision;
+
         reject(is_new_part ? "missing_statement_linkage" : "missing_authorization_summary");
         return decision;
     }
@@ -1088,6 +1144,12 @@ HouseKeeperDemoDecision houseKeeperDemoCheckCreateRequest(
     if (missing_signed_metadata)
     {
         reject(is_new_part ? "missing_statement_linkage" : "missing_authorization_summary");
+        return decision;
+    }
+
+    if (const auto verifier_error = houseKeeperDemoVerifierAdmissionError(*admission))
+    {
+        reject(*verifier_error);
         return decision;
     }
 
