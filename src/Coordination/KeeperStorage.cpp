@@ -27,6 +27,7 @@
 #include <Coordination/KeeperCommon.h>
 #include <Coordination/KeeperConstants.h>
 #include <Coordination/KeeperDispatcher.h>
+#include <Coordination/HouseKeeperAdmissionPolicy.h>
 #include <Coordination/KeeperReconfiguration.h>
 #include <Coordination/KeeperStorage.h>
 
@@ -3668,6 +3669,27 @@ KeeperDigest KeeperStorage<Container>::preprocessRequest(
         }
 
         new_deltas.emplace_back(transaction->zxid, CloseSessionDelta{session_id});
+
+        finalize();
+        return transaction->nodes_digest;
+    }
+
+    if (auto housekeeper_rejection = checkHouseKeeperAdmission(*zk_request, *this))
+    {
+        if (zk_request->getOpNum() == Coordination::OpNum::Multi || zk_request->getOpNum() == Coordination::OpNum::MultiRead)
+        {
+            if (housekeeper_rejection->failed_pos == HouseKeeperAdmissionRejection::not_in_multi)
+                new_deltas.emplace_back(new_last_zxid, FailedMultiDelta{ .global_error = housekeeper_rejection->error });
+            else
+                new_deltas.emplace_back(
+                    new_last_zxid,
+                    FailedMultiDelta{
+                        .failed_pos = housekeeper_rejection->failed_pos,
+                        .failed_pos_error = housekeeper_rejection->error,
+                    });
+        }
+        else
+            new_deltas.emplace_back(new_last_zxid, housekeeper_rejection->error);
 
         finalize();
         return transaction->nodes_digest;

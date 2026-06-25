@@ -8,6 +8,106 @@
 #include <Common/ZooKeeper/Types.h>
 #include <Common/ZooKeeper/ZooKeeperCommon.h>
 
+#include <string_view>
+
+namespace
+{
+
+std::string housekeeperTestEncodePath(std::string_view path)
+{
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string encoded;
+    encoded.reserve(path.size() * 2);
+    for (unsigned char c : path)
+    {
+        encoded.push_back(hex[c >> 4]);
+        encoded.push_back(hex[c & 0x0f]);
+    }
+    return encoded;
+}
+
+std::string housekeeperTestVerifiedTableMarkerPath(std::string_view table_path)
+{
+    return "/housekeeper/v1/verified_tables/" + housekeeperTestEncodePath(table_path);
+}
+
+std::string housekeeperTestSourceClaimsTablePath(std::string_view table_path)
+{
+    return "/housekeeper/v1/source_claims/" + housekeeperTestEncodePath(table_path);
+}
+
+std::string housekeeperTestSourceClaimPath(std::string_view table_path, std::string_view part_name)
+{
+    return housekeeperTestSourceClaimsTablePath(table_path) + "/" + std::string{part_name};
+}
+
+template <typename Storage>
+void housekeeperTestAddPathIfMissing(Storage & storage, const std::string & path, const std::string & data = "")
+{
+    if (storage.container.find(path) == storage.container.end())
+        addNode(storage, path, data);
+}
+
+template <typename Storage>
+void housekeeperTestAddControlPaths(Storage & storage)
+{
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/verified_tables");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/source_claims");
+}
+
+template <typename Storage>
+void housekeeperTestAddReplicatedTableLog(Storage & storage, const std::string & table_path)
+{
+    size_t next_slash = 1;
+    while (true)
+    {
+        next_slash = table_path.find('/', next_slash);
+        const std::string current_path = next_slash == std::string::npos ? table_path : table_path.substr(0, next_slash);
+        housekeeperTestAddPathIfMissing(storage, current_path);
+
+        if (next_slash == std::string::npos)
+            break;
+
+        ++next_slash;
+    }
+    housekeeperTestAddPathIfMissing(storage, table_path + "/log");
+}
+
+std::shared_ptr<Coordination::ZooKeeperCreateRequest> housekeeperTestMakeLogCreateRequest(
+    const std::string & table_path,
+    const std::string & log_name,
+    const std::string & data)
+{
+    auto request = std::make_shared<Coordination::ZooKeeperCreateRequest>();
+    request->path = table_path + "/log/" + log_name;
+    request->data = data;
+    return request;
+}
+
+std::string housekeeperTestMergeEntry()
+{
+    return "format version: 4\nsource replica: source_replica\nmerge\nall_1_1_0\nall_2_2_0\ninto\nall_1_2_1\ndeduplicate: 0\n";
+}
+
+std::string housekeeperTestGetPartEntry(std::string_view part_name)
+{
+    return "format version: 4\nsource replica: source_replica\nget\n" + std::string{part_name} + "\n";
+}
+
+template <typename Storage>
+Coordination::Error housekeeperTestProcessWrite(Storage & storage, const Coordination::ZooKeeperRequestPtr & request, int64_t & zxid)
+{
+    const auto request_zxid = ++zxid;
+    storage.preprocessRequest(request, 1, 0, request_zxid);
+    auto responses = storage.processRequest(request, 1, request_zxid);
+    EXPECT_EQ(responses.size(), 1);
+    return responses.empty() ? Coordination::Error::ZRUNTIMEINCONSISTENCY : responses[0].response->error;
+}
+
+}
+
 TYPED_TEST(CoordinationTest, TestSystemNodeModify)
 {
     using namespace Coordination;
@@ -1536,6 +1636,130 @@ TYPED_TEST(CoordinationTest, TestTryRemove)
         ASSERT_FALSE(exists("/s2/A"));
         ASSERT_FALSE(exists("/s2/A/B"));
     }
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperAllowsUnverifiedRMTLogCreate)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+
+    const std::string table_path = "/clickhouse/tables/unverified";
+    housekeeperTestAddReplicatedTableLog(storage, table_path);
+
+    const auto request = housekeeperTestMakeLogCreateRequest(table_path, "log-0000000000", housekeeperTestMergeEntry());
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, request, zxid), Error::ZOK);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperRejectsUnsafeMergeForVerifiedTable)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+
+    const std::string table_path = "/clickhouse/tables/verified_merge";
+    housekeeperTestAddReplicatedTableLog(storage, table_path);
+    housekeeperTestAddControlPaths(storage);
+    addNode(storage, housekeeperTestVerifiedTableMarkerPath(table_path), table_path);
+
+    const auto request = housekeeperTestMakeLogCreateRequest(table_path, "log-0000000000", housekeeperTestMergeEntry());
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, request, zxid), Error::ZBADARGUMENTS);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperRequiresSourceClaimForVerifiedGetPart)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+
+    const std::string table_path = "/clickhouse/tables/verified_get_without_claim";
+    const std::string part_name = "all_1_1_0";
+    housekeeperTestAddReplicatedTableLog(storage, table_path);
+    housekeeperTestAddControlPaths(storage);
+    addNode(storage, housekeeperTestVerifiedTableMarkerPath(table_path), table_path);
+
+    const auto request = housekeeperTestMakeLogCreateRequest(table_path, "log-0000000000", housekeeperTestGetPartEntry(part_name));
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, request, zxid), Error::ZBADARGUMENTS);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperAllowsClaimedVerifiedGetPart)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+
+    const std::string table_path = "/clickhouse/tables/verified_get_with_claim";
+    const std::string part_name = "all_1_1_0";
+    housekeeperTestAddReplicatedTableLog(storage, table_path);
+    housekeeperTestAddControlPaths(storage);
+    addNode(storage, housekeeperTestVerifiedTableMarkerPath(table_path), table_path);
+    addNode(storage, housekeeperTestSourceClaimsTablePath(table_path), "");
+    addNode(storage, housekeeperTestSourceClaimPath(table_path, part_name), "payload_hash=test-hash");
+
+    const auto request = housekeeperTestMakeLogCreateRequest(table_path, "log-0000000000", housekeeperTestGetPartEntry(part_name));
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, request, zxid), Error::ZOK);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperRejectsUnsafeMergeInMulti)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+
+    const std::string table_path = "/clickhouse/tables/verified_multi_merge";
+    housekeeperTestAddReplicatedTableLog(storage, table_path);
+    housekeeperTestAddControlPaths(storage);
+    addNode(storage, housekeeperTestVerifiedTableMarkerPath(table_path), table_path);
+
+    const Coordination::Requests ops{
+        housekeeperTestMakeLogCreateRequest(table_path, "log-0000000000", housekeeperTestMergeEntry()),
+    };
+    const auto request = std::make_shared<ZooKeeperMultiRequest>(ops, ACLs{});
+
+    const auto request_zxid = ++zxid;
+    storage.preprocessRequest(request, 1, 0, request_zxid);
+    auto responses = storage.processRequest(request, 1, request_zxid);
+    ASSERT_EQ(responses.size(), 1);
+
+    const auto multi_response = std::dynamic_pointer_cast<ZooKeeperMultiResponse>(responses[0].response);
+    ASSERT_TRUE(multi_response);
+    ASSERT_EQ(multi_response->responses.size(), 1);
+    EXPECT_EQ(multi_response->responses[0]->error, Error::ZBADARGUMENTS);
 }
 
 #endif
