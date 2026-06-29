@@ -3488,6 +3488,378 @@ bool KeeperStorageBase::isFinalized() const
     return finalized;
 }
 
+namespace
+{
+
+bool houseKeeperHasPreprocessError(const std::list<KeeperStorageBase::Delta> & deltas)
+{
+    return std::ranges::any_of(deltas, [](const auto & delta)
+    {
+        return std::holds_alternative<ErrorDelta>(delta.operation)
+            || std::holds_alternative<FailedMultiDelta>(delta.operation);
+    });
+}
+
+Coordination::Stat houseKeeperMakeDerivedStat(int64_t zxid, int64_t time)
+{
+    Coordination::Stat stat;
+    stat.czxid = zxid;
+    stat.mzxid = zxid;
+    stat.pzxid = zxid;
+    stat.ctime = time;
+    stat.mtime = time;
+    stat.numChildren = 0;
+    stat.version = 0;
+    stat.aversion = 0;
+    stat.cversion = 0;
+    stat.ephemeralOwner = 0;
+    return stat;
+}
+
+template <typename Storage>
+bool houseKeeperAppendCreateNodeDeltas(
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    const std::vector<std::pair<std::string, std::string>> & creates,
+    int64_t zxid,
+    int64_t time)
+{
+    std::map<std::string, UpdateNodeStatDelta> parent_updates;
+    std::list<KeeperStorageBase::Delta> create_deltas;
+
+    for (const auto & [path, data] : creates)
+    {
+        if (storage.uncommitted_state.getNode(path))
+            return false;
+
+        const auto parent_path = Coordination::parentNodePath(path);
+        auto parent_node = storage.uncommitted_state.getNode(parent_path);
+        if (!parent_node || parent_node->stats.isEphemeral())
+            return false;
+
+        auto [parent_update_it, _] = parent_updates.try_emplace(std::string{parent_path}, *parent_node);
+        auto & parent_update = parent_update_it->second;
+        parent_update.new_stats.increaseSeqNum();
+        ++parent_update.new_stats.cversion;
+        if (zxid > parent_update.new_stats.pzxid)
+            parent_update.new_stats.pzxid = zxid;
+        parent_update.new_stats.increaseNumChildren();
+
+        create_deltas.emplace_back(
+            path,
+            zxid,
+            CreateNodeDelta{houseKeeperMakeDerivedStat(zxid, time), Coordination::ACLs{}, data});
+    }
+
+    for (auto & [parent_path, parent_update] : parent_updates)
+        deltas.emplace_back(parent_path, zxid, std::move(parent_update));
+
+    deltas.splice(deltas.end(), std::move(create_deltas));
+    return true;
+}
+
+template <typename Storage>
+bool houseKeeperAppendSetDataDelta(
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    const std::string & path,
+    const std::string & new_data,
+    int64_t zxid)
+{
+    auto node = storage.uncommitted_state.getNode(path);
+    if (!node)
+        return false;
+
+    deltas.emplace_back(
+        path,
+        zxid,
+        UpdateNodeDataDelta{
+            .old_data = std::string{node->getData()},
+            .new_data = new_data,
+            .version = -1,
+        });
+    return true;
+}
+
+template <typename Storage>
+bool houseKeeperAppendSafeAuditQuarantineDeltas(
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    const SafeAuditDecision & decision,
+    const SafeAuditVote & candidate_vote,
+    int64_t zxid,
+    int64_t time)
+{
+    if (decision.status != SafeAuditDecisionStatus::Majority)
+        return true;
+
+    std::vector<std::pair<std::string, std::string>> quarantine_creates;
+    for (const auto & replica_id : decision.minority_replicas)
+    {
+        const auto quarantine_path = safeAuditQuarantineReplicaPath(decision.audit_id, replica_id);
+        if (storage.uncommitted_state.getNode(quarantine_path))
+            continue;
+
+        std::optional<SafeAuditVote> vote;
+        if (replica_id == candidate_vote.replica_id)
+            vote = candidate_vote;
+        else if (const auto vote_data = houseKeeperGetNodeData(storage, safeAuditVotesPath(decision.audit_id) + "/" + replica_id))
+            vote = safeAuditParseVote(decision.audit_id, replica_id, *vote_data);
+
+        if (!vote)
+            return false;
+
+        quarantine_creates.emplace_back(quarantine_path, safeAuditSerializeQuarantineAction(decision, *vote));
+    }
+
+    return houseKeeperAppendCreateNodeDeltas(storage, deltas, quarantine_creates, zxid, time);
+}
+
+template <typename Storage>
+Coordination::Error houseKeeperAppendSafeAuditSideEffects(
+    const Coordination::ZooKeeperRequest & request,
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    int64_t zxid,
+    int64_t time)
+{
+    if (houseKeeperHasPreprocessError(deltas))
+        return Coordination::Error::ZOK;
+
+    const auto * create_request = dynamic_cast<const Coordination::ZooKeeperCreateRequest *>(&request);
+    if (!create_request)
+        return Coordination::Error::ZOK;
+
+    if (const auto audit_id = safeAuditTaskIDFromPath(create_request->path))
+    {
+        const auto task = safeAuditParseTask(*audit_id, create_request->data);
+        if (!task)
+            return Coordination::Error::ZBADARGUMENTS;
+
+        SafeAuditDecision decision;
+        decision.audit_id = *audit_id;
+        decision.status = SafeAuditDecisionStatus::Pending;
+        decision.expected_votes = task->replicas.size();
+
+        const std::vector<std::pair<std::string, std::string>> creates{
+            {safeAuditVotesPath(*audit_id), ""},
+            {safeAuditQuarantineAuditPath(*audit_id), ""},
+            {safeAuditDecisionPath(*audit_id), safeAuditSerializeDecision(decision)},
+        };
+
+        if (!houseKeeperAppendCreateNodeDeltas(storage, deltas, creates, zxid, time))
+            return Coordination::Error::ZBADARGUMENTS;
+
+        return Coordination::Error::ZOK;
+    }
+
+    const auto vote_path = safeAuditVotePathParts(create_request->path);
+    if (!vote_path)
+        return Coordination::Error::ZOK;
+
+    const auto vote = safeAuditParseVote(vote_path->first, vote_path->second, create_request->data);
+    if (!vote)
+        return Coordination::Error::ZBADARGUMENTS;
+
+    const auto result = houseKeeperEvaluateSafeAuditVote(storage, *vote);
+    if (!result.accepted())
+        return Coordination::Error::ZBADARGUMENTS;
+
+    if (!houseKeeperAppendSetDataDelta(storage, deltas, safeAuditDecisionPath(vote_path->first), safeAuditSerializeDecision(result.decision), zxid))
+        return Coordination::Error::ZBADARGUMENTS;
+
+    if (!houseKeeperAppendSafeAuditQuarantineDeltas(storage, deltas, result.decision, *vote, zxid, time))
+        return Coordination::Error::ZBADARGUMENTS;
+
+    return Coordination::Error::ZOK;
+}
+
+template <typename Storage>
+bool houseKeeperAppendStorageIntegrityReadyTaskDeltas(
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    const HouseKeeperStorageStatement & statement,
+    const HouseKeeperStorageDecision & decision,
+    std::optional<HouseKeeperStorageRollback> rollback,
+    int64_t zxid,
+    int64_t time)
+{
+    std::vector<std::pair<std::string, std::string>> creates;
+    if (decision.rollback_ready && rollback && !storage.uncommitted_state.getNode(storageIntegrityRollbackTaskPath(statement.statement_id)))
+        creates.emplace_back(storageIntegrityRollbackTaskPath(statement.statement_id), storageIntegritySerializeRollbackTask(statement, *rollback));
+    else if (decision.promotion_ready && !storage.uncommitted_state.getNode(storageIntegrityPromotionPath(statement.statement_id)))
+        creates.emplace_back(storageIntegrityPromotionPath(statement.statement_id), storageIntegritySerializePromotion(statement));
+
+    if (creates.empty())
+        return true;
+    return houseKeeperAppendCreateNodeDeltas(storage, deltas, creates, zxid, time);
+}
+
+template <typename Storage>
+bool houseKeeperAppendStorageIntegrityReplayQuarantineDeltas(
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    const HouseKeeperStorageStatement & statement,
+    const HouseKeeperStorageDecision & decision,
+    std::optional<HouseKeeperStorageAttestation> candidate_attestation,
+    int64_t zxid,
+    int64_t time)
+{
+    if (!decision.replay_quorum_met || decision.replay_result_hash.empty())
+        return true;
+
+    std::vector<std::pair<std::string, std::string>> creates;
+    const auto attestations = houseKeeperStorageIntegrityGetAttestations(storage, statement.statement_id, std::move(candidate_attestation));
+    for (const auto & attestation : attestations)
+    {
+        const auto reported_hash = attestation.computed_state_root.empty() ? attestation.receipt_hash : attestation.computed_state_root;
+        if (reported_hash.empty() || reported_hash == decision.replay_result_hash)
+            continue;
+
+        const auto quarantine_path = storageIntegrityReplayQuarantinePath(attestation.worker_id);
+        if (storage.uncommitted_state.getNode(quarantine_path))
+            continue;
+
+        creates.emplace_back(
+            quarantine_path,
+            storageIntegritySerializeReplayQuarantine(HouseKeeperStorageReplayQuarantine{
+                .worker_id = attestation.worker_id,
+                .statement_id = statement.statement_id,
+                .majority_hash = decision.replay_result_hash,
+                .reported_hash = reported_hash,
+            }));
+    }
+
+    if (creates.empty())
+        return true;
+    return houseKeeperAppendCreateNodeDeltas(storage, deltas, creates, zxid, time);
+}
+
+template <typename Storage>
+Coordination::Error houseKeeperAppendStorageIntegrityDecisionEffects(
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    const HouseKeeperStorageStatement & statement,
+    const HouseKeeperStorageDecision & decision,
+    std::optional<HouseKeeperStorageRollback> rollback,
+    std::optional<HouseKeeperStorageAttestation> candidate_attestation,
+    int64_t zxid,
+    int64_t time)
+{
+    const auto decision_path = storageIntegrityDecisionPath(statement.statement_id);
+    const auto decision_data = storageIntegritySerializeDecision(decision);
+    if (storage.uncommitted_state.getNode(decision_path))
+    {
+        if (!houseKeeperAppendSetDataDelta(storage, deltas, decision_path, decision_data, zxid))
+            return Coordination::Error::ZBADARGUMENTS;
+    }
+    else
+    {
+        if (!houseKeeperAppendCreateNodeDeltas(storage, deltas, {{decision_path, decision_data}}, zxid, time))
+            return Coordination::Error::ZBADARGUMENTS;
+    }
+
+    if (!houseKeeperAppendStorageIntegrityReadyTaskDeltas(storage, deltas, statement, decision, std::move(rollback), zxid, time))
+        return Coordination::Error::ZBADARGUMENTS;
+
+    if (!houseKeeperAppendStorageIntegrityReplayQuarantineDeltas(storage, deltas, statement, decision, std::move(candidate_attestation), zxid, time))
+        return Coordination::Error::ZBADARGUMENTS;
+
+    return Coordination::Error::ZOK;
+}
+
+template <typename Storage>
+Coordination::Error houseKeeperAppendStorageIntegritySideEffects(
+    const Coordination::ZooKeeperRequest & request,
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    int64_t zxid,
+    int64_t time)
+{
+    if (houseKeeperHasPreprocessError(deltas))
+        return Coordination::Error::ZOK;
+
+    const auto * create_request = dynamic_cast<const Coordination::ZooKeeperCreateRequest *>(&request);
+    if (!create_request)
+        return Coordination::Error::ZOK;
+
+    if (const auto statement_id = storageIntegrityStatementIDFromPath(create_request->path))
+    {
+        const auto statement = storageIntegrityParseStatement(*statement_id, create_request->data);
+        if (!statement)
+            return Coordination::Error::ZBADARGUMENTS;
+
+        HouseKeeperStorageDecision decision;
+        decision.statement_id = *statement_id;
+
+        const std::vector<std::pair<std::string, std::string>> creates{
+            {storageIntegrityAttestationsPath(*statement_id), ""},
+            {storageIntegrityReplayJobPath(*statement_id), storageIntegritySerializeReplayJob(*statement)},
+            {storageIntegrityUnsafeTaskPath(*statement_id), storageIntegritySerializeUnsafeTask(*statement)},
+            {storageIntegrityUnsafeResultPath(*statement_id), ""},
+            {storageIntegrityDecisionPath(*statement_id), storageIntegritySerializeDecision(decision)},
+        };
+        if (!houseKeeperAppendCreateNodeDeltas(storage, deltas, creates, zxid, time))
+            return Coordination::Error::ZBADARGUMENTS;
+        return Coordination::Error::ZOK;
+    }
+
+    std::optional<std::string> statement_id;
+    std::optional<HouseKeeperStorageAttestation> candidate_attestation;
+    std::optional<HouseKeeperStorageUnsafeResult> candidate_unsafe_result;
+    std::optional<HouseKeeperStorageFinality> candidate_finality;
+    std::optional<HouseKeeperStorageRollback> candidate_rollback;
+
+    if (const auto attestation_path = storageIntegrityAttestationPathParts(create_request->path))
+    {
+        statement_id = attestation_path->first;
+        candidate_attestation = storageIntegrityParseAttestation(attestation_path->first, attestation_path->second, create_request->data);
+        if (!candidate_attestation)
+            return Coordination::Error::ZBADARGUMENTS;
+    }
+    else if (const auto unsafe_result_path = storageIntegrityUnsafeResultPathParts(create_request->path))
+    {
+        statement_id = unsafe_result_path->first;
+        candidate_unsafe_result = storageIntegrityParseUnsafeResult(unsafe_result_path->first, unsafe_result_path->second, create_request->data);
+        if (!candidate_unsafe_result)
+            return Coordination::Error::ZBADARGUMENTS;
+    }
+    else if (const auto finality_statement_id = storageIntegrityFinalityIDFromPath(create_request->path))
+    {
+        statement_id = *finality_statement_id;
+        candidate_finality = storageIntegrityParseFinality(*finality_statement_id, create_request->data);
+        if (!candidate_finality)
+            return Coordination::Error::ZBADARGUMENTS;
+    }
+    else if (const auto rollback_statement_id = storageIntegrityRollbackIDFromPath(create_request->path))
+    {
+        statement_id = *rollback_statement_id;
+        candidate_rollback = storageIntegrityParseRollback(*rollback_statement_id, create_request->data);
+        if (!candidate_rollback)
+            return Coordination::Error::ZBADARGUMENTS;
+    }
+    else
+        return Coordination::Error::ZOK;
+
+    const auto statement = houseKeeperStorageIntegrityGetStatement(storage, *statement_id);
+    if (!statement)
+        return Coordination::Error::ZBADARGUMENTS;
+
+    const auto replay_quarantine_attestation = candidate_attestation;
+    const auto decision = houseKeeperStorageIntegrityEvaluate(
+        storage,
+        *statement,
+        std::move(candidate_attestation),
+        std::move(candidate_unsafe_result),
+        std::move(candidate_finality),
+        candidate_rollback);
+
+    const auto rollback = houseKeeperStorageIntegrityGetRollback(storage, *statement_id, std::move(candidate_rollback));
+    return houseKeeperAppendStorageIntegrityDecisionEffects(storage, deltas, *statement, decision, rollback, replay_quarantine_attestation, zxid, time);
+}
+
+}
+
 template<typename Container>
 KeeperDigest KeeperStorage<Container>::preprocessRequest(
     const Coordination::ZooKeeperRequestPtr & zk_request,
@@ -3713,6 +4085,18 @@ KeeperDigest KeeperStorage<Container>::preprocessRequest(
     };
 
     callOnConcreteRequestType(*zk_request, preprocess_request);
+    if (const auto housekeeper_storage_integrity_error = houseKeeperAppendStorageIntegritySideEffects(*zk_request, *this, new_deltas, transaction->zxid, time);
+        housekeeper_storage_integrity_error != Coordination::Error::ZOK)
+    {
+        new_deltas.clear();
+        new_deltas.emplace_back(new_last_zxid, housekeeper_storage_integrity_error);
+    }
+    else if (const auto housekeeper_side_effect_error = houseKeeperAppendSafeAuditSideEffects(*zk_request, *this, new_deltas, transaction->zxid, time);
+        housekeeper_side_effect_error != Coordination::Error::ZOK)
+    {
+        new_deltas.clear();
+        new_deltas.emplace_back(new_last_zxid, housekeeper_side_effect_error);
+    }
     finalize();
     return transaction->nodes_digest;
 }

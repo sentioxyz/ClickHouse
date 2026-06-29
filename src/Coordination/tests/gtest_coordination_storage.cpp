@@ -41,6 +41,92 @@ std::string housekeeperTestSourceClaimPath(std::string_view table_path, std::str
     return housekeeperTestSourceClaimsTablePath(table_path) + "/" + std::string{part_name};
 }
 
+std::string housekeeperTestSafeAuditTaskPath(std::string_view audit_id)
+{
+    return "/housekeeper/v1/safe_audits/tasks/" + std::string{audit_id};
+}
+
+std::string housekeeperTestSafeAuditVotesPath(std::string_view audit_id)
+{
+    return "/housekeeper/v1/safe_audits/votes/" + std::string{audit_id};
+}
+
+std::string housekeeperTestSafeAuditVotePath(std::string_view audit_id, std::string_view replica_id)
+{
+    return housekeeperTestSafeAuditVotesPath(audit_id) + "/" + std::string{replica_id};
+}
+
+std::string housekeeperTestSafeAuditDecisionPath(std::string_view audit_id)
+{
+    return "/housekeeper/v1/safe_audits/decisions/" + std::string{audit_id};
+}
+
+std::string housekeeperTestSafeAuditQuarantinePath(std::string_view audit_id, std::string_view replica_id)
+{
+    return "/housekeeper/v1/safe_audits/quarantine/" + std::string{audit_id} + "/" + std::string{replica_id};
+}
+
+
+std::string housekeeperTestStorageStatementPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/statements/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageReplayJobPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/replay_jobs/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageAttestationsPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/attestations/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageAttestationPath(std::string_view statement_id, std::string_view worker_id)
+{
+    return housekeeperTestStorageAttestationsPath(statement_id) + "/" + std::string{worker_id};
+}
+
+std::string housekeeperTestStorageUnsafeTaskPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/unsafe_tasks/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageUnsafeResultPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/unsafe_results/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageUnsafeResultPath(std::string_view statement_id, std::string_view participant_id)
+{
+    return housekeeperTestStorageUnsafeResultPath(statement_id) + "/" + std::string{participant_id};
+}
+
+std::string housekeeperTestStorageFinalityPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/finality/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageRollbackPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/rollbacks/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStoragePromotionPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/promotions/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageRollbackTaskPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/rollback_tasks/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageReplayQuarantinePath(std::string_view worker_id)
+{
+    return "/housekeeper/v1/storage_integrity/replay_quarantine/" + std::string{worker_id};
+}
+
 template <typename Storage>
 void housekeeperTestAddPathIfMissing(Storage & storage, const std::string & path, const std::string & data = "")
 {
@@ -55,6 +141,34 @@ void housekeeperTestAddControlPaths(Storage & storage)
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1");
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/verified_tables");
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/source_claims");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/safe_audits");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/safe_audits/tasks");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/safe_audits/votes");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/safe_audits/decisions");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/safe_audits/quarantine");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/statements");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/blocks");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/replay_jobs");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/attestations");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/replay_failures");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/unsafe_tasks");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/unsafe_results");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/unsafe_failures");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/finality");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/rollbacks");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/promotions");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/rollback_tasks");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/replay_quarantine");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/rollback_leases");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/rollback_results");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/rollback_failures");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/promotion_leases");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/promotion_results");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/promotion_failures");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/safe_audit_tasks");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/safe_audit_votes");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/decisions");
 }
 
 template <typename Storage>
@@ -73,6 +187,16 @@ void housekeeperTestAddReplicatedTableLog(Storage & storage, const std::string &
         ++next_slash;
     }
     housekeeperTestAddPathIfMissing(storage, table_path + "/log");
+}
+
+std::shared_ptr<Coordination::ZooKeeperCreateRequest> housekeeperTestMakeCreateRequest(
+    const std::string & path,
+    const std::string & data)
+{
+    auto request = std::make_shared<Coordination::ZooKeeperCreateRequest>();
+    request->path = path;
+    request->data = data;
+    return request;
 }
 
 std::shared_ptr<Coordination::ZooKeeperCreateRequest> housekeeperTestMakeLogCreateRequest(
@@ -94,6 +218,66 @@ std::string housekeeperTestMergeEntry()
 std::string housekeeperTestGetPartEntry(std::string_view part_name)
 {
     return "format version: 4\nsource replica: source_replica\nget\n" + std::string{part_name} + "\n";
+}
+
+std::string housekeeperTestSafeAuditTaskData(std::string_view replicas = "replica-a,replica-b,replica-c")
+{
+    return "network_id=net-1\n"
+        "table_id=db.table\n"
+        "schema_hash=schema-1\n"
+        "snapshot_id=snapshot-1\n"
+        "range=partition=20260626\n"
+        "replicas=" + std::string{replicas} + "\n";
+}
+
+std::string housekeeperTestSafeAuditVoteData(std::string_view batch_hash, std::string_view snapshot_id = "snapshot-1")
+{
+    return "worker_id=worker-1\n"
+        "snapshot_id=" + std::string{snapshot_id} + "\n"
+        "range=partition=20260626\n"
+        "batch_hash=" + std::string{batch_hash} + "\n"
+        "row_count=10\n"
+        "vote_hash=vote-hash\n"
+        "signature=signature\n";
+}
+
+std::string housekeeperTestStorageStatementData()
+{
+    return "table_id=dual_hg_auth.t\n"
+        "unsafe_table=`hg_unsafe`.`dual_hg_auth.t_a`\n"
+        "safe_table=`hg_safe`.`dual_hg_auth.t`\n"
+        "payload_ref=mockda://dual_hg_auth.t/stmt/hash\n"
+        "payload_hash=payload-hash\n"
+        "replay_quorum=2\n"
+        "participants=hg-1,hg-2,hg-3\n"
+        "partition_ids=202606\n";
+}
+
+std::string housekeeperTestStorageAttestationData(std::string_view state_root)
+{
+    return "computed_state_root=" + std::string{state_root} + "\n"
+        "receipt_hash=receipt-" + std::string{state_root} + "\n"
+        "match_source_root=true\n"
+        "signature=signature\n";
+}
+
+std::string housekeeperTestStorageUnsafeResultData(std::string_view participant_id, std::string_view rows_hash = "rows-hash")
+{
+    return "row_count=1\n"
+        "rows_hash=" + std::string{rows_hash} + "\n"
+        "replica_digests=" + std::string{participant_id} + ":1:" + std::string{rows_hash} + "\n";
+}
+
+std::string housekeeperTestStorageFinalityData()
+{
+    return "kind=mock\nfinalized=true\n";
+}
+
+template <typename Storage>
+std::string housekeeperTestNodeData(Storage & storage, const std::string & path)
+{
+    auto node = storage.container.find(path);
+    return node == storage.container.end() ? "" : std::string{node->value.getData()};
 }
 
 template <typename Storage>
@@ -1760,6 +1944,508 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperRejectsUnsafeMergeInMulti)
     ASSERT_TRUE(multi_response);
     ASSERT_EQ(multi_response->responses.size(), 1);
     EXPECT_EQ(multi_response->responses[0]->error, Error::ZBADARGUMENTS);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperSafeAuditCreateTaskPersistsLedger)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string audit_id = "audit-ledger";
+    const auto request = housekeeperTestMakeCreateRequest(
+        housekeeperTestSafeAuditTaskPath(audit_id),
+        housekeeperTestSafeAuditTaskData());
+
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, request, zxid), Error::ZOK);
+    EXPECT_NE(storage.container.find(housekeeperTestSafeAuditVotesPath(audit_id)), storage.container.end());
+    EXPECT_NE(storage.container.find("/housekeeper/v1/safe_audits/quarantine/" + audit_id), storage.container.end());
+
+    const auto decision_data = housekeeperTestNodeData(storage, housekeeperTestSafeAuditDecisionPath(audit_id));
+    EXPECT_NE(decision_data.find("status=pending\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("expected_votes=3\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("total_votes=0\n"), std::string::npos);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperSafeAuditVotesUpdateDecisionAndQuarantineMinority)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string audit_id = "audit-majority";
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(housekeeperTestSafeAuditTaskPath(audit_id), housekeeperTestSafeAuditTaskData()),
+            zxid),
+        Error::ZOK);
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(housekeeperTestSafeAuditVotePath(audit_id, "replica-a"), housekeeperTestSafeAuditVoteData("hash-majority")),
+            zxid),
+        Error::ZOK);
+    EXPECT_NE(housekeeperTestNodeData(storage, housekeeperTestSafeAuditDecisionPath(audit_id)).find("status=pending\n"), std::string::npos);
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(housekeeperTestSafeAuditVotePath(audit_id, "replica-b"), housekeeperTestSafeAuditVoteData("hash-majority")),
+            zxid),
+        Error::ZOK);
+    auto decision_data = housekeeperTestNodeData(storage, housekeeperTestSafeAuditDecisionPath(audit_id));
+    EXPECT_NE(decision_data.find("status=majority\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("majority_hash=hash-majority\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("majority_count=2\n"), std::string::npos);
+    EXPECT_EQ(storage.container.find(housekeeperTestSafeAuditQuarantinePath(audit_id, "replica-c")), storage.container.end());
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(housekeeperTestSafeAuditVotePath(audit_id, "replica-c"), housekeeperTestSafeAuditVoteData("hash-minority")),
+            zxid),
+        Error::ZOK);
+    decision_data = housekeeperTestNodeData(storage, housekeeperTestSafeAuditDecisionPath(audit_id));
+    EXPECT_NE(decision_data.find("status=majority\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("minority_replicas=replica-c\n"), std::string::npos);
+
+    const auto quarantine_data = housekeeperTestNodeData(storage, housekeeperTestSafeAuditQuarantinePath(audit_id, "replica-c"));
+    EXPECT_NE(quarantine_data.find("reason=safe_audit_minority\n"), std::string::npos);
+    EXPECT_NE(quarantine_data.find("majority_hash=hash-majority\n"), std::string::npos);
+    EXPECT_NE(quarantine_data.find("replica_id=replica-c\n"), std::string::npos);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperSafeAuditRejectsMismatchedVote)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string audit_id = "audit-mismatch";
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(housekeeperTestSafeAuditTaskPath(audit_id), housekeeperTestSafeAuditTaskData()),
+            zxid),
+        Error::ZOK);
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(
+                housekeeperTestSafeAuditVotePath(audit_id, "replica-a"),
+                housekeeperTestSafeAuditVoteData("hash-a", "snapshot-other")),
+            zxid),
+        Error::ZBADARGUMENTS);
+    EXPECT_EQ(storage.container.find(housekeeperTestSafeAuditVotePath(audit_id, "replica-a")), storage.container.end());
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperSafeAuditRejectsRPCInMulti)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const Coordination::Requests ops{
+        housekeeperTestMakeCreateRequest(housekeeperTestSafeAuditTaskPath("audit-in-multi"), housekeeperTestSafeAuditTaskData()),
+    };
+    const auto request = std::make_shared<ZooKeeperMultiRequest>(ops, ACLs{});
+
+    const auto request_zxid = ++zxid;
+    storage.preprocessRequest(request, 1, 0, request_zxid);
+    auto responses = storage.processRequest(request, 1, request_zxid);
+    ASSERT_EQ(responses.size(), 1);
+
+    const auto multi_response = std::dynamic_pointer_cast<ZooKeeperMultiResponse>(responses[0].response);
+    ASSERT_TRUE(multi_response);
+    ASSERT_EQ(multi_response->responses.size(), 1);
+    EXPECT_EQ(multi_response->responses[0]->error, Error::ZBADARGUMENTS);
+}
+
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityStatementCreatesTaskLedger)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string statement_id = "stmt-ledger";
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(housekeeperTestStorageStatementPath(statement_id), housekeeperTestStorageStatementData()),
+            zxid),
+        Error::ZOK);
+
+    EXPECT_NE(storage.container.find(housekeeperTestStorageReplayJobPath(statement_id)), storage.container.end());
+    EXPECT_NE(storage.container.find(housekeeperTestStorageUnsafeTaskPath(statement_id)), storage.container.end());
+    EXPECT_NE(storage.container.find(housekeeperTestStorageUnsafeResultPath(statement_id)), storage.container.end());
+    EXPECT_NE(storage.container.find(housekeeperTestStorageAttestationsPath(statement_id)), storage.container.end());
+
+    const auto replay_job = housekeeperTestNodeData(storage, housekeeperTestStorageReplayJobPath(statement_id));
+    EXPECT_NE(replay_job.find("statement_id=stmt-ledger\n"), std::string::npos);
+    EXPECT_NE(replay_job.find("payload_hash=payload-hash\n"), std::string::npos);
+
+    const auto unsafe_task = housekeeperTestNodeData(storage, housekeeperTestStorageUnsafeTaskPath(statement_id));
+    EXPECT_NE(unsafe_task.find("participants=hg-1,hg-2,hg-3\n"), std::string::npos);
+    EXPECT_EQ(unsafe_task.find("replicas="), std::string::npos);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityRejectsStatementWithoutPayloadRef)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string statement_id = "stmt-no-payload-ref";
+    const std::string statement_data = "table_id=dual_hg_auth.t\n"
+        "unsafe_table=`hg_unsafe`.`dual_hg_auth.t_a`\n"
+        "safe_table=`hg_safe`.`dual_hg_auth.t`\n"
+        "payload_hash=payload-hash\n"
+        "replay_quorum=2\n"
+        "participants=hg-1,hg-2,hg-3\n";
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(housekeeperTestStorageStatementPath(statement_id), statement_data),
+            zxid),
+        Error::ZBADARGUMENTS);
+    EXPECT_EQ(storage.container.find(housekeeperTestStorageReplayJobPath(statement_id)), storage.container.end());
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityCreatesPromotionAfterReplayUnsafeAndFinality)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string statement_id = "stmt-promote";
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageStatementPath(statement_id), housekeeperTestStorageStatementData()), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageFinalityPath(statement_id), housekeeperTestStorageFinalityData()), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_id, "hg-1"), housekeeperTestStorageUnsafeResultData("hg-1")), zxid), Error::ZOK);
+    EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_id)), storage.container.end());
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_id, "hg-2"), housekeeperTestStorageUnsafeResultData("hg-2")), zxid), Error::ZOK);
+    EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_id)), storage.container.end());
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_id, "hg-3"), housekeeperTestStorageUnsafeResultData("hg-3")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_id, "hg-1"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+    EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_id)), storage.container.end());
+
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_id, "hg-2"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+
+    const auto decision_data = housekeeperTestNodeData(storage, "/housekeeper/v1/storage_integrity/decisions/" + statement_id);
+    EXPECT_NE(decision_data.find("replay_quorum_met=true\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("unsafe_validated=true\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("finalized=true\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("promotion_ready=true\n"), std::string::npos);
+
+    const auto promotion_data = housekeeperTestNodeData(storage, housekeeperTestStoragePromotionPath(statement_id));
+    EXPECT_NE(promotion_data.find("promotion_id=promotion-stmt-promote\n"), std::string::npos);
+    EXPECT_NE(promotion_data.find("unsafe_table=`hg_unsafe`.`dual_hg_auth.t_a`\n"), std::string::npos);
+    EXPECT_NE(promotion_data.find("safe_table=`hg_safe`.`dual_hg_auth.t`\n"), std::string::npos);
+    EXPECT_NE(promotion_data.find("partition_ids=202606\n"), std::string::npos);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityQuarantinesReplayMinorityWorker)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string statement_id = "stmt-replay-minority";
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageStatementPath(statement_id), housekeeperTestStorageStatementData()), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_id, "hg-1"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_id, "hg-2"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_id, "hg-3"), housekeeperTestStorageAttestationData("state-b")), zxid), Error::ZOK);
+
+    const auto quarantine_data = housekeeperTestNodeData(storage, housekeeperTestStorageReplayQuarantinePath("hg-3"));
+    EXPECT_NE(quarantine_data.find("worker_id=hg-3\n"), std::string::npos);
+    EXPECT_NE(quarantine_data.find("reason=replay_minority_mismatch\n"), std::string::npos);
+    EXPECT_NE(quarantine_data.find("statement_id=stmt-replay-minority\n"), std::string::npos);
+    EXPECT_NE(quarantine_data.find("majority_hash=state-a\n"), std::string::npos);
+    EXPECT_NE(quarantine_data.find("reported_hash=state-b\n"), std::string::npos);
+    EXPECT_NE(quarantine_data.find("status=active\n"), std::string::npos);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityRejectsIncompleteUnsafeValidation)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string statement_id = "stmt-unsafe-fail";
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageStatementPath(statement_id), housekeeperTestStorageStatementData()), zxid), Error::ZOK);
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(
+                housekeeperTestStorageUnsafeResultPath(statement_id),
+                "row_count=1\nrows_hash=rows-hash\nreplica_digests=r1:1:rows-hash,r2:1:rows-hash\n"),
+            zxid),
+        Error::ZBADARGUMENTS);
+    EXPECT_NE(storage.container.find(housekeeperTestStorageUnsafeResultPath(statement_id)), storage.container.end());
+    EXPECT_EQ(storage.container.find(housekeeperTestStorageUnsafeResultPath(statement_id, "hg-1")), storage.container.end());
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(
+                housekeeperTestStorageUnsafeResultPath(statement_id, "hg-1"),
+                housekeeperTestStorageUnsafeResultData("hg-2")),
+            zxid),
+        Error::ZBADARGUMENTS);
+    EXPECT_EQ(storage.container.find(housekeeperTestStorageUnsafeResultPath(statement_id, "hg-1")), storage.container.end());
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityRollbackBlocksPromotion)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string statement_id = "stmt-rollback";
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageStatementPath(statement_id), housekeeperTestStorageStatementData()), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_id, "hg-1"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_id, "hg-2"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_id, "hg-1"), housekeeperTestStorageUnsafeResultData("hg-1")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_id, "hg-2"), housekeeperTestStorageUnsafeResultData("hg-2")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_id, "hg-3"), housekeeperTestStorageUnsafeResultData("hg-3")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageRollbackPath(statement_id), "kind=mock\nreason=dispute\n"), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageFinalityPath(statement_id), housekeeperTestStorageFinalityData()), zxid), Error::ZOK);
+
+    EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_id)), storage.container.end());
+    const auto rollback_data = housekeeperTestNodeData(storage, housekeeperTestStorageRollbackTaskPath(statement_id));
+    EXPECT_NE(rollback_data.find("rollback_id=rollback-stmt-rollback\n"), std::string::npos);
+    EXPECT_NE(rollback_data.find("reason=dispute\n"), std::string::npos);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityAllowsHouseGateWorkerLedgerRoots)
+{
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1");
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity", ""),
+            zxid),
+        Error::ZOK);
+
+    const char * root_paths[] = {
+        "/housekeeper/v1/storage_integrity/statements",
+        "/housekeeper/v1/storage_integrity/blocks",
+        "/housekeeper/v1/storage_integrity/replay_jobs",
+        "/housekeeper/v1/storage_integrity/attestations",
+        "/housekeeper/v1/storage_integrity/replay_failures",
+        "/housekeeper/v1/storage_integrity/unsafe_tasks",
+        "/housekeeper/v1/storage_integrity/unsafe_results",
+        "/housekeeper/v1/storage_integrity/unsafe_failures",
+        "/housekeeper/v1/storage_integrity/finality",
+        "/housekeeper/v1/storage_integrity/rollbacks",
+        "/housekeeper/v1/storage_integrity/promotions",
+        "/housekeeper/v1/storage_integrity/rollback_tasks",
+        "/housekeeper/v1/storage_integrity/replay_quarantine",
+        "/housekeeper/v1/storage_integrity/rollback_leases",
+        "/housekeeper/v1/storage_integrity/rollback_results",
+        "/housekeeper/v1/storage_integrity/rollback_failures",
+        "/housekeeper/v1/storage_integrity/promotion_leases",
+        "/housekeeper/v1/storage_integrity/promotion_results",
+        "/housekeeper/v1/storage_integrity/promotion_failures",
+        "/housekeeper/v1/storage_integrity/safe_audit_tasks",
+        "/housekeeper/v1/storage_integrity/safe_audit_votes",
+        "/housekeeper/v1/storage_integrity/decisions",
+    };
+
+    for (const auto * root_path : root_paths)
+    {
+        EXPECT_EQ(
+            housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(root_path, ""), zxid),
+            Error::ZOK)
+            << root_path;
+    }
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityAllowsHouseGateWorkerLedgerWrites)
+{
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/replay_failures/00000000000000000001", ""),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/replay_failures/00000000000000000001/hg-1", "{\"error\":\"boom\"}"),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/unsafe_failures/stmt-worker", "{\"error\":\"boom\"}"),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/promotion_leases/stmt-worker", "{\"worker_id\":\"hg-1\"}"),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/promotion_results/stmt-worker", "{\"promotion_id\":\"promotion-stmt-worker\"}"),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/rollback_leases/stmt-worker", "{\"worker_id\":\"hg-1\"}"),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/rollback_results/stmt-worker", "{\"rollback_id\":\"rollback-stmt-worker\"}"),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/safe_audit_tasks/audit-stmt-worker", ""),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/safe_audit_tasks/audit-stmt-worker/r1", "{\"audit_id\":\"audit-stmt-worker\"}"),
+            zxid),
+        Error::ZOK);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityRejectsDirectManagedLedgerWrites)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(housekeeperTestStoragePromotionPath("stmt-direct"), "promotion_id=promotion-stmt-direct\n"),
+            zxid),
+        Error::ZBADARGUMENTS);
 }
 
 #endif
