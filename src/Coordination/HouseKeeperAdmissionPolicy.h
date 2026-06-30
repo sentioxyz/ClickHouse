@@ -502,7 +502,8 @@ HouseKeeperStorageDecision houseKeeperStorageIntegrityEvaluate(
         replay_votes.push_back(std::move(*candidate_attestation));
     else if (decision.replay_tally.empty())
         replay_votes = houseKeeperStorageIntegrityGetAttestations(storage, statement.statement_id);
-    houseKeeperStorageIntegrityApplyReplayTally(decision, statement, replay_votes);
+    if (!replay_votes.empty() || decision.replay_tally.empty())
+        houseKeeperStorageIntegrityApplyReplayTally(decision, statement, replay_votes);
 
     const auto unsafe_result = houseKeeperStorageIntegrityGetUnsafeResult(storage, statement, std::move(candidate_unsafe_result));
     decision.unsafe_validated = unsafe_result && storageIntegrityValidateUnsafeResult(statement, *unsafe_result);

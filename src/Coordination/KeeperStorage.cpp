@@ -3675,6 +3675,115 @@ Coordination::Error houseKeeperAppendSafeAuditSideEffects(
 }
 
 template <typename Storage>
+std::vector<HouseKeeperStorageStatement> houseKeeperStorageIntegrityGetBufferedPartitionStatements(
+    Storage & storage,
+    const HouseKeeperStorageStatement & seed,
+    const std::string & partition_id)
+{
+    std::vector<HouseKeeperStorageStatement> statements;
+    const auto parent_path = std::string{housekeeper_storage_integrity_statements_path};
+
+    auto maybe_add_statement = [&](std::string_view statement_id, std::string_view data)
+    {
+        const auto statement = storageIntegrityParseStatement(statement_id, data);
+        if (!statement)
+            return;
+        if (statement->table_id != seed.table_id
+            || statement->unsafe_buffer_id != seed.unsafe_buffer_id
+            || statement->unsafe_buffer_epoch != seed.unsafe_buffer_epoch
+            || std::find(statement->partition_ids.begin(), statement->partition_ids.end(), partition_id) == statement->partition_ids.end())
+            return;
+        statements.push_back(*statement);
+    };
+
+    if constexpr (Storage::use_rocksdb)
+    {
+        for (const auto & [child, node] : storage.container.getChildren(parent_path, true, true))
+        {
+            maybe_add_statement(child, node.getData());
+        }
+    }
+    else
+    {
+        auto node_it = storage.container.find(parent_path);
+        if (node_it != storage.container.end())
+        {
+            for (const auto & child : node_it->value.getChildren())
+            {
+                const auto path = std::string{housekeeper_storage_integrity_statements_path} + "/" + std::string{child};
+                const auto data = houseKeeperGetNodeData(storage, path);
+                if (!data)
+                    continue;
+                maybe_add_statement(child, *data);
+            }
+        }
+    }
+
+    std::sort(statements.begin(), statements.end(), [](const auto & left, const auto & right)
+    {
+        return left.statement_id < right.statement_id;
+    });
+    return statements;
+}
+
+template <typename Storage>
+bool houseKeeperStorageIntegrityPromotionReadyForStatement(
+    Storage & storage,
+    const HouseKeeperStorageStatement & statement,
+    const HouseKeeperStorageStatement & candidate_statement,
+    const HouseKeeperStorageDecision & candidate_decision)
+{
+    if (statement.statement_id == candidate_statement.statement_id)
+        return candidate_decision.promotion_ready;
+    return houseKeeperStorageIntegrityEvaluate(storage, statement).promotion_ready;
+}
+
+template <typename Storage>
+bool houseKeeperAppendStorageIntegrityGroupedPromotionDeltas(
+    Storage & storage,
+    std::list<KeeperStorageBase::Delta> & deltas,
+    const HouseKeeperStorageStatement & statement,
+    const HouseKeeperStorageDecision & decision,
+    int64_t zxid,
+    int64_t time)
+{
+    std::vector<std::pair<std::string, std::string>> creates;
+    for (const auto & partition_id : statement.partition_ids)
+    {
+        const auto promotion_id = storageIntegrityPromotionGroupID(statement, partition_id);
+        const auto promotion_path = storageIntegrityPromotionPath(promotion_id);
+        if (storage.uncommitted_state.getNode(promotion_path))
+            continue;
+
+        const auto group = houseKeeperStorageIntegrityGetBufferedPartitionStatements(storage, statement, partition_id);
+        if (group.empty())
+            continue;
+
+        std::vector<std::string> statement_ids;
+        bool all_ready = true;
+        for (const auto & grouped_statement : group)
+        {
+            statement_ids.push_back(grouped_statement.statement_id);
+            if (!houseKeeperStorageIntegrityPromotionReadyForStatement(storage, grouped_statement, statement, decision))
+            {
+                all_ready = false;
+                break;
+            }
+        }
+        if (!all_ready)
+            continue;
+
+        creates.emplace_back(
+            promotion_path,
+            storageIntegritySerializePromotion(statement, promotion_id, statement_ids, {partition_id}));
+    }
+
+    if (creates.empty())
+        return true;
+    return houseKeeperAppendCreateNodeDeltas(storage, deltas, creates, zxid, time);
+}
+
+template <typename Storage>
 bool houseKeeperAppendStorageIntegrityReadyTaskDeltas(
     Storage & storage,
     std::list<KeeperStorageBase::Delta> & deltas,
@@ -3687,6 +3796,8 @@ bool houseKeeperAppendStorageIntegrityReadyTaskDeltas(
     std::vector<std::pair<std::string, std::string>> creates;
     if (decision.rollback_ready && rollback && !storage.uncommitted_state.getNode(storageIntegrityRollbackTaskPath(statement.statement_id)))
         creates.emplace_back(storageIntegrityRollbackTaskPath(statement.statement_id), storageIntegritySerializeRollbackTask(statement, *rollback));
+    else if (decision.promotion_ready && storageIntegrityStatementUsesUnsafeBuffer(statement) && !statement.partition_ids.empty())
+        return houseKeeperAppendStorageIntegrityGroupedPromotionDeltas(storage, deltas, statement, decision, zxid, time);
     else if (decision.promotion_ready && !storage.uncommitted_state.getNode(storageIntegrityPromotionPath(statement.statement_id)))
         creates.emplace_back(storageIntegrityPromotionPath(statement.statement_id), storageIntegritySerializePromotion(statement));
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cctype>
 #include <map>
 #include <set>
 #include <sstream>
@@ -110,6 +111,20 @@ std::string joinCSV(const std::vector<std::string> & values)
         if (!result.empty())
             result += ",";
         result += value;
+    }
+    return result;
+}
+
+std::string pathSafeID(std::string_view value)
+{
+    std::string result;
+    for (const auto ch : value)
+    {
+        const auto byte = static_cast<unsigned char>(ch);
+        if (std::isalnum(byte) || ch == '.' || ch == '_' || ch == '-')
+            result += ch;
+        else
+            result += '_';
     }
     return result;
 }
@@ -433,6 +448,21 @@ std::optional<HouseKeeperStorageStatement> storageIntegrityParseStatement(std::s
     if (auto replay_quorum = parseSize(fields["replay_quorum"]))
         statement.replay_quorum = *replay_quorum;
 
+    if (!fields["unsafe_buffer_id"].empty())
+    {
+        const auto unsafe_buffer_id = parseUInt64(fields["unsafe_buffer_id"]);
+        if (!unsafe_buffer_id)
+            return std::nullopt;
+        statement.unsafe_buffer_id = *unsafe_buffer_id;
+    }
+    if (!fields["unsafe_buffer_epoch"].empty())
+    {
+        const auto unsafe_buffer_epoch = parseUInt64(fields["unsafe_buffer_epoch"]);
+        if (!unsafe_buffer_epoch)
+            return std::nullopt;
+        statement.unsafe_buffer_epoch = *unsafe_buffer_epoch;
+    }
+
     if (statement.statement_id.empty()
         || statement.table_id.empty()
         || statement.unsafe_table.empty()
@@ -451,6 +481,19 @@ std::optional<HouseKeeperStorageStatement> storageIntegrityParseStatement(std::s
     }
 
     return statement;
+}
+
+bool storageIntegrityStatementUsesUnsafeBuffer(const HouseKeeperStorageStatement & statement)
+{
+    return statement.unsafe_buffer_epoch > 0;
+}
+
+std::string storageIntegrityPromotionGroupID(const HouseKeeperStorageStatement & statement, std::string_view partition_id)
+{
+    return "group-" + pathSafeID(statement.table_id)
+        + "-b" + std::to_string(statement.unsafe_buffer_id)
+        + "-e" + std::to_string(statement.unsafe_buffer_epoch)
+        + "-p" + pathSafeID(partition_id);
 }
 
 std::optional<HouseKeeperStorageAttestation> storageIntegrityParseAttestation(
@@ -576,10 +619,14 @@ std::string storageIntegritySerializeReplayJob(const HouseKeeperStorageStatement
 
 std::string storageIntegritySerializeUnsafeTask(const HouseKeeperStorageStatement & statement)
 {
-    return "statement_id=" + statement.statement_id + "\n"
+    auto data = "statement_id=" + statement.statement_id + "\n"
         "table_id=" + statement.table_id + "\n"
         "unsafe_table=" + statement.unsafe_table + "\n"
         "participants=" + joinCSV(statement.participants) + "\n";
+    if (storageIntegrityStatementUsesUnsafeBuffer(statement))
+        data += "unsafe_buffer_id=" + std::to_string(statement.unsafe_buffer_id) + "\n"
+            "unsafe_buffer_epoch=" + std::to_string(statement.unsafe_buffer_epoch) + "\n";
+    return data;
 }
 
 
@@ -626,11 +673,25 @@ std::string storageIntegritySerializeDecision(const HouseKeeperStorageDecision &
 
 std::string storageIntegritySerializePromotion(const HouseKeeperStorageStatement & statement)
 {
-    return "promotion_id=promotion-" + statement.statement_id + "\n"
-        "lease_id=lease-" + statement.statement_id + "\n"
+    return storageIntegritySerializePromotion(statement, statement.statement_id, {statement.statement_id}, statement.partition_ids);
+}
+
+std::string storageIntegritySerializePromotion(
+    const HouseKeeperStorageStatement & statement,
+    std::string_view promotion_id,
+    const std::vector<std::string> & statement_ids,
+    const std::vector<std::string> & partition_ids)
+{
+    auto data = "promotion_id=promotion-" + std::string{promotion_id} + "\n"
+        "lease_id=lease-" + std::string{promotion_id} + "\n"
         "unsafe_table=" + statement.unsafe_table + "\n"
         "safe_table=" + statement.safe_table + "\n"
-        "partition_ids=" + joinCSV(statement.partition_ids) + "\n";
+        "partition_ids=" + joinCSV(partition_ids) + "\n";
+    if (storageIntegrityStatementUsesUnsafeBuffer(statement))
+        data += "unsafe_buffer_id=" + std::to_string(statement.unsafe_buffer_id) + "\n"
+            "unsafe_buffer_epoch=" + std::to_string(statement.unsafe_buffer_epoch) + "\n"
+            "statement_ids=" + joinCSV(statement_ids) + "\n";
+    return data;
 }
 
 std::string storageIntegritySerializeRollbackTask(

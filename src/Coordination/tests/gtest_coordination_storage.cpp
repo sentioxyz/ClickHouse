@@ -253,6 +253,25 @@ std::string housekeeperTestStorageStatementData()
         "partition_ids=202606\n";
 }
 
+std::string housekeeperTestStorageBufferedStatementData(
+    std::string_view unsafe_table,
+    std::string_view safe_table,
+    uint64_t unsafe_buffer_id,
+    uint64_t unsafe_buffer_epoch,
+    std::string_view partition_ids = "202606")
+{
+    return "table_id=dual_hg_auth.t\n"
+        "unsafe_table=" + std::string{unsafe_table} + "\n"
+        "safe_table=" + std::string{safe_table} + "\n"
+        "unsafe_buffer_id=" + std::to_string(unsafe_buffer_id) + "\n"
+        "unsafe_buffer_epoch=" + std::to_string(unsafe_buffer_epoch) + "\n"
+        "payload_ref=mockda://dual_hg_auth.t/stmt/hash\n"
+        "payload_hash=payload-hash\n"
+        "replay_quorum=2\n"
+        "participants=hg-1,hg-2,hg-3\n"
+        "partition_ids=" + std::string{partition_ids} + "\n";
+}
+
 std::string housekeeperTestStorageAttestationData(std::string_view state_root)
 {
     return "computed_state_root=" + std::string{state_root} + "\n"
@@ -2202,6 +2221,75 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityCreatesPromotionAfte
     EXPECT_NE(promotion_data.find("unsafe_table=`hg_unsafe`.`dual_hg_auth.t_a`\n"), std::string::npos);
     EXPECT_NE(promotion_data.find("safe_table=`hg_safe`.`dual_hg_auth.t`\n"), std::string::npos);
     EXPECT_NE(promotion_data.find("partition_ids=202606\n"), std::string::npos);
+}
+
+TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityGroupsUnsafeBufferPartitionPromotion)
+{
+    using namespace DB;
+    using namespace Coordination;
+
+    using Storage = typename TestFixture::Storage;
+
+    ChangelogDirTest rocks("./rocksdb");
+    this->setRocksDBDirectory("./rocksdb");
+
+    Storage storage{500, "", this->keeper_context};
+    int64_t zxid = 0;
+    housekeeperTestAddControlPaths(storage);
+
+    const std::string statement_a = "stmt-buffer-a";
+    const std::string statement_b = "stmt-buffer-b";
+    const std::string unsafe_table = "`hg_unsafe_01`.`dual_hg_auth.t`";
+    const std::string safe_table = "`hg_safe`.`dual_hg_auth.t`";
+    const std::string promotion_group = "group-dual_hg_auth.t-b0-e7-p202606";
+
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(
+                housekeeperTestStorageStatementPath(statement_a),
+                housekeeperTestStorageBufferedStatementData(unsafe_table, safe_table, 0, 7)),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest(
+                housekeeperTestStorageStatementPath(statement_b),
+                housekeeperTestStorageBufferedStatementData(unsafe_table, safe_table, 0, 7)),
+            zxid),
+        Error::ZOK);
+
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageFinalityPath(statement_a), housekeeperTestStorageFinalityData()), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_a, "hg-1"), housekeeperTestStorageUnsafeResultData("hg-1")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_a, "hg-2"), housekeeperTestStorageUnsafeResultData("hg-2")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_a, "hg-3"), housekeeperTestStorageUnsafeResultData("hg-3")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_a, "hg-1"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_a, "hg-2"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+
+    EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_a)), storage.container.end());
+    EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(promotion_group)), storage.container.end());
+
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageFinalityPath(statement_b), housekeeperTestStorageFinalityData()), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_b, "hg-1"), housekeeperTestStorageUnsafeResultData("hg-1")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_b, "hg-2"), housekeeperTestStorageUnsafeResultData("hg-2")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_b, "hg-3"), housekeeperTestStorageUnsafeResultData("hg-3")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_b, "hg-1"), housekeeperTestStorageAttestationData("state-b")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_b, "hg-2"), housekeeperTestStorageAttestationData("state-b")), zxid), Error::ZOK);
+
+    const auto decision_a = housekeeperTestNodeData(storage, "/housekeeper/v1/storage_integrity/decisions/" + statement_a);
+    const auto decision_b = housekeeperTestNodeData(storage, "/housekeeper/v1/storage_integrity/decisions/" + statement_b);
+    EXPECT_NE(decision_a.find("promotion_ready=true\n"), std::string::npos) << decision_a;
+    EXPECT_NE(decision_b.find("promotion_ready=true\n"), std::string::npos) << decision_b;
+
+    const auto promotion_data = housekeeperTestNodeData(storage, housekeeperTestStoragePromotionPath(promotion_group));
+    EXPECT_NE(promotion_data.find("promotion_id=promotion-" + promotion_group + "\n"), std::string::npos) << promotion_data;
+    EXPECT_NE(promotion_data.find("unsafe_table=" + unsafe_table + "\n"), std::string::npos);
+    EXPECT_NE(promotion_data.find("safe_table=" + safe_table + "\n"), std::string::npos);
+    EXPECT_NE(promotion_data.find("unsafe_buffer_id=0\n"), std::string::npos);
+    EXPECT_NE(promotion_data.find("unsafe_buffer_epoch=7\n"), std::string::npos);
+    EXPECT_NE(promotion_data.find("partition_ids=202606\n"), std::string::npos);
+    EXPECT_NE(promotion_data.find("statement_ids=stmt-buffer-a,stmt-buffer-b\n"), std::string::npos);
 }
 
 TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityQuarantinesReplayMinorityWorker)

@@ -43,6 +43,8 @@ struct HouseKeeperStorageStatement
     std::string safe_table;
     std::string payload_ref;
     std::string payload_hash;
+    uint64_t unsafe_buffer_id = 0;
+    uint64_t unsafe_buffer_epoch = 0;
     size_t replay_quorum = 2;
     std::vector<std::string> participants;
     std::vector<std::string> partition_ids;
@@ -147,6 +149,9 @@ std::optional<HouseKeeperStorageUnsafeResult> storageIntegrityParseUnsafeResult(
 std::optional<HouseKeeperStorageFinality> storageIntegrityParseFinality(std::string_view statement_id, std::string_view data);
 std::optional<HouseKeeperStorageRollback> storageIntegrityParseRollback(std::string_view statement_id, std::string_view data);
 
+bool storageIntegrityStatementUsesUnsafeBuffer(const HouseKeeperStorageStatement & statement);
+std::string storageIntegrityPromotionGroupID(const HouseKeeperStorageStatement & statement, std::string_view partition_id);
+
 bool storageIntegrityValidateUnsafeParticipantResult(
     const HouseKeeperStorageStatement & statement,
     const HouseKeeperStorageUnsafeResult & result);
@@ -159,6 +164,11 @@ std::string storageIntegritySerializeUnsafeTask(const HouseKeeperStorageStatemen
 std::optional<HouseKeeperStorageDecision> storageIntegrityParseDecision(std::string_view statement_id, std::string_view data);
 std::string storageIntegritySerializeDecision(const HouseKeeperStorageDecision & decision);
 std::string storageIntegritySerializePromotion(const HouseKeeperStorageStatement & statement);
+std::string storageIntegritySerializePromotion(
+    const HouseKeeperStorageStatement & statement,
+    std::string_view promotion_id,
+    const std::vector<std::string> & statement_ids,
+    const std::vector<std::string> & partition_ids);
 std::string storageIntegritySerializeRollbackTask(
     const HouseKeeperStorageStatement & statement,
     const HouseKeeperStorageRollback & rollback);
