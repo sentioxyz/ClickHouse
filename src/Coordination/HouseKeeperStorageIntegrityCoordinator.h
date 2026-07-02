@@ -20,6 +20,14 @@ inline constexpr std::string_view housekeeper_storage_integrity_replay_failures_
 inline constexpr std::string_view housekeeper_storage_integrity_unsafe_tasks_path = "/housekeeper/v1/storage_integrity/unsafe_tasks";
 inline constexpr std::string_view housekeeper_storage_integrity_unsafe_results_path = "/housekeeper/v1/storage_integrity/unsafe_results";
 inline constexpr std::string_view housekeeper_storage_integrity_unsafe_failures_path = "/housekeeper/v1/storage_integrity/unsafe_failures";
+inline constexpr std::string_view housekeeper_storage_integrity_byte_side_scan_tasks_path = "/housekeeper/v1/storage_integrity/byte_side_scan_tasks";
+inline constexpr std::string_view housekeeper_storage_integrity_byte_side_scans_path = "/housekeeper/v1/storage_integrity/byte_side_scans";
+inline constexpr std::string_view housekeeper_storage_integrity_byte_side_scan_failures_path = "/housekeeper/v1/storage_integrity/byte_side_scan_failures";
+inline constexpr std::string_view housekeeper_storage_integrity_mutations_path = "/housekeeper/v1/storage_integrity/mutations";
+inline constexpr std::string_view housekeeper_storage_integrity_mutation_tasks_path = "/housekeeper/v1/storage_integrity/mutation_tasks";
+inline constexpr std::string_view housekeeper_storage_integrity_mutation_leases_path = "/housekeeper/v1/storage_integrity/mutation_leases";
+inline constexpr std::string_view housekeeper_storage_integrity_mutation_claims_path = "/housekeeper/v1/storage_integrity/mutation_claims";
+inline constexpr std::string_view housekeeper_storage_integrity_mutation_failures_path = "/housekeeper/v1/storage_integrity/mutation_failures";
 inline constexpr std::string_view housekeeper_storage_integrity_finality_path = "/housekeeper/v1/storage_integrity/finality";
 inline constexpr std::string_view housekeeper_storage_integrity_rollbacks_path = "/housekeeper/v1/storage_integrity/rollbacks";
 inline constexpr std::string_view housekeeper_storage_integrity_promotions_path = "/housekeeper/v1/storage_integrity/promotions";
@@ -35,6 +43,14 @@ inline constexpr std::string_view housekeeper_storage_integrity_safe_audit_tasks
 inline constexpr std::string_view housekeeper_storage_integrity_safe_audit_votes_path = "/housekeeper/v1/storage_integrity/safe_audit_votes";
 inline constexpr std::string_view housekeeper_storage_integrity_decisions_path = "/housekeeper/v1/storage_integrity/decisions";
 
+struct HouseKeeperStorageByteSidePart
+{
+    std::string partition_id;
+    std::string part_name;
+    uint64_t row_count = 0;
+    std::string part_row_lthash;
+};
+
 struct HouseKeeperStorageStatement
 {
     std::string statement_id;
@@ -46,8 +62,11 @@ struct HouseKeeperStorageStatement
     uint64_t unsafe_buffer_id = 0;
     uint64_t unsafe_buffer_epoch = 0;
     size_t replay_quorum = 2;
+    bool byte_side_required = true;
+    size_t byte_side_quorum = 2;
     std::vector<std::string> participants;
     std::vector<std::string> partition_ids;
+    std::vector<HouseKeeperStorageByteSidePart> candidate_parts;
 };
 
 struct HouseKeeperStorageAttestation
@@ -76,6 +95,17 @@ struct HouseKeeperStorageUnsafeResult
     std::vector<HouseKeeperStorageReplicaDigest> replicas;
 };
 
+struct HouseKeeperStorageByteSideScan
+{
+    std::string statement_id;
+    std::string worker_id;
+    std::string scan_id;
+    std::string table_id;
+    std::string unsafe_table;
+    std::string part_set_hash;
+    std::vector<HouseKeeperStorageByteSidePart> parts;
+};
+
 struct HouseKeeperStorageFinality
 {
     std::string statement_id;
@@ -94,12 +124,15 @@ struct HouseKeeperStorageDecision
     std::string statement_id;
     bool replay_quorum_met = false;
     bool unsafe_validated = false;
+    bool byte_side_validated = false;
     bool finalized = false;
     bool rollback_requested = false;
     bool promotion_ready = false;
     bool rollback_ready = false;
     std::string replay_result_hash;
+    std::string byte_side_result_hash;
     std::map<std::string, size_t> replay_tally;
+    std::map<std::string, size_t> byte_side_tally;
 };
 
 struct HouseKeeperStorageReplayQuarantine
@@ -118,6 +151,10 @@ std::string storageIntegrityAttestationPath(std::string_view statement_id, std::
 std::string storageIntegrityUnsafeTaskPath(std::string_view statement_id);
 std::string storageIntegrityUnsafeResultPath(std::string_view statement_id);
 std::string storageIntegrityUnsafeResultPath(std::string_view statement_id, std::string_view participant_id);
+std::string storageIntegrityByteSideScanTaskPath(std::string_view statement_id);
+std::string storageIntegrityByteSideScansPath(std::string_view statement_id);
+std::string storageIntegrityByteSideScanPath(std::string_view statement_id, std::string_view worker_id);
+std::string storageIntegrityByteSideScanFailurePath(std::string_view statement_id, std::string_view worker_id);
 std::string storageIntegrityFinalityPath(std::string_view statement_id);
 std::string storageIntegrityRollbackPath(std::string_view statement_id);
 std::string storageIntegrityPromotionPath(std::string_view statement_id);
@@ -129,6 +166,8 @@ std::optional<std::string> storageIntegrityStatementIDFromPath(std::string_view 
 std::optional<std::pair<std::string, std::string>> storageIntegrityAttestationPathParts(std::string_view path);
 std::optional<std::string> storageIntegrityUnsafeResultIDFromPath(std::string_view path);
 std::optional<std::pair<std::string, std::string>> storageIntegrityUnsafeResultPathParts(std::string_view path);
+std::optional<std::string> storageIntegrityByteSideScanIDFromPath(std::string_view path);
+std::optional<std::pair<std::string, std::string>> storageIntegrityByteSideScanPathParts(std::string_view path);
 std::optional<std::string> storageIntegrityFinalityIDFromPath(std::string_view path);
 std::optional<std::string> storageIntegrityRollbackIDFromPath(std::string_view path);
 
@@ -146,6 +185,10 @@ std::optional<HouseKeeperStorageUnsafeResult> storageIntegrityParseUnsafeResult(
     std::string_view statement_id,
     std::string_view participant_id,
     std::string_view data);
+std::optional<HouseKeeperStorageByteSideScan> storageIntegrityParseByteSideScan(
+    std::string_view statement_id,
+    std::string_view worker_id,
+    std::string_view data);
 std::optional<HouseKeeperStorageFinality> storageIntegrityParseFinality(std::string_view statement_id, std::string_view data);
 std::optional<HouseKeeperStorageRollback> storageIntegrityParseRollback(std::string_view statement_id, std::string_view data);
 
@@ -158,9 +201,13 @@ bool storageIntegrityValidateUnsafeParticipantResult(
 bool storageIntegrityValidateUnsafeResult(
     const HouseKeeperStorageStatement & statement,
     const HouseKeeperStorageUnsafeResult & result);
+bool storageIntegrityValidateByteSideScan(
+    const HouseKeeperStorageStatement & statement,
+    const HouseKeeperStorageByteSideScan & scan);
 
 std::string storageIntegritySerializeReplayJob(const HouseKeeperStorageStatement & statement);
 std::string storageIntegritySerializeUnsafeTask(const HouseKeeperStorageStatement & statement);
+std::string storageIntegritySerializeByteSideScanTask(const HouseKeeperStorageStatement & statement);
 std::optional<HouseKeeperStorageDecision> storageIntegrityParseDecision(std::string_view statement_id, std::string_view data);
 std::string storageIntegritySerializeDecision(const HouseKeeperStorageDecision & decision);
 std::string storageIntegritySerializePromotion(const HouseKeeperStorageStatement & statement);

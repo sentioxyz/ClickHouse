@@ -192,6 +192,95 @@ std::vector<HouseKeeperStorageReplicaDigest> parseReplicaDigests(std::string_vie
     return result;
 }
 
+std::optional<HouseKeeperStorageByteSidePart> parseByteSidePart(std::string_view value)
+{
+    const auto first = value.find(':');
+    if (first == std::string_view::npos || first == 0 || first + 1 >= value.size())
+        return std::nullopt;
+    const auto second = value.find(':', first + 1);
+    if (second == std::string_view::npos || second + 1 >= value.size())
+        return std::nullopt;
+    const auto third = value.find(':', second + 1);
+    if (third == std::string_view::npos || third + 1 >= value.size())
+        return std::nullopt;
+
+    const auto row_count = parseUInt64(value.substr(second + 1, third - second - 1));
+    if (!row_count)
+        return std::nullopt;
+
+    HouseKeeperStorageByteSidePart part;
+    part.partition_id = std::string{value.substr(0, first)};
+    part.part_name = std::string{value.substr(first + 1, second - first - 1)};
+    part.row_count = *row_count;
+    part.part_row_lthash = std::string{value.substr(third + 1)};
+    if (part.partition_id.empty() || part.part_name.empty() || part.part_row_lthash.empty())
+        return std::nullopt;
+    return part;
+}
+
+std::vector<HouseKeeperStorageByteSidePart> parseByteSideParts(std::string_view value)
+{
+    std::vector<HouseKeeperStorageByteSidePart> result;
+    if (value.empty())
+        return result;
+    for (const auto & item : splitCSV(value))
+    {
+        auto part = parseByteSidePart(item);
+        if (!part)
+            return {};
+        result.push_back(std::move(*part));
+    }
+    return result;
+}
+
+void sortByteSideParts(std::vector<HouseKeeperStorageByteSidePart> & parts)
+{
+    std::sort(parts.begin(), parts.end(), [](const auto & lhs, const auto & rhs)
+    {
+        if (lhs.partition_id != rhs.partition_id)
+            return lhs.partition_id < rhs.partition_id;
+        return lhs.part_name < rhs.part_name;
+    });
+}
+
+std::string serializeByteSideParts(std::vector<HouseKeeperStorageByteSidePart> parts)
+{
+    if (parts.empty())
+        return {};
+    sortByteSideParts(parts);
+    std::string result;
+    for (const auto & part : parts)
+    {
+        if (!result.empty())
+            result += ",";
+        result += part.partition_id;
+        result += ":";
+        result += part.part_name;
+        result += ":";
+        result += std::to_string(part.row_count);
+        result += ":";
+        result += part.part_row_lthash;
+    }
+    return result;
+}
+
+bool byteSidePartsEqual(std::vector<HouseKeeperStorageByteSidePart> lhs, std::vector<HouseKeeperStorageByteSidePart> rhs)
+{
+    if (lhs.size() != rhs.size())
+        return false;
+    sortByteSideParts(lhs);
+    sortByteSideParts(rhs);
+    for (size_t i = 0; i < lhs.size(); ++i)
+    {
+        if (lhs[i].partition_id != rhs[i].partition_id
+            || lhs[i].part_name != rhs[i].part_name
+            || lhs[i].row_count != rhs[i].row_count
+            || lhs[i].part_row_lthash != rhs[i].part_row_lthash)
+            return false;
+    }
+    return true;
+}
+
 std::map<std::string, size_t> parseReplayTally(std::string_view value)
 {
     std::map<std::string, size_t> result;
@@ -259,6 +348,26 @@ std::string storageIntegrityUnsafeResultPath(std::string_view statement_id)
 std::string storageIntegrityUnsafeResultPath(std::string_view statement_id, std::string_view participant_id)
 {
     return childPath(storageIntegrityUnsafeResultPath(statement_id), participant_id);
+}
+
+std::string storageIntegrityByteSideScanTaskPath(std::string_view statement_id)
+{
+    return childPath(housekeeper_storage_integrity_byte_side_scan_tasks_path, statement_id);
+}
+
+std::string storageIntegrityByteSideScansPath(std::string_view statement_id)
+{
+    return childPath(housekeeper_storage_integrity_byte_side_scans_path, statement_id);
+}
+
+std::string storageIntegrityByteSideScanPath(std::string_view statement_id, std::string_view worker_id)
+{
+    return childPath(storageIntegrityByteSideScansPath(statement_id), worker_id);
+}
+
+std::string storageIntegrityByteSideScanFailurePath(std::string_view statement_id, std::string_view worker_id)
+{
+    return childPath(childPath(housekeeper_storage_integrity_byte_side_scan_failures_path, statement_id), worker_id);
 }
 
 std::string storageIntegrityFinalityPath(std::string_view statement_id)
@@ -341,6 +450,31 @@ std::optional<std::pair<std::string, std::string>> storageIntegrityUnsafeResultP
     return std::pair{std::string{statement_id}, std::string{participant_id}};
 }
 
+std::optional<std::string> storageIntegrityByteSideScanIDFromPath(std::string_view path)
+{
+    return directChildID(path, housekeeper_storage_integrity_byte_side_scans_path);
+}
+
+std::optional<std::pair<std::string, std::string>> storageIntegrityByteSideScanPathParts(std::string_view path)
+{
+    if (!startsWith(path, housekeeper_storage_integrity_byte_side_scans_path)
+        || path.size() <= housekeeper_storage_integrity_byte_side_scans_path.size()
+        || path[housekeeper_storage_integrity_byte_side_scans_path.size()] != '/')
+        return std::nullopt;
+
+    const auto rest = path.substr(housekeeper_storage_integrity_byte_side_scans_path.size() + 1);
+    const auto slash = rest.find('/');
+    if (slash == std::string_view::npos || slash == 0 || slash + 1 >= rest.size())
+        return std::nullopt;
+
+    const auto statement_id = rest.substr(0, slash);
+    const auto worker_id = rest.substr(slash + 1);
+    if (worker_id.find('/') != std::string_view::npos)
+        return std::nullopt;
+
+    return std::pair{std::string{statement_id}, std::string{worker_id}};
+}
+
 std::optional<std::string> storageIntegrityFinalityIDFromPath(std::string_view path)
 {
     return directChildID(path, housekeeper_storage_integrity_finality_path);
@@ -370,6 +504,14 @@ bool storageIntegrityIsControlPath(std::string_view path)
         || path == housekeeper_storage_integrity_unsafe_tasks_path
         || path == housekeeper_storage_integrity_unsafe_results_path
         || path == housekeeper_storage_integrity_unsafe_failures_path
+        || path == housekeeper_storage_integrity_byte_side_scan_tasks_path
+        || path == housekeeper_storage_integrity_byte_side_scans_path
+        || path == housekeeper_storage_integrity_byte_side_scan_failures_path
+        || path == housekeeper_storage_integrity_mutations_path
+        || path == housekeeper_storage_integrity_mutation_tasks_path
+        || path == housekeeper_storage_integrity_mutation_leases_path
+        || path == housekeeper_storage_integrity_mutation_claims_path
+        || path == housekeeper_storage_integrity_mutation_failures_path
         || path == housekeeper_storage_integrity_finality_path
         || path == housekeeper_storage_integrity_rollbacks_path
         || path == housekeeper_storage_integrity_promotions_path
@@ -395,6 +537,8 @@ bool storageIntegrityIsManagedLedgerPath(std::string_view path)
         || isDirectManagedChild(path, housekeeper_storage_integrity_attestations_path)
         || isDirectManagedChild(path, housekeeper_storage_integrity_unsafe_tasks_path)
         || isDirectManagedChild(path, housekeeper_storage_integrity_unsafe_results_path)
+        || isDirectManagedChild(path, housekeeper_storage_integrity_byte_side_scan_tasks_path)
+        || isDirectManagedChild(path, housekeeper_storage_integrity_byte_side_scans_path)
         || isDirectManagedChild(path, housekeeper_storage_integrity_promotions_path)
         || isDirectManagedChild(path, housekeeper_storage_integrity_rollback_tasks_path)
         || isDirectManagedChild(path, housekeeper_storage_integrity_replay_quarantine_path)
@@ -403,6 +547,7 @@ bool storageIntegrityIsManagedLedgerPath(std::string_view path)
 
     return startsWith(path, housekeeper_storage_integrity_replay_jobs_path)
         || startsWith(path, housekeeper_storage_integrity_unsafe_tasks_path)
+        || startsWith(path, housekeeper_storage_integrity_byte_side_scan_tasks_path)
         || startsWith(path, housekeeper_storage_integrity_promotions_path)
         || startsWith(path, housekeeper_storage_integrity_rollback_tasks_path)
         || startsWith(path, housekeeper_storage_integrity_replay_quarantine_path)
@@ -417,6 +562,8 @@ bool storageIntegrityIsWorkerLedgerPath(std::string_view path)
     return isDescendantOf(path, housekeeper_storage_integrity_blocks_path)
         || isDescendantOf(path, housekeeper_storage_integrity_replay_failures_path)
         || isDescendantOf(path, housekeeper_storage_integrity_unsafe_failures_path)
+        || isDescendantOf(path, housekeeper_storage_integrity_byte_side_scans_path)
+        || isDescendantOf(path, housekeeper_storage_integrity_byte_side_scan_failures_path)
         || isDescendantOf(path, housekeeper_storage_integrity_rollback_leases_path)
         || isDescendantOf(path, housekeeper_storage_integrity_rollback_results_path)
         || isDescendantOf(path, housekeeper_storage_integrity_rollback_failures_path)
@@ -442,11 +589,19 @@ std::optional<HouseKeeperStorageStatement> storageIntegrityParseStatement(std::s
     statement.payload_hash = fields["payload_hash"];
     statement.participants = splitCSV(fields["participants"]);
     statement.partition_ids = splitCSV(fields["partition_ids"]);
+    statement.candidate_parts = parseByteSideParts(fields["candidate_parts"]);
+    if (!fields["candidate_parts"].empty() && statement.candidate_parts.empty())
+        return std::nullopt;
     if (statement.participants.empty())
         statement.participants = splitCSV(fields["unsafe_replicas"]);
 
     if (auto replay_quorum = parseSize(fields["replay_quorum"]))
         statement.replay_quorum = *replay_quorum;
+    statement.byte_side_quorum = statement.replay_quorum;
+    if (auto byte_side_quorum = parseSize(fields["byte_side_quorum"]))
+        statement.byte_side_quorum = *byte_side_quorum;
+    if (auto byte_side_required = parseBool(fields["byte_side_required"]))
+        statement.byte_side_required = *byte_side_required;
 
     if (!fields["unsafe_buffer_id"].empty())
     {
@@ -470,6 +625,7 @@ std::optional<HouseKeeperStorageStatement> storageIntegrityParseStatement(std::s
         || statement.payload_ref.empty()
         || statement.payload_hash.empty()
         || statement.replay_quorum == 0
+        || statement.byte_side_quorum == 0
         || statement.participants.empty())
         return std::nullopt;
 
@@ -549,6 +705,44 @@ std::optional<HouseKeeperStorageUnsafeResult> storageIntegrityParseUnsafeResult(
     return result;
 }
 
+std::optional<HouseKeeperStorageByteSideScan> storageIntegrityParseByteSideScan(
+    std::string_view statement_id,
+    std::string_view worker_id,
+    std::string_view data)
+{
+    auto fields = parseKeyValueLines(data);
+    if (fields.empty())
+        return std::nullopt;
+
+    auto parts = parseByteSideParts(fields["parts"]);
+    if (!fields["parts"].empty() && parts.empty())
+        return std::nullopt;
+
+    HouseKeeperStorageByteSideScan scan;
+    scan.statement_id = std::string{statement_id};
+    scan.worker_id = std::string{worker_id};
+    scan.scan_id = fields["scan_id"];
+    scan.table_id = fields["table_id"];
+    scan.unsafe_table = fields["unsafe_table"];
+    scan.part_set_hash = fields["part_set_hash"];
+    scan.parts = std::move(parts);
+
+    if (!fields["statement_id"].empty() && fields["statement_id"] != scan.statement_id)
+        return std::nullopt;
+    if (!fields["worker_id"].empty() && fields["worker_id"] != scan.worker_id)
+        return std::nullopt;
+    if (scan.statement_id.empty()
+        || scan.worker_id.empty()
+        || scan.scan_id.empty()
+        || scan.table_id.empty()
+        || scan.unsafe_table.empty()
+        || scan.part_set_hash.empty()
+        || scan.parts.empty())
+        return std::nullopt;
+
+    return scan;
+}
+
 std::optional<HouseKeeperStorageFinality> storageIntegrityParseFinality(std::string_view statement_id, std::string_view data)
 {
     auto fields = parseKeyValueLines(data);
@@ -609,6 +803,29 @@ bool storageIntegrityValidateUnsafeResult(
     return seen == expected;
 }
 
+bool storageIntegrityValidateByteSideScan(
+    const HouseKeeperStorageStatement & statement,
+    const HouseKeeperStorageByteSideScan & scan)
+{
+    if (scan.statement_id != statement.statement_id
+        || scan.table_id != statement.table_id
+        || scan.unsafe_table != statement.unsafe_table
+        || scan.worker_id.empty()
+        || scan.scan_id.empty()
+        || scan.part_set_hash.empty()
+        || scan.parts.empty())
+        return false;
+
+    const auto participant_matches = std::find(statement.participants.begin(), statement.participants.end(), scan.worker_id);
+    if (participant_matches == statement.participants.end())
+        return false;
+
+    if (!statement.candidate_parts.empty() && !byteSidePartsEqual(statement.candidate_parts, scan.parts))
+        return false;
+
+    return true;
+}
+
 std::string storageIntegritySerializeReplayJob(const HouseKeeperStorageStatement & statement)
 {
     return "statement_id=" + statement.statement_id + "\n"
@@ -623,6 +840,20 @@ std::string storageIntegritySerializeUnsafeTask(const HouseKeeperStorageStatemen
         "table_id=" + statement.table_id + "\n"
         "unsafe_table=" + statement.unsafe_table + "\n"
         "participants=" + joinCSV(statement.participants) + "\n";
+    if (storageIntegrityStatementUsesUnsafeBuffer(statement))
+        data += "unsafe_buffer_id=" + std::to_string(statement.unsafe_buffer_id) + "\n"
+            "unsafe_buffer_epoch=" + std::to_string(statement.unsafe_buffer_epoch) + "\n";
+    return data;
+}
+
+std::string storageIntegritySerializeByteSideScanTask(const HouseKeeperStorageStatement & statement)
+{
+    auto data = "scan_id=byteside-" + statement.statement_id + "\n"
+        "statement_id=" + statement.statement_id + "\n"
+        "table_id=" + statement.table_id + "\n"
+        "unsafe_table=" + statement.unsafe_table + "\n"
+        "partition_ids=" + joinCSV(statement.partition_ids) + "\n"
+        "candidate_parts=" + serializeByteSideParts(statement.candidate_parts) + "\n";
     if (storageIntegrityStatementUsesUnsafeBuffer(statement))
         data += "unsafe_buffer_id=" + std::to_string(statement.unsafe_buffer_id) + "\n"
             "unsafe_buffer_epoch=" + std::to_string(statement.unsafe_buffer_epoch) + "\n";
@@ -645,6 +876,8 @@ std::optional<HouseKeeperStorageDecision> storageIntegrityParseDecision(std::str
         decision.replay_quorum_met = *value;
     if (const auto value = parseBool(fields["unsafe_validated"]))
         decision.unsafe_validated = *value;
+    if (const auto value = parseBool(fields["byte_side_validated"]))
+        decision.byte_side_validated = *value;
     if (const auto value = parseBool(fields["finalized"]))
         decision.finalized = *value;
     if (const auto value = parseBool(fields["rollback_requested"]))
@@ -654,7 +887,9 @@ std::optional<HouseKeeperStorageDecision> storageIntegrityParseDecision(std::str
     if (const auto value = parseBool(fields["rollback_ready"]))
         decision.rollback_ready = *value;
     decision.replay_result_hash = fields["replay_result_hash"];
+    decision.byte_side_result_hash = fields["byte_side_result_hash"];
     decision.replay_tally = parseReplayTally(fields["replay_tally"]);
+    decision.byte_side_tally = parseReplayTally(fields["byte_side_tally"]);
     return decision;
 }
 
@@ -663,12 +898,15 @@ std::string storageIntegritySerializeDecision(const HouseKeeperStorageDecision &
     return "statement_id=" + decision.statement_id + "\n"
         "replay_quorum_met=" + std::string{decision.replay_quorum_met ? "true" : "false"} + "\n"
         "unsafe_validated=" + std::string{decision.unsafe_validated ? "true" : "false"} + "\n"
+        "byte_side_validated=" + std::string{decision.byte_side_validated ? "true" : "false"} + "\n"
         "finalized=" + std::string{decision.finalized ? "true" : "false"} + "\n"
         "rollback_requested=" + std::string{decision.rollback_requested ? "true" : "false"} + "\n"
         "promotion_ready=" + std::string{decision.promotion_ready ? "true" : "false"} + "\n"
         "rollback_ready=" + std::string{decision.rollback_ready ? "true" : "false"} + "\n"
         "replay_result_hash=" + decision.replay_result_hash + "\n"
-        "replay_tally=" + serializeReplayTally(decision.replay_tally) + "\n";
+        "byte_side_result_hash=" + decision.byte_side_result_hash + "\n"
+        "replay_tally=" + serializeReplayTally(decision.replay_tally) + "\n"
+        "byte_side_tally=" + serializeReplayTally(decision.byte_side_tally) + "\n";
 }
 
 std::string storageIntegritySerializePromotion(const HouseKeeperStorageStatement & statement)

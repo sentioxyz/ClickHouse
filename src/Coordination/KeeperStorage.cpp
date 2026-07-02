@@ -3890,13 +3890,49 @@ Coordination::Error houseKeeperAppendStorageIntegritySideEffects(
     if (houseKeeperHasPreprocessError(deltas))
         return Coordination::Error::ZOK;
 
-    const auto * create_request = dynamic_cast<const Coordination::ZooKeeperCreateRequest *>(&request);
-    if (!create_request)
+    auto is_storage_integrity_side_effect_create = [](const std::string & path)
+    {
+        return storageIntegrityStatementIDFromPath(path).has_value()
+            || storageIntegrityAttestationPathParts(path).has_value()
+            || storageIntegrityUnsafeResultPathParts(path).has_value()
+            || storageIntegrityByteSideScanPathParts(path).has_value()
+            || storageIntegrityFinalityIDFromPath(path).has_value()
+            || storageIntegrityRollbackIDFromPath(path).has_value();
+    };
+
+    std::optional<HouseKeeperWriteCandidate> create_candidate;
+    if (const auto * create_request = dynamic_cast<const Coordination::ZooKeeperCreateRequest *>(&request))
+    {
+        create_candidate = HouseKeeperWriteCandidate{
+            .path = create_request->path,
+            .data = create_request->data,
+            .operation = HouseKeeperWriteCandidate::Operation::Create,
+        };
+    }
+    else
+    {
+        std::vector<HouseKeeperWriteCandidate> candidates;
+        houseKeeperCollectWriteCandidates(request, candidates);
+        for (auto & candidate : candidates)
+        {
+            if (candidate.operation != HouseKeeperWriteCandidate::Operation::Create)
+                continue;
+            if (!is_storage_integrity_side_effect_create(candidate.path))
+                continue;
+            create_candidate = std::move(candidate);
+            break;
+        }
+    }
+
+    if (!create_candidate || !is_storage_integrity_side_effect_create(create_candidate->path))
         return Coordination::Error::ZOK;
 
-    if (const auto statement_id = storageIntegrityStatementIDFromPath(create_request->path))
+    const auto & create_path = create_candidate->path;
+    const auto & create_data = create_candidate->data;
+
+    if (const auto statement_id = storageIntegrityStatementIDFromPath(create_path))
     {
-        const auto statement = storageIntegrityParseStatement(*statement_id, create_request->data);
+        const auto statement = storageIntegrityParseStatement(*statement_id, create_data);
         if (!statement)
             return Coordination::Error::ZBADARGUMENTS;
 
@@ -3908,6 +3944,8 @@ Coordination::Error houseKeeperAppendStorageIntegritySideEffects(
             {storageIntegrityReplayJobPath(*statement_id), storageIntegritySerializeReplayJob(*statement)},
             {storageIntegrityUnsafeTaskPath(*statement_id), storageIntegritySerializeUnsafeTask(*statement)},
             {storageIntegrityUnsafeResultPath(*statement_id), ""},
+            {storageIntegrityByteSideScanTaskPath(*statement_id), storageIntegritySerializeByteSideScanTask(*statement)},
+            {storageIntegrityByteSideScansPath(*statement_id), ""},
             {storageIntegrityDecisionPath(*statement_id), storageIntegritySerializeDecision(decision)},
         };
         if (!houseKeeperAppendCreateNodeDeltas(storage, deltas, creates, zxid, time))
@@ -3918,34 +3956,42 @@ Coordination::Error houseKeeperAppendStorageIntegritySideEffects(
     std::optional<std::string> statement_id;
     std::optional<HouseKeeperStorageAttestation> candidate_attestation;
     std::optional<HouseKeeperStorageUnsafeResult> candidate_unsafe_result;
+    std::optional<HouseKeeperStorageByteSideScan> candidate_byte_side_scan;
     std::optional<HouseKeeperStorageFinality> candidate_finality;
     std::optional<HouseKeeperStorageRollback> candidate_rollback;
 
-    if (const auto attestation_path = storageIntegrityAttestationPathParts(create_request->path))
+    if (const auto attestation_path = storageIntegrityAttestationPathParts(create_path))
     {
         statement_id = attestation_path->first;
-        candidate_attestation = storageIntegrityParseAttestation(attestation_path->first, attestation_path->second, create_request->data);
+        candidate_attestation = storageIntegrityParseAttestation(attestation_path->first, attestation_path->second, create_data);
         if (!candidate_attestation)
             return Coordination::Error::ZBADARGUMENTS;
     }
-    else if (const auto unsafe_result_path = storageIntegrityUnsafeResultPathParts(create_request->path))
+    else if (const auto unsafe_result_path = storageIntegrityUnsafeResultPathParts(create_path))
     {
         statement_id = unsafe_result_path->first;
-        candidate_unsafe_result = storageIntegrityParseUnsafeResult(unsafe_result_path->first, unsafe_result_path->second, create_request->data);
+        candidate_unsafe_result = storageIntegrityParseUnsafeResult(unsafe_result_path->first, unsafe_result_path->second, create_data);
         if (!candidate_unsafe_result)
             return Coordination::Error::ZBADARGUMENTS;
     }
-    else if (const auto finality_statement_id = storageIntegrityFinalityIDFromPath(create_request->path))
+    else if (const auto scan_path = storageIntegrityByteSideScanPathParts(create_path))
+    {
+        statement_id = scan_path->first;
+        candidate_byte_side_scan = storageIntegrityParseByteSideScan(scan_path->first, scan_path->second, create_data);
+        if (!candidate_byte_side_scan)
+            return Coordination::Error::ZBADARGUMENTS;
+    }
+    else if (const auto finality_statement_id = storageIntegrityFinalityIDFromPath(create_path))
     {
         statement_id = *finality_statement_id;
-        candidate_finality = storageIntegrityParseFinality(*finality_statement_id, create_request->data);
+        candidate_finality = storageIntegrityParseFinality(*finality_statement_id, create_data);
         if (!candidate_finality)
             return Coordination::Error::ZBADARGUMENTS;
     }
-    else if (const auto rollback_statement_id = storageIntegrityRollbackIDFromPath(create_request->path))
+    else if (const auto rollback_statement_id = storageIntegrityRollbackIDFromPath(create_path))
     {
         statement_id = *rollback_statement_id;
-        candidate_rollback = storageIntegrityParseRollback(*rollback_statement_id, create_request->data);
+        candidate_rollback = storageIntegrityParseRollback(*rollback_statement_id, create_data);
         if (!candidate_rollback)
             return Coordination::Error::ZBADARGUMENTS;
     }
@@ -3962,6 +4008,7 @@ Coordination::Error houseKeeperAppendStorageIntegritySideEffects(
         *statement,
         std::move(candidate_attestation),
         std::move(candidate_unsafe_result),
+        std::move(candidate_byte_side_scan),
         std::move(candidate_finality),
         candidate_rollback);
 

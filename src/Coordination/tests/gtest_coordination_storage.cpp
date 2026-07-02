@@ -102,6 +102,21 @@ std::string housekeeperTestStorageUnsafeResultPath(std::string_view statement_id
     return housekeeperTestStorageUnsafeResultPath(statement_id) + "/" + std::string{participant_id};
 }
 
+std::string housekeeperTestStorageByteSideScanTaskPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/byte_side_scan_tasks/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageByteSideScansPath(std::string_view statement_id)
+{
+    return "/housekeeper/v1/storage_integrity/byte_side_scans/" + std::string{statement_id};
+}
+
+std::string housekeeperTestStorageByteSideScanPath(std::string_view statement_id, std::string_view worker_id)
+{
+    return housekeeperTestStorageByteSideScansPath(statement_id) + "/" + std::string{worker_id};
+}
+
 std::string housekeeperTestStorageFinalityPath(std::string_view statement_id)
 {
     return "/housekeeper/v1/storage_integrity/finality/" + std::string{statement_id};
@@ -155,6 +170,14 @@ void housekeeperTestAddControlPaths(Storage & storage)
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/unsafe_tasks");
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/unsafe_results");
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/unsafe_failures");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/byte_side_scan_tasks");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/byte_side_scans");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/byte_side_scan_failures");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/mutations");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/mutation_tasks");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/mutation_leases");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/mutation_claims");
+    housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/mutation_failures");
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/finality");
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/rollbacks");
     housekeeperTestAddPathIfMissing(storage, "/housekeeper/v1/storage_integrity/promotions");
@@ -249,7 +272,10 @@ std::string housekeeperTestStorageStatementData()
         "payload_ref=mockda://dual_hg_auth.t/stmt/hash\n"
         "payload_hash=payload-hash\n"
         "replay_quorum=2\n"
+        "byte_side_required=true\n"
+        "byte_side_quorum=2\n"
         "participants=hg-1,hg-2,hg-3\n"
+        "candidate_parts=202606:202606_1_1_0:1:part-row-lthash\n"
         "partition_ids=202606\n";
 }
 
@@ -268,7 +294,10 @@ std::string housekeeperTestStorageBufferedStatementData(
         "payload_ref=mockda://dual_hg_auth.t/stmt/hash\n"
         "payload_hash=payload-hash\n"
         "replay_quorum=2\n"
+        "byte_side_required=true\n"
+        "byte_side_quorum=2\n"
         "participants=hg-1,hg-2,hg-3\n"
+        "candidate_parts=202606:202606_1_1_0:1:part-row-lthash\n"
         "partition_ids=" + std::string{partition_ids} + "\n";
 }
 
@@ -285,6 +314,18 @@ std::string housekeeperTestStorageUnsafeResultData(std::string_view participant_
     return "row_count=1\n"
         "rows_hash=" + std::string{rows_hash} + "\n"
         "replica_digests=" + std::string{participant_id} + ":1:" + std::string{rows_hash} + "\n";
+}
+
+std::string housekeeperTestStorageByteSideScanData(
+    std::string_view worker_id,
+    std::string_view part_set_hash = "part-set-hash",
+    std::string_view unsafe_table = "`hg_unsafe`.`dual_hg_auth.t_a`")
+{
+    return "scan_id=scan-" + std::string{worker_id} + "\n"
+        "table_id=dual_hg_auth.t\n"
+        "unsafe_table=" + std::string{unsafe_table} + "\n"
+        "part_set_hash=" + std::string{part_set_hash} + "\n"
+        "parts=202606:202606_1_1_0:1:part-row-lthash\n";
 }
 
 std::string housekeeperTestStorageFinalityData()
@@ -2141,6 +2182,8 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityStatementCreatesTask
     EXPECT_NE(storage.container.find(housekeeperTestStorageReplayJobPath(statement_id)), storage.container.end());
     EXPECT_NE(storage.container.find(housekeeperTestStorageUnsafeTaskPath(statement_id)), storage.container.end());
     EXPECT_NE(storage.container.find(housekeeperTestStorageUnsafeResultPath(statement_id)), storage.container.end());
+    EXPECT_NE(storage.container.find(housekeeperTestStorageByteSideScanTaskPath(statement_id)), storage.container.end());
+    EXPECT_NE(storage.container.find(housekeeperTestStorageByteSideScansPath(statement_id)), storage.container.end());
     EXPECT_NE(storage.container.find(housekeeperTestStorageAttestationsPath(statement_id)), storage.container.end());
 
     const auto replay_job = housekeeperTestNodeData(storage, housekeeperTestStorageReplayJobPath(statement_id));
@@ -2150,6 +2193,10 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityStatementCreatesTask
     const auto unsafe_task = housekeeperTestNodeData(storage, housekeeperTestStorageUnsafeTaskPath(statement_id));
     EXPECT_NE(unsafe_task.find("participants=hg-1,hg-2,hg-3\n"), std::string::npos);
     EXPECT_EQ(unsafe_task.find("replicas="), std::string::npos);
+
+    const auto byte_side_task = housekeeperTestNodeData(storage, housekeeperTestStorageByteSideScanTaskPath(statement_id));
+    EXPECT_NE(byte_side_task.find("statement_id=stmt-ledger\n"), std::string::npos);
+    EXPECT_NE(byte_side_task.find("candidate_parts=202606:202606_1_1_0:1:part-row-lthash\n"), std::string::npos);
 }
 
 TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityRejectsStatementWithoutPayloadRef)
@@ -2209,10 +2256,24 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityCreatesPromotionAfte
     EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_id)), storage.container.end());
 
     EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_id, "hg-2"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+    EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_id)), storage.container.end());
 
-    const auto decision_data = housekeeperTestNodeData(storage, "/housekeeper/v1/storage_integrity/decisions/" + statement_id);
+    auto decision_data = housekeeperTestNodeData(storage, "/housekeeper/v1/storage_integrity/decisions/" + statement_id);
     EXPECT_NE(decision_data.find("replay_quorum_met=true\n"), std::string::npos);
     EXPECT_NE(decision_data.find("unsafe_validated=true\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("byte_side_validated=false\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("finalized=true\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("promotion_ready=false\n"), std::string::npos);
+
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageByteSideScanPath(statement_id, "hg-1"), housekeeperTestStorageByteSideScanData("hg-1")), zxid), Error::ZOK);
+    EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_id)), storage.container.end());
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageByteSideScanPath(statement_id, "hg-2"), housekeeperTestStorageByteSideScanData("hg-2")), zxid), Error::ZOK);
+
+    decision_data = housekeeperTestNodeData(storage, "/housekeeper/v1/storage_integrity/decisions/" + statement_id);
+    EXPECT_NE(decision_data.find("replay_quorum_met=true\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("unsafe_validated=true\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("byte_side_validated=true\n"), std::string::npos);
+    EXPECT_NE(decision_data.find("byte_side_result_hash=part-set-hash\n"), std::string::npos);
     EXPECT_NE(decision_data.find("finalized=true\n"), std::string::npos);
     EXPECT_NE(decision_data.find("promotion_ready=true\n"), std::string::npos);
 
@@ -2266,6 +2327,8 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityGroupsUnsafeBufferPa
     EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_a, "hg-3"), housekeeperTestStorageUnsafeResultData("hg-3")), zxid), Error::ZOK);
     EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_a, "hg-1"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
     EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_a, "hg-2"), housekeeperTestStorageAttestationData("state-a")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageByteSideScanPath(statement_a, "hg-1"), housekeeperTestStorageByteSideScanData("hg-1", "part-set-hash", unsafe_table)), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageByteSideScanPath(statement_a, "hg-2"), housekeeperTestStorageByteSideScanData("hg-2", "part-set-hash", unsafe_table)), zxid), Error::ZOK);
 
     EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(statement_a)), storage.container.end());
     EXPECT_EQ(storage.container.find(housekeeperTestStoragePromotionPath(promotion_group)), storage.container.end());
@@ -2276,6 +2339,8 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityGroupsUnsafeBufferPa
     EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageUnsafeResultPath(statement_b, "hg-3"), housekeeperTestStorageUnsafeResultData("hg-3")), zxid), Error::ZOK);
     EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_b, "hg-1"), housekeeperTestStorageAttestationData("state-b")), zxid), Error::ZOK);
     EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageAttestationPath(statement_b, "hg-2"), housekeeperTestStorageAttestationData("state-b")), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageByteSideScanPath(statement_b, "hg-1"), housekeeperTestStorageByteSideScanData("hg-1", "part-set-hash", unsafe_table)), zxid), Error::ZOK);
+    EXPECT_EQ(housekeeperTestProcessWrite(storage, housekeeperTestMakeCreateRequest(housekeeperTestStorageByteSideScanPath(statement_b, "hg-2"), housekeeperTestStorageByteSideScanData("hg-2", "part-set-hash", unsafe_table)), zxid), Error::ZOK);
 
     const auto decision_a = housekeeperTestNodeData(storage, "/housekeeper/v1/storage_integrity/decisions/" + statement_a);
     const auto decision_b = housekeeperTestNodeData(storage, "/housekeeper/v1/storage_integrity/decisions/" + statement_b);
@@ -2420,6 +2485,14 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityAllowsHouseGateWorke
         "/housekeeper/v1/storage_integrity/unsafe_tasks",
         "/housekeeper/v1/storage_integrity/unsafe_results",
         "/housekeeper/v1/storage_integrity/unsafe_failures",
+        "/housekeeper/v1/storage_integrity/byte_side_scan_tasks",
+        "/housekeeper/v1/storage_integrity/byte_side_scans",
+        "/housekeeper/v1/storage_integrity/byte_side_scan_failures",
+        "/housekeeper/v1/storage_integrity/mutations",
+        "/housekeeper/v1/storage_integrity/mutation_tasks",
+        "/housekeeper/v1/storage_integrity/mutation_leases",
+        "/housekeeper/v1/storage_integrity/mutation_claims",
+        "/housekeeper/v1/storage_integrity/mutation_failures",
         "/housekeeper/v1/storage_integrity/finality",
         "/housekeeper/v1/storage_integrity/rollbacks",
         "/housekeeper/v1/storage_integrity/promotions",
@@ -2474,6 +2547,12 @@ TYPED_TEST(CoordinationTest, TestHouseKeeperStorageIntegrityAllowsHouseGateWorke
         housekeeperTestProcessWrite(
             storage,
             housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/unsafe_failures/stmt-worker", "{\"error\":\"boom\"}"),
+            zxid),
+        Error::ZOK);
+    EXPECT_EQ(
+        housekeeperTestProcessWrite(
+            storage,
+            housekeeperTestMakeCreateRequest("/housekeeper/v1/storage_integrity/byte_side_scan_failures/stmt-worker/hg-1", "{\"error\":\"boom\"}"),
             zxid),
         Error::ZOK);
     EXPECT_EQ(

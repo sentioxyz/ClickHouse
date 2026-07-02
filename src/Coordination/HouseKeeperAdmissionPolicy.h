@@ -416,6 +416,36 @@ std::optional<HouseKeeperStorageUnsafeResult> houseKeeperStorageIntegrityGetUnsa
 }
 
 template <typename Storage>
+std::vector<HouseKeeperStorageByteSideScan> houseKeeperStorageIntegrityGetByteSideScans(
+    Storage & storage,
+    const HouseKeeperStorageStatement & statement,
+    std::optional<HouseKeeperStorageByteSideScan> candidate_scan = std::nullopt)
+{
+    std::map<std::string, HouseKeeperStorageByteSideScan> by_worker;
+
+    if (candidate_scan)
+        by_worker.emplace(candidate_scan->worker_id, std::move(*candidate_scan));
+
+    for (const auto & participant_id : statement.participants)
+    {
+        if (by_worker.contains(participant_id))
+            continue;
+        const auto data = houseKeeperGetNodeData(storage, storageIntegrityByteSideScanPath(statement.statement_id, participant_id));
+        if (!data)
+            continue;
+        const auto scan = storageIntegrityParseByteSideScan(statement.statement_id, participant_id, *data);
+        if (scan)
+            by_worker.emplace(participant_id, *scan);
+    }
+
+    std::vector<HouseKeeperStorageByteSideScan> scans;
+    scans.reserve(by_worker.size());
+    for (auto & [_, scan] : by_worker)
+        scans.push_back(std::move(scan));
+    return scans;
+}
+
+template <typename Storage>
 bool houseKeeperStorageIntegrityHasFinality(
     Storage & storage,
     const std::string & statement_id,
@@ -486,12 +516,43 @@ inline void houseKeeperStorageIntegrityApplyReplayTally(
     }
 }
 
+inline void houseKeeperStorageIntegrityApplyByteSideTally(
+    HouseKeeperStorageDecision & decision,
+    const HouseKeeperStorageStatement & statement,
+    const std::vector<HouseKeeperStorageByteSideScan> & scans)
+{
+    decision.byte_side_tally.clear();
+    decision.byte_side_validated = !statement.byte_side_required;
+    decision.byte_side_result_hash.clear();
+
+    if (!statement.byte_side_required)
+        return;
+
+    for (const auto & scan : scans)
+    {
+        if (!storageIntegrityValidateByteSideScan(statement, scan))
+            continue;
+        ++decision.byte_side_tally[scan.part_set_hash];
+    }
+
+    for (const auto & [result_hash, count] : decision.byte_side_tally)
+    {
+        if (count >= statement.byte_side_quorum)
+        {
+            decision.byte_side_validated = true;
+            decision.byte_side_result_hash = result_hash;
+            return;
+        }
+    }
+}
+
 template <typename Storage>
 HouseKeeperStorageDecision houseKeeperStorageIntegrityEvaluate(
     Storage & storage,
     const HouseKeeperStorageStatement & statement,
     std::optional<HouseKeeperStorageAttestation> candidate_attestation = std::nullopt,
     std::optional<HouseKeeperStorageUnsafeResult> candidate_unsafe_result = std::nullopt,
+    std::optional<HouseKeeperStorageByteSideScan> candidate_byte_side_scan = std::nullopt,
     std::optional<HouseKeeperStorageFinality> candidate_finality = std::nullopt,
     std::optional<HouseKeeperStorageRollback> candidate_rollback = std::nullopt)
 {
@@ -507,12 +568,15 @@ HouseKeeperStorageDecision houseKeeperStorageIntegrityEvaluate(
 
     const auto unsafe_result = houseKeeperStorageIntegrityGetUnsafeResult(storage, statement, std::move(candidate_unsafe_result));
     decision.unsafe_validated = unsafe_result && storageIntegrityValidateUnsafeResult(statement, *unsafe_result);
+    const auto byte_side_scans = houseKeeperStorageIntegrityGetByteSideScans(storage, statement, std::move(candidate_byte_side_scan));
+    houseKeeperStorageIntegrityApplyByteSideTally(decision, statement, byte_side_scans);
     decision.finalized = houseKeeperStorageIntegrityHasFinality(storage, statement.statement_id, std::move(candidate_finality));
     decision.rollback_requested = houseKeeperStorageIntegrityGetRollback(storage, statement.statement_id, std::move(candidate_rollback)).has_value();
     decision.rollback_ready = decision.rollback_requested;
     decision.promotion_ready = !decision.rollback_requested
         && decision.replay_quorum_met
         && decision.unsafe_validated
+        && decision.byte_side_validated
         && decision.finalized;
     return decision;
 }
@@ -548,6 +612,8 @@ std::optional<HouseKeeperAdmissionRejection> checkHouseKeeperStorageIntegrityAdm
                 || houseKeeperNodeExists(storage, storageIntegrityAttestationsPath(*statement_id))
                 || houseKeeperNodeExists(storage, storageIntegrityUnsafeTaskPath(*statement_id))
                 || houseKeeperNodeExists(storage, storageIntegrityUnsafeResultPath(*statement_id))
+                || houseKeeperNodeExists(storage, storageIntegrityByteSideScanTaskPath(*statement_id))
+                || houseKeeperNodeExists(storage, storageIntegrityByteSideScansPath(*statement_id))
                 || houseKeeperNodeExists(storage, storageIntegrityDecisionPath(*statement_id)))
                 return houseKeeperReject(candidate, Coordination::Error::ZBADARGUMENTS);
             continue;
@@ -574,6 +640,17 @@ std::optional<HouseKeeperAdmissionRejection> checkHouseKeeperStorageIntegrityAdm
             const auto statement = houseKeeperStorageIntegrityGetStatement(storage, result_path->first);
             const auto result = storageIntegrityParseUnsafeResult(result_path->first, result_path->second, candidate.data);
             if (!statement || !result || !storageIntegrityValidateUnsafeParticipantResult(*statement, *result))
+                return houseKeeperReject(candidate, Coordination::Error::ZBADARGUMENTS);
+            continue;
+        }
+
+        if (const auto scan_path = storageIntegrityByteSideScanPathParts(candidate.path))
+        {
+            if (candidate.operation != HouseKeeperWriteCandidate::Operation::Create)
+                return houseKeeperReject(candidate, Coordination::Error::ZBADARGUMENTS);
+            const auto statement = houseKeeperStorageIntegrityGetStatement(storage, scan_path->first);
+            const auto scan = storageIntegrityParseByteSideScan(scan_path->first, scan_path->second, candidate.data);
+            if (!statement || !scan || !storageIntegrityValidateByteSideScan(*statement, *scan))
                 return houseKeeperReject(candidate, Coordination::Error::ZBADARGUMENTS);
             continue;
         }
