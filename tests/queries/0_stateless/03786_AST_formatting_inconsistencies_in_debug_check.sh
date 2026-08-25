@@ -41,6 +41,9 @@ format_query "SELECT * FROM t1 JOIN t2 ON ((t1.x = t2.x) AND (t1.x IS NULL) AS e
 # Test that explicit LOCAL JOIN locality survives AST formatting
 format_query "SELECT * FROM t1 AS lhs LOCAL JOIN t2 AS rhs ON lhs.x = rhs.x"
 
+# Test that LOCAL is parsed as join locality instead of an implicit table alias
+format_query "SELECT * FROM t1 LOCAL JOIN t2 ON t1.x = t2.x"
+
 # Various pathological queries, if the query is valid the formatter should mostly leave it alone
 format_query "SELECT (1,1) c0, (1,(1)) c0"
 format_query "SELECT (1, (1 AS c0, 1 AS c0) IS NULL AS c0), (1, (1, 1 AS c0) IS NULL AS c0) IS NULL AS c0"

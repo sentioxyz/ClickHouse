@@ -30,6 +30,10 @@ Original:          SELECT * FROM t1 AS lhs LOCAL JOIN t2 AS rhs ON lhs.x = rhs.x
 format(original):  SELECT * FROM t1 AS lhs LOCAL INNER JOIN t2 AS rhs ON lhs.x = rhs.x
 format(formatted): SELECT * FROM t1 AS lhs LOCAL INNER JOIN t2 AS rhs ON lhs.x = rhs.x
 
+Original:          SELECT * FROM t1 LOCAL JOIN t2 ON t1.x = t2.x
+format(original):  SELECT * FROM t1 LOCAL INNER JOIN t2 ON t1.x = t2.x
+format(formatted): SELECT * FROM t1 LOCAL INNER JOIN t2 ON t1.x = t2.x
+
 Original:          SELECT (1,1) c0, (1,(1)) c0
 format(original):  SELECT (1, 1) AS c0, (1, 1) AS c0
 format(formatted): SELECT (1, 1) AS c0, (1, 1) AS c0
