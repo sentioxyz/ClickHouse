@@ -38,6 +38,9 @@ format_query "SELECT tuple(1, 'a') as a1, tuple(1, 'a') IN (tuple(1, 'a') as a1)
 # Test alias in ON clause of JOIN
 format_query "SELECT * FROM t1 JOIN t2 ON ((t1.x = t2.x) AND (t1.x IS NULL) AS e2)"
 
+# Test that explicit LOCAL JOIN locality survives AST formatting
+format_query "SELECT * FROM t1 AS lhs LOCAL JOIN t2 AS rhs ON lhs.x = rhs.x"
+
 # Various pathological queries, if the query is valid the formatter should mostly leave it alone
 format_query "SELECT (1,1) c0, (1,(1)) c0"
 format_query "SELECT (1, (1 AS c0, 1 AS c0) IS NULL AS c0), (1, (1, 1 AS c0) IS NULL AS c0) IS NULL AS c0"
