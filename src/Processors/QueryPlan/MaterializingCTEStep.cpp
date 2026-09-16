@@ -1,5 +1,6 @@
 #include <Processors/QueryPlan/MaterializingCTEStep.h>
 
+#include <Interpreters/PreparedSets.h>
 #include <Processors/QueryPlan/ITransformingStep.h>
 #include <Processors/QueryPlan/Optimizations/QueryPlanOptimizationSettings.h>
 #include <QueryPipeline/QueryPipelineBuilder.h>
@@ -113,6 +114,14 @@ std::vector<std::unique_ptr<QueryPlan>> DelayedMaterializingCTEsStep::makePlansF
     DelayedMaterializingCTEsStep && step,
     const QueryPlanOptimizationSettings & optimization_settings)
 {
+    /// Optimizing a CTE body is not free of side effects: index analysis builds
+    /// `x IN (subquery)` sets in place. If such a subquery reads another
+    /// materialized CTE, its table is still empty here - that CTE's plan has only
+    /// been scheduled, not run - and the read raises LOGICAL_ERROR "Reading from
+    /// materialized CTE ... before it has been materialized". The guard suppresses
+    /// just those in-place set builds; every optimization still runs.
+    PlanningMaterializedCTEGuard planning_guard;
+
     std::vector<std::unique_ptr<QueryPlan>> plans;
     for (auto & materialized_cte : step.ctes)
     {

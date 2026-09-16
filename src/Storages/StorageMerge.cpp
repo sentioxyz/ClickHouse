@@ -52,6 +52,8 @@
 #include <Storages/StorageDistributed.h>
 #include <Storages/StorageFactory.h>
 #include <Storages/StorageMerge.h>
+
+#include <Interpreters/PreparedSets.h>
 #include <Storages/StorageView.h>
 #include <Storages/VirtualColumnUtils.h>
 #include <Storages/checkAndGetLiteralArgument.h>
@@ -1412,6 +1414,16 @@ StorageMerge::StorageListWithLocks ReadFromMerge::getSelectedTables(
         };
         // Extract predicate part, that could be evaluated only with _database and _table columns
         auto table_filter_dag = VirtualColumnUtils::splitFilterDagForAllowedInputs(filter_actions_dag->getOutputs().at(0), &sample_block, query_context);
+
+        /// buildFilterExpression below builds the predicate's sets and the filter is
+        /// evaluated right away. While a materialized CTE's body is being planned one
+        /// of those sets may read a CTE that is not filled yet, which raises
+        /// LOGICAL_ERROR. Skipping the filter only costs pruning: every table stays a
+        /// candidate and the predicate is applied again when the query runs.
+        if (table_filter_dag && PlanningMaterializedCTEGuard::isPlanningMaterializedCTE()
+            && VirtualColumnUtils::dagReadsUnbuiltMaterializedCTE(*table_filter_dag))
+            table_filter_dag.reset();
+
         if (table_filter_dag)
         {
             auto filter_expression = VirtualColumnUtils::buildFilterExpression(std::move(*table_filter_dag), query_context);

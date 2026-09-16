@@ -18,6 +18,24 @@
 namespace DB
 {
 
+/// While a materialized CTE's body is being planned, index analysis must not
+/// build `x IN (subquery)` sets in place: the subquery may read another
+/// materialized CTE whose table is not filled yet. The guard makes those set
+/// builds bail out, which index analysis already handles - the atom simply does
+/// not participate in pruning. Nothing else about planning changes.
+class PlanningMaterializedCTEGuard
+{
+public:
+    PlanningMaterializedCTEGuard();
+    ~PlanningMaterializedCTEGuard();
+
+    static bool isPlanningMaterializedCTE();
+
+private:
+    bool previous;
+};
+
+
 class QueryPlan;
 
 class Set;
@@ -172,6 +190,10 @@ public:
 
     QueryTreeNodePtr detachQueryTree() { return std::move(query_tree); }
     void setQueryPlan(std::unique_ptr<QueryPlan> source_);
+
+    /// True when this subquery's plan reads a materialized CTE whose table has
+    /// not been filled yet, so executing it now would raise LOGICAL_ERROR.
+    bool readsUnbuiltMaterializedCTE() const;
 
     void buildExternalTableFromInplaceSet(StoragePtr external_table_);
     void setExternalTable(StoragePtr external_table_);
