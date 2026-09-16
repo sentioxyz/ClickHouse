@@ -1,5 +1,7 @@
 #include <Processors/QueryPlan/ReadFromMergeTree.h>
 
+#include <Interpreters/PreparedSets.h>
+
 #include <Analyzer/QueryNode.h>
 #include <Core/Settings.h>
 #include <Functions/IFunction.h>
@@ -1995,6 +1997,8 @@ void ReadFromMergeTree::buildIndexes(
             !settings[Setting::use_partition_pruning] /* skip_analysis */);
     }
 
+    /// filterPartsByVirtualColumns checks the CTE dependency itself, after
+    /// splitting out the part of the predicate it actually evaluates.
     indexes->part_values
         = MergeTreeDataSelectExecutor::filterPartsByVirtualColumns(metadata_snapshot, data, parts, filter_dag.predicate, query_context);
 
@@ -2291,9 +2295,21 @@ void ReadFromMergeTree::applyFilters(ActionDAGNodes added_filter_nodes)
         /// an empty right side) closes its inputs early, DelayedPortsProcessor may terminate
         /// the set-building pipeline before the set is ready.
         /// Building sets synchronously here eliminates this race condition entirely.
-        if (query_info.prewhere_info)
+        /// While a materialized CTE's body is being planned, a set here may read a
+        /// CTE that is not materialized yet, which raises LOGICAL_ERROR. The race
+        /// this guards against cannot happen then - the CTE's plan is executed on
+        /// its own, before the query that reads it - so leave the sets to
+        /// CreatingSetsStep.
+        const bool planning_cte = PlanningMaterializedCTEGuard::isPlanningMaterializedCTE();
+
+        if (query_info.prewhere_info
+            && !(planning_cte
+                 && VirtualColumnUtils::dagReadsUnbuiltMaterializedCTE(query_info.prewhere_info->prewhere_actions)))
             VirtualColumnUtils::buildSetsForDAG(query_info.prewhere_info->prewhere_actions, context);
-        if (query_info.row_level_filter)
+
+        if (query_info.row_level_filter
+            && !(planning_cte
+                 && VirtualColumnUtils::dagReadsUnbuiltMaterializedCTE(query_info.row_level_filter->actions)))
             VirtualColumnUtils::buildSetsForDAG(query_info.row_level_filter->actions, context);
 
         buildIndexes(
@@ -2867,7 +2883,12 @@ void ReadFromMergeTree::updatePrewhereInfo(const PrewhereInfoPtr & prewhere_info
     /// so `applyFilters` is skipped there and sets must not be built — the original plan's
     /// `CreatingSetsStep` (added later via `addStepsToBuildSets`) handles them. Building here
     /// would re-execute the IN-subquery and double-count its rows against `max_rows_to_read`.
-    if (query_info.prewhere_info && indexes.has_value())
+    /// While a materialized CTE's body is being planned the same reasoning applies
+    /// for a different reason: the subquery may read a CTE that is not
+    /// materialized yet. Leave those sets to `CreatingSetsStep` as well.
+    if (query_info.prewhere_info && indexes.has_value()
+        && !(PlanningMaterializedCTEGuard::isPlanningMaterializedCTE()
+             && VirtualColumnUtils::dagReadsUnbuiltMaterializedCTE(query_info.prewhere_info->prewhere_actions)))
         VirtualColumnUtils::buildSetsForDAGExcludingGlobalIn(query_info.prewhere_info->prewhere_actions, context);
 
     output_header = std::make_shared<const Block>(MergeTreeSelectProcessor::transformHeader(

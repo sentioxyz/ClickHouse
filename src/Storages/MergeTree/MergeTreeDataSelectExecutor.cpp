@@ -4,6 +4,8 @@
 #include <boost/rational.hpp> /// For calculations related to sampling coefficients.
 
 #include <Storages/MergeTree/MergeTreeDataSelectExecutor.h>
+
+#include <Interpreters/PreparedSets.h>
 #include <Storages/MergeTree/MergeTreeIndices.h>
 #include <Storages/MergeTree/MergeTreeIndexReader.h>
 #include <Storages/MergeTree/MergeTreeIndexMinMax.h>
@@ -557,6 +559,16 @@ std::optional<std::unordered_set<String>> MergeTreeDataSelectExecutor::filterPar
     auto sample = data.getHeaderWithVirtualsForFilter(metadata_snapshot);
     auto dag = VirtualColumnUtils::splitFilterDagForAllowedInputs(predicate, &sample, context);
     if (!dag)
+        return {};
+
+    /// The filter is evaluated right below, which builds any `x IN (subquery)`
+    /// sets it contains. While a materialized CTE's body is being planned one of
+    /// them may read a CTE that is not filled yet, and that read raises
+    /// LOGICAL_ERROR. Check the split DAG rather than the whole predicate: a
+    /// condition on an ordinary column never reaches this filter, so it must not
+    /// cost the pruning that the virtual column part of the predicate provides.
+    if (PlanningMaterializedCTEGuard::isPlanningMaterializedCTE()
+        && VirtualColumnUtils::dagReadsUnbuiltMaterializedCTE(*dag))
         return {};
 
     /// Check if the extracted DAG actually uses any virtual columns.

@@ -96,6 +96,31 @@ void buildSetsForDAG(const ActionsDAG & dag, const ContextPtr & context)
     buildSetsForDagImpl(dag, context, /* ordered = */ false);
 }
 
+bool dagReadsUnbuiltMaterializedCTE(const ActionsDAG & dag)
+{
+    for (const auto & node : dag.getNodes())
+    {
+        if (node.type != ActionsDAG::ActionType::COLUMN)
+            continue;
+
+        const ColumnSet * column_set = checkAndGetColumnConstData<const ColumnSet>(node.column.get());
+        if (!column_set)
+            column_set = checkAndGetColumn<const ColumnSet>(node.column.get());
+        if (!column_set)
+            continue;
+
+        auto future_set = column_set->getData();
+        if (future_set == nullptr || future_set->get())
+            continue;
+
+        if (const auto * from_subquery = typeid_cast<const FutureSetFromSubquery *>(future_set.get());
+            from_subquery && from_subquery->readsUnbuiltMaterializedCTE())
+            return true;
+    }
+
+    return false;
+}
+
 void buildSetsForDAGExcludingGlobalIn(const ActionsDAG & dag, const ContextPtr & context)
 {
     /// Collect ColumnSet nodes that are arguments to globalIn/globalNotIn functions.

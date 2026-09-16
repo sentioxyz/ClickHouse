@@ -15,7 +15,11 @@
 #include <Storages/IStorage.h>
 #include <Processors/Executors/CompletedPipelineExecutor.h>
 #include <Processors/QueryPlan/BuildQueryPipelineSettings.h>
+#include <Common/typeid_cast.h>
 #include <Processors/QueryPlan/CreatingSetsStep.h>
+#include <Processors/QueryPlan/MaterializingCTEStep.h>
+#include <Processors/QueryPlan/ReadFromMemoryStorageStep.h>
+#include <Storages/StorageMemory.h>
 #include <Processors/QueryPlan/Optimizations/QueryPlanOptimizationSettings.h>
 #include <Processors/QueryPlan/QueryPlan.h>
 #include <Processors/Sinks/EmptySink.h>
@@ -27,6 +31,28 @@
 
 namespace DB
 {
+
+namespace
+{
+thread_local bool planning_materialized_cte = false;
+}
+
+PlanningMaterializedCTEGuard::PlanningMaterializedCTEGuard()
+    : previous(planning_materialized_cte)
+{
+    planning_materialized_cte = true;
+}
+
+PlanningMaterializedCTEGuard::~PlanningMaterializedCTEGuard()
+{
+    planning_materialized_cte = previous;
+}
+
+bool PlanningMaterializedCTEGuard::isPlanningMaterializedCTE()
+{
+    return planning_materialized_cte;
+}
+
 namespace Setting
 {
     extern const SettingsUInt64 max_bytes_in_set;
@@ -312,9 +338,62 @@ void FutureSetFromSubquery::buildSetInplace(const ContextPtr & context)
     executor.execute();
 }
 
+bool FutureSetFromSubquery::readsUnbuiltMaterializedCTE() const
+{
+    if (source == nullptr || !source->isInitialized())
+        return false;
+
+    std::vector<QueryPlan::Node *> stack;
+    stack.push_back(source->getRootNode());
+
+    while (!stack.empty())
+    {
+        auto * node = stack.back();
+        stack.pop_back();
+
+        if (node == nullptr)
+            continue;
+
+        if (const auto * read_step = typeid_cast<const ReadFromMemoryStorageStep *>(node->step.get()))
+        {
+            if (const auto * memory = typeid_cast<const StorageMemory *>(read_step->getStorage().get()))
+            {
+                /// Held by weak_ptr on the storage: one already gone cannot be read.
+                if (auto cte = memory->getMaterializedCTE(); cte && !cte->is_built)
+                    return true;
+            }
+        }
+
+        /// A nested DelayedMaterializingCTEs step carries CTEs this plan reads
+        /// before optimization turns them into ReadFromMemoryStorage steps.
+        if (const auto * delayed = typeid_cast<const DelayedMaterializingCTEsStep *>(node->step.get()))
+        {
+            for (const auto & cte : delayed->getCTEs())
+            {
+                if (!cte->is_built)
+                    return true;
+            }
+        }
+
+        for (auto * child : node->children)
+            stack.push_back(child);
+    }
+
+    return false;
+}
+
 SetPtr FutureSetFromSubquery::buildOrderedSetInplace(const ContextPtr & context)
 {
     if (!context->getSettingsRef()[Setting::use_index_for_in_with_subqueries])
+        return nullptr;
+
+    /// Building this set executes the subquery right now. While a materialized
+    /// CTE's body is being planned, that is only unsafe when the subquery reads
+    /// a CTE that is not materialized yet; such a read raises LOGICAL_ERROR.
+    /// Every other subquery must still be built, or index analysis loses the
+    /// atom and the CTE stops pruning. Callers treat a null set as "this atom
+    /// cannot be used for pruning", so bailing out here is safe.
+    if (PlanningMaterializedCTEGuard::isPlanningMaterializedCTE() && readsUnbuiltMaterializedCTE())
         return nullptr;
 
     if (auto set = get())

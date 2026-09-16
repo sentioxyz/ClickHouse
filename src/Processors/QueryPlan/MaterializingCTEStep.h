@@ -72,6 +72,9 @@ public:
         DelayedMaterializingCTEsStep && step,
         const QueryPlanOptimizationSettings & optimization_settings);
 
+    /// CTEs this step is responsible for materializing.
+    const std::vector<MaterializedCTEPtr> & getCTEs() const { return ctes; }
+
 private:
     void updateOutputHeader() override { output_header = getInputHeaders().front(); }
 
