@@ -204,3 +204,19 @@ SELECT count() FROM c a, c b SETTINGS max_rows_to_read = 1000, optimize_move_to_
 DROP TABLE t_04712_part;
 DROP TABLE t_04712_mrg;
 DROP TABLE t_04712_mrg_src;
+
+SELECT '--- a scalar subquery over a materialized CTE ---';
+
+DROP TABLE IF EXISTS t_04712_scalar;
+CREATE TABLE t_04712_scalar (id UInt64, c UInt64) ENGINE = MergeTree ORDER BY id;
+INSERT INTO t_04712_scalar SELECT number, number FROM numbers(100);
+
+-- Scalar subqueries are planned with is_subquery, which makes
+-- collectMaterializedCTEs return nothing: no materialization step is added and
+-- the pipeline reads the CTE's still empty table at run time.
+WITH
+    a AS MATERIALIZED (SELECT * FROM t_04712_scalar WHERE id = 5),
+    b AS MATERIALIZED (SELECT * FROM a)
+SELECT count() FROM t_04712_scalar WHERE c <= (SELECT c FROM b);
+
+DROP TABLE t_04712_scalar;

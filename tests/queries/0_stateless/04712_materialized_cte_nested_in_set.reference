@@ -28,3 +28,5 @@
 10000
 --- a virtual column predicate mixed with a CTE condition still prunes ---
 10000
+--- a scalar subquery over a materialized CTE ---
+6

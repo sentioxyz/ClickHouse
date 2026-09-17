@@ -142,7 +142,13 @@ void QueryAnalyzer::evaluateScalarSubqueryIfNeeded(QueryTreeNodePtr & node, Iden
         if (auto * new_union_node = query_tree->as<UnionNode>())
             new_union_node->getMutableContext() = subquery_context;
 
-        auto options = SelectQueryOptions(QueryProcessingStage::Complete, scope.subquery_depth, true /*is_subquery*/);
+        /// Planning with is_subquery makes collectMaterializedCTEs return nothing, so
+        /// no materialization step is added and the pipeline reads a CTE's still
+        /// empty table - "Reading from materialized CTE ... before it has been
+        /// materialized". Set subqueries already force materialization for the same
+        /// reason; scalar subqueries need it too.
+        auto options = SelectQueryOptions(QueryProcessingStage::Complete, scope.subquery_depth, true /*is_subquery*/)
+                           .forceMaterializeCTE();
         options.only_analyze = only_analyze;
 
         QueryTreePassManager query_tree_pass_manager(subquery_context);
