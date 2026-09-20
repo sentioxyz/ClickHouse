@@ -144,10 +144,25 @@ if (ARCH_AMD64 AND NOT APPLE)
     if (NOT YASM_PATH)
         message(FATAL_ERROR "Please install the Yasm assembler to build ClickHouse with Hadoop Distributed File System (HDFS) support")
     endif ()
-    add_custom_command(
-        OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/crc_iscsi_v_pcl.o
-        COMMAND ${YASM_PATH} -f x64 -f elf64 -X gnu -g dwarf2 -D LINUX -o ${CMAKE_CURRENT_BINARY_DIR}/crc_iscsi_v_pcl.o ${HDFS3_SOURCE_DIR}/common/crc_iscsi_v_pcl.asm
-        COMMENT "Translating Intel CRC assembly to object code")
+    if (ENABLE_BUILD_PATH_MAPPING)
+        # YASM 1.3 has no prefix-map equivalent and records absolute source and
+        # working-directory paths in DWARF. Strip only its debug sections; the
+        # object code and its symbols remain available to the linker.
+        find_program(LLVM_OBJCOPY_PATH NAMES llvm-objcopy-22 llvm-objcopy)
+        if (NOT LLVM_OBJCOPY_PATH)
+            message(FATAL_ERROR "llvm-objcopy is required to strip YASM debug paths")
+        endif ()
+        add_custom_command(
+            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/crc_iscsi_v_pcl.o
+            COMMAND ${YASM_PATH} -f x64 -f elf64 -X gnu -g dwarf2 -D LINUX -o ${CMAKE_CURRENT_BINARY_DIR}/crc_iscsi_v_pcl.o ${HDFS3_SOURCE_DIR}/common/crc_iscsi_v_pcl.asm
+            COMMAND ${LLVM_OBJCOPY_PATH} --strip-debug ${CMAKE_CURRENT_BINARY_DIR}/crc_iscsi_v_pcl.o
+            COMMENT "Translating Intel CRC assembly to object code")
+    else ()
+        add_custom_command(
+            OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/crc_iscsi_v_pcl.o
+            COMMAND ${YASM_PATH} -f x64 -f elf64 -X gnu -g dwarf2 -D LINUX -o ${CMAKE_CURRENT_BINARY_DIR}/crc_iscsi_v_pcl.o ${HDFS3_SOURCE_DIR}/common/crc_iscsi_v_pcl.asm
+            COMMENT "Translating Intel CRC assembly to object code")
+    endif ()
     LIST(APPEND SRCS ${CMAKE_CURRENT_BINARY_DIR}/crc_iscsi_v_pcl.o)
 endif ()
 
