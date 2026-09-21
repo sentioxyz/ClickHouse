@@ -5,6 +5,10 @@ on:
     - cron: '13 * * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   revert-broken:
     runs-on: ubuntu-latest
@@ -12,7 +16,7 @@ jobs:
       - name: Check out repository
         uses: ClickHouse/checkout@v1
         with:
-          token: ${{ secrets.ROBOT_CLICKHOUSE_COMMIT_TOKEN }}
+          token: ${{ github.token }}
           # Full history: the 24h commit scan is paginated and can cover more than a few
           # hundred commits, so a shallow clone may not contain every candidate merge SHA,
           # which would make `git revert` fail and be misreported as an unrevertable conflict.
@@ -23,7 +27,7 @@ jobs:
           git config user.email "clickhouse-robot-gh@users.noreply.github.com"
       - name: Find and revert broken merges
         env:
-          GH_TOKEN: ${{ secrets.ROBOT_CLICKHOUSE_COMMIT_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
