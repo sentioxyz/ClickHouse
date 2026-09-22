@@ -85,13 +85,13 @@ struct DecimalOpHelpers
         return result;
     }
 
-    static VectorWithMemoryTracking<UInt8> divide(const VectorWithMemoryTracking<UInt8> & number, const Int256 & divisor)
+    static VectorWithMemoryTracking<UInt8> divide(const VectorWithMemoryTracking<UInt8> & number, const Int512 & divisor)
     {
         VectorWithMemoryTracking<UInt8> result;
         const auto max_index = number.size() - 1;
 
         UInt16 idx = 0;
-        Int256 temp = 0;
+        Int512 temp = 0;
 
         while (temp < divisor && max_index > idx)
         {
@@ -113,7 +113,7 @@ struct DecimalOpHelpers
         return result;
     }
 
-    static VectorWithMemoryTracking<UInt8> toDigits(Int256 x)
+    static VectorWithMemoryTracking<UInt8> toDigits(Int512 x)
     {
         VectorWithMemoryTracking<UInt8> result;
         if (x >= 10)
@@ -123,13 +123,13 @@ struct DecimalOpHelpers
         return result;
     }
 
-    static UInt256 fromDigits(const VectorWithMemoryTracking<UInt8> & digits)
+    static UInt512 fromDigits(const VectorWithMemoryTracking<UInt8> & digits)
     {
-        Int256 result = 0;
+        Int512 result = 0;
         UInt32 scale = 0;
         for (auto i = digits.rbegin(); i != digits.rend(); ++i)
         {
-            result += DecimalUtils::scaleMultiplier<Decimal256>(scale) * (*i);
+            result += DecimalUtils::scaleMultiplier<Decimal512>(scale) * (*i);
             ++scale;
         }
         return result;
@@ -265,7 +265,7 @@ public:
 
             if (!which_scale.isUInt8())
                 throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Illegal type {} of third argument of function {}. "
-                    "Should be constant UInt8 from range[0, 76]", arguments[2].type->getName(), getName());
+                    "Should be constant UInt8 from range[0, 154]", arguments[2].type->getName(), getName());
 
             const ColumnConst * scale_column = checkAndGetColumnConst<ColumnUInt8>(arguments[2].column.get());
 
@@ -282,11 +282,11 @@ public:
         As in simple division/multiplication for decimals, we scale the result up, but it is explicit here and no downscale is performed.
         It guarantees that result will have given scale and it can also be MANUALLY converted to other decimal types later.
         **/
-        if (scale > DecimalUtils::max_precision<Decimal256>)
+        if (scale > DecimalUtils::max_precision<Decimal512>)
             throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT, "Illegal value of third argument of function {}: "
-                            "must be integer in range [0, 76]", this->getName());
+                            "must be integer in range [0, 154]", this->getName());
 
-        return std::make_shared<DataTypeDecimal256>(DecimalUtils::max_precision<Decimal256>, scale);
+        return std::make_shared<DataTypeDecimal512>(DecimalUtils::max_precision<Decimal512>, scale);
     }
 
     bool useDefaultImplementationForConstants() const override { return true; }
@@ -308,15 +308,18 @@ private:
         {
             using DividendType = DataTypeDecimal32;
             if (which_divisor.isDecimal32())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal256, Transform>::execute(Transform{}, arguments, result_type, input_rows_count);
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal512, Transform>::execute(Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal64())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal128())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal256())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+            if (which_divisor.isDecimal512())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal512, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
         }
 
@@ -324,15 +327,18 @@ private:
         {
             using DividendType = DataTypeDecimal64;
             if (which_divisor.isDecimal32())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal256, Transform>::execute(Transform{}, arguments, result_type, input_rows_count);
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal512, Transform>::execute(Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal64())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal128())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal256())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+            if (which_divisor.isDecimal512())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal512, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
         }
 
@@ -340,15 +346,18 @@ private:
         {
             using DividendType = DataTypeDecimal128;
             if (which_divisor.isDecimal32())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal256, Transform>::execute(Transform{}, arguments, result_type, input_rows_count);
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal512, Transform>::execute(Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal64())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal128())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal256())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+            if (which_divisor.isDecimal512())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal512, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
         }
 
@@ -356,15 +365,38 @@ private:
         {
             using DividendType = DataTypeDecimal256;
             if (which_divisor.isDecimal32())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal256, Transform>::execute(Transform{}, arguments, result_type, input_rows_count);
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal512, Transform>::execute(Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal64())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal128())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
             if (which_divisor.isDecimal256())
-                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal256, Transform>::execute(
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+            if (which_divisor.isDecimal512())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal512, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+        }
+
+        else if (which_dividend.isDecimal512())
+        {
+            using DividendType = DataTypeDecimal512;
+            if (which_divisor.isDecimal32())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal32, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+            if (which_divisor.isDecimal64())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal64, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+            if (which_divisor.isDecimal128())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal128, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+            if (which_divisor.isDecimal256())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal256, DataTypeDecimal512, Transform>::execute(
+                    Transform{}, arguments, result_type, input_rows_count);
+            if (which_divisor.isDecimal512())
+                return DecimalArithmeticsImpl<DividendType, DataTypeDecimal512, DataTypeDecimal512, Transform>::execute(
                     Transform{}, arguments, result_type, input_rows_count);
         }
 

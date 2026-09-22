@@ -18,6 +18,8 @@ template <> inline constexpr size_t max_int_width<UInt128> = 39; /// 34028236692
 template <> inline constexpr size_t max_int_width<Int128> = 40;  /// -170141183460469231731687303715884105728
 template <> inline constexpr size_t max_int_width<UInt256> = 78; /// 115792089237316195423570985008687907853269984665640564039457584007913129639935
 template <> inline constexpr size_t max_int_width<Int256> = 78;  /// -57896044618658097711785492504343953926634992332820282019728792003956564819968
+template <> inline constexpr size_t max_int_width<UInt512> = 155; /// 512-bit decimal digits
+template <> inline constexpr size_t max_int_width<Int512> = 155;  /// 512-bit decimal digits
 
 
 namespace DB
