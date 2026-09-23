@@ -1,0 +1,32 @@
+--- two levels, outer pulled into an IN-set ---
+40
+--- three levels ---
+40
+--- a bloom_filter skipping index on the same shape ---
+40
+--- a reused CTE still prunes by primary key ---
+1
+--- projection analysis is deferred too ---
+25
+--- a text index preprocessor still rewrites ---
+1
+--- virtual column filters still run ---
+100
+--- an ordinary IN subquery still prunes ---
+1
+--- an ordinary IN subquery in a CTE still prunes ---
+1
+--- virtual column filters are still evaluated ---
+100
+--- explicit PREWHERE over an unmaterialized CTE ---
+40
+--- virtual column filter over an unmaterialized CTE ---
+200
+--- Merge table _table filter over an unmaterialized CTE ---
+10
+--- a constant virtual column predicate still prunes ---
+10000
+--- a virtual column predicate mixed with a CTE condition still prunes ---
+10000
+--- a scalar subquery over a materialized CTE ---
+6

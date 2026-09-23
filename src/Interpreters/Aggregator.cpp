@@ -795,6 +795,7 @@ Aggregator::Aggregator(const Block & header_, const Params & params_)
             case Type::keys64:  method_chosen = Type::keys64_void;  break;
             case Type::keys128: method_chosen = Type::keys128_void; break;
             case Type::keys256: method_chosen = Type::keys256_void; break;
+            case Type::keys512: method_chosen = Type::keys512_void; break;
             case Type::serialized:                   method_chosen = Type::serialized_void;                   break;
             case Type::nullable_serialized:          method_chosen = Type::nullable_serialized_void;          break;
             case Type::prealloc_serialized:          method_chosen = Type::prealloc_serialized_void;          break;
@@ -5289,10 +5290,12 @@ Aggregator::AggregatedChunk Aggregator::mergeBlocks(
         M(key64_void)                     \
         M(keys128_void)                   \
         M(keys256_void)                   \
+        M(keys512_void)                   \
         M(key_string)                     \
         M(key_fixed_string)               \
         M(keys128)                        \
         M(keys256)                        \
+        M(keys512)                        \
         M(serialized)                     \
         M(nullable_serialized)            \
         M(prealloc_serialized)            \

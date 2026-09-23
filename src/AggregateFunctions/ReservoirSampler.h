@@ -200,7 +200,16 @@ public:
         const cpp_int denominator = cpp_int(1) << denominator_shift;
         const cpp_int left = toExactInteger(samples[left_index].value);
         const cpp_int right = toExactInteger(samples[right_index].value);
-        const cpp_int result = (left * (denominator - numerator) + right * numerator) / denominator;
+        const cpp_int weighted_sum = left * (denominator - numerator) + right * numerator;
+
+        /// SQL quantile levels arrive as Float64. Interpolate to the nearest Decimal unit so that
+        /// binary representation noise in literals such as 0.3 does not truncate an exact Decimal result.
+        const cpp_int half_denominator = denominator >> 1;
+        cpp_int result = weighted_sum;
+        if (result >= 0)
+            result = (result + half_denominator) / denominator;
+        else
+            result = (result - half_denominator) / denominator;
 
         return U(fromExactInteger<typename U::NativeType>(result));
     }

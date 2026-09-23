@@ -13,7 +13,7 @@ $CLICKHOUSE_CLIENT --query="
         decimal_value Decimal256(5)
     ) ENGINE = TinyLog;
 
-    INSERT INTO dictionary_decimal_source_table VALUES (1, 5.0);
+    INSERT INTO dictionary_decimal_source_table SELECT toUInt64(1), toDecimal256('5.0', 5);
 
     DROP DICTIONARY IF EXISTS ssd_cache_dictionary;
     CREATE DICTIONARY ssd_cache_dictionary

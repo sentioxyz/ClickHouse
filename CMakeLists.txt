@@ -445,9 +445,13 @@ if (OS_DARWIN)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-U,_inside_main")
 endif()
 
-# Display absolute paths in error messages. Otherwise KDevelop fails to navigate to correct file and opens a new file instead.
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-absolute-paths")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fdiagnostics-absolute-paths")
+# Display absolute paths in error messages. When reproducible path mapping is enabled,
+# keep source locations relative instead: Clang otherwise preserves absolute locations
+# in lambda type names even though -ffile-prefix-map is enabled.
+if (NOT ENABLE_BUILD_PATH_MAPPING)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-absolute-paths")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fdiagnostics-absolute-paths")
+endif()
 
 # https://clang.llvm.org/docs/ThinLTO.html
 # Applies to clang and linux only.

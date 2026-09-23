@@ -661,6 +661,21 @@ ALWAYS_INLINE inline UInt256 divmod_1e18_256(UInt256 x, uint64_t & remainder)
     return quotient;
 }
 
+/// Divides a 512-bit unsigned integer by 10^18, one limb per step. Returns the quotient and stores
+/// the remainder in `remainder`. This extends the UInt256 path without generic wide-integer division.
+ALWAYS_INLINE inline UInt512 divmod_1e18_512(UInt512 x, uint64_t & remainder)
+{
+    UInt512 quotient{};
+    uint64_t r = 0;
+    for (int i = 7; i >= 0; --i)
+    {
+        const unsigned __int128 current = (static_cast<unsigned __int128>(r) << 64) | x.items[UInt512::_impl::little(i)];
+        quotient.items[UInt512::_impl::little(i)] = static_cast<uint64_t>(divmod_1e18(current, r));
+    }
+    remainder = r;
+    return quotient;
+}
+
 /// Extract up to 9 digit pairs from a u64 value into the provided output buffer.
 ALWAYS_INLINE inline void extractDigitPairs(uint64_t remainder, uint8_t * two_values)
 {
@@ -743,6 +758,41 @@ ALWAYS_INLINE inline char * writeUIntText(UInt256 _x, char * p)
     return writeDigitPairs(out, two_values, current_pos);
 }
 
+ALWAYS_INLINE inline char * writeUIntText(UInt512 _x, char * p)
+{
+    /// Use the optimized UInt256 formatter for values that fit in the lower four limbs.
+    if (likely(
+        _x.items[UInt512::_impl::little(7)] == 0 && _x.items[UInt512::_impl::little(6)] == 0
+        && _x.items[UInt512::_impl::little(5)] == 0 && _x.items[UInt512::_impl::little(4)] == 0))
+    {
+        return writeUIntText(
+            UInt256{
+                _x.items[UInt512::_impl::little(0)], _x.items[UInt512::_impl::little(1)],
+                _x.items[UInt512::_impl::little(2)], _x.items[UInt512::_impl::little(3)]},
+            p);
+    }
+
+    /// 155 maximum decimal digits require at most 78 digit pairs.
+    uint8_t two_values[78] = {0};
+    int current_pos = 0;
+    UInt512 x = _x;
+    while (
+        x.items[UInt512::_impl::little(7)] != 0 || x.items[UInt512::_impl::little(6)] != 0
+        || x.items[UInt512::_impl::little(5)] != 0 || x.items[UInt512::_impl::little(4)] != 0)
+    {
+        uint64_t block = 0;
+        x = divmod_1e18_512(x, block);
+        extractDigitPairs(block, two_values + current_pos);
+        current_pos += 9;
+    }
+
+    UInt256 pending{
+        x.items[UInt512::_impl::little(0)], x.items[UInt512::_impl::little(1)],
+        x.items[UInt512::_impl::little(2)], x.items[UInt512::_impl::little(3)]};
+    char * out = writeUIntText(pending, p);
+    return writeDigitPairs(out, two_values, current_pos);
+}
+
 ALWAYS_INLINE inline char * writeLeadingMinus(char * pos)
 {
     *pos = '-';
@@ -752,7 +802,7 @@ ALWAYS_INLINE inline char * writeLeadingMinus(char * pos)
 template <typename T>
 ALWAYS_INLINE inline char * writeSIntText(T x, char * pos)
 {
-    static_assert(std::is_same_v<T, Int128> || std::is_same_v<T, Int256>);
+    static_assert(std::is_same_v<T, Int128> || std::is_same_v<T, Int256> || std::is_same_v<T, Int512>);
 
     using UnsignedT = make_unsigned_t<T>;
     constexpr T min_int = UnsignedT(1) << (sizeof(T) * 8 - 1);
@@ -768,6 +818,12 @@ ALWAYS_INLINE inline char * writeSIntText(T x, char * pos)
         else if constexpr (std::is_same_v<T, Int256>)
         {
             const char * res = "-57896044618658097711785492504343953926634992332820282019728792003956564819968";
+            memcpy(pos, res, strlen(res)); /// NOLINT(bugprone-not-null-terminated-result)
+            return pos + strlen(res);
+        }
+        else if constexpr (std::is_same_v<T, Int512>)
+        {
+            const char * res = "-6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048";
             memcpy(pos, res, strlen(res)); /// NOLINT(bugprone-not-null-terminated-result)
             return pos + strlen(res);
         }
@@ -808,6 +864,16 @@ char * itoa(UInt256 i, char * p)
 }
 
 char * itoa(Int256 i, char * p)
+{
+    return writeSIntText(i, p);
+}
+
+char * itoa(UInt512 i, char * p)
+{
+    return writeUIntText(i, p);
+}
+
+char * itoa(Int512 i, char * p)
 {
     return writeSIntText(i, p);
 }

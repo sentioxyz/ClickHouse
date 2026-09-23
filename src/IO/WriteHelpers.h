@@ -1256,7 +1256,57 @@ void writeDecimalFractional(const T & x, UInt32 scale, WriteBuffer & ostr, bool 
 {
     /// If it's big integer, but the number of digits is small,
     /// use the implementation for smaller integers for more efficient arithmetic.
-    if constexpr (std::is_same_v<T, Int256>)
+    if constexpr (std::is_same_v<T, Int512>)
+    {
+        if (x <= std::numeric_limits<UInt32>::max())
+        {
+            writeDecimalFractional(static_cast<UInt32>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+            return;
+        }
+        if (x <= std::numeric_limits<UInt64>::max())
+        {
+            writeDecimalFractional(static_cast<UInt64>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+            return;
+        }
+        if (x <= std::numeric_limits<UInt128>::max())
+        {
+            writeDecimalFractional(static_cast<UInt128>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+            return;
+        }
+        if (x <= std::numeric_limits<UInt256>::max())
+        {
+            writeDecimalFractional(static_cast<UInt256>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+            return;
+        }
+
+        /// `writeFixedDigits` has UInt256 as its widest overload in 26.8. Keep the full Int512 value
+        /// and emit its decimal digits directly, as in the 26.3-lts-decimal512 reference implementation.
+        constexpr size_t max_digits = std::numeric_limits<UInt512>::digits10;
+        chassert(scale <= max_digits);
+        chassert(fractional_length <= max_digits);
+        chassert(!fixed_fractional_length || fractional_length >= scale);
+
+        char buf[max_digits];
+        memset(buf, '0', std::max(scale, fractional_length));
+
+        T value = x;
+        Int32 last_nonzero_pos = 0;
+        for (Int32 pos = fixed_fractional_length ? std::min(scale - 1, fractional_length - 1) : scale - 1; pos >= 0; --pos)
+        {
+            auto remainder = value % 10;
+            value /= 10;
+
+            if (remainder != 0 && last_nonzero_pos == 0)
+                last_nonzero_pos = pos;
+
+            buf[pos] += static_cast<char>(remainder);
+        }
+
+        writeChar('.', ostr);
+        ostr.write(buf, fixed_fractional_length ? fractional_length : (trailing_zeros ? scale : last_nonzero_pos + 1));
+        return;
+    }
+    else if constexpr (std::is_same_v<T, Int256>)
     {
         if (x <= std::numeric_limits<UInt32>::max())
         {

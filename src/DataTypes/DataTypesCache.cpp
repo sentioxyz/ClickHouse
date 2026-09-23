@@ -26,12 +26,14 @@ SimpleDataTypesCache::SimpleDataTypesCache()
     addSimpleType(BinaryTypeIndex::UInt64, "UInt64");
     addSimpleType(BinaryTypeIndex::UInt128, "UInt128");
     addSimpleType(BinaryTypeIndex::UInt256, "UInt256");
+    addSimpleType(BinaryTypeIndex::UInt512, "UInt512");
     addSimpleType(BinaryTypeIndex::Int8, "Int8");
     addSimpleType(BinaryTypeIndex::Int16, "Int16");
     addSimpleType(BinaryTypeIndex::Int32, "Int32");
     addSimpleType(BinaryTypeIndex::Int64, "Int64");
     addSimpleType(BinaryTypeIndex::Int128, "Int128");
     addSimpleType(BinaryTypeIndex::Int256, "Int256");
+    addSimpleType(BinaryTypeIndex::Int512, "Int512");
     addSimpleType(BinaryTypeIndex::BFloat16, "BFloat16");
     addSimpleType(BinaryTypeIndex::Float32, "Float32");
     addSimpleType(BinaryTypeIndex::Float64, "Float64");
