@@ -16,8 +16,10 @@ PROVEN only if all of these hold (each violated rule is printed; exit 0 PROVEN, 
   * control categories: 0 FAIL rows on both (the harness and oracle work on both binaries)
   * no case outside the targets FAILS on the fixed binary while it PASSES on the buggy one (the fix broke nothing)
   * binary identity: with --buggy-binary/--fixed-binary, the sha256 and GNU build-id are recorded and must differ;
-    the result file's "engine" (from its summary, if given as <result.jsonl>:<summary.json>) must be that path
+    with summaries (<result.jsonl>:<summary.json>) the engine sha256 the runner measured before the run must be that
+    binary, and both summaries must attest the same case set (oracle and id-list sha256)
 Failures that are identical on both binaries (known open defects) are reported, never counted as proof.
+This is a report for people; check_gate.py recomputes the proof itself from the validated result files.
 """
 from __future__ import annotations
 
@@ -42,11 +44,11 @@ def load(spec: str):
             if line.strip():
                 r = json.loads(line)
                 rows[r["id"]] = r
-    engine = None
+    sm = {}
     if summary:
         with open(summary, encoding="utf-8") as f:
-            engine = json.load(f).get("engine")
-    return name, rows, engine
+            sm = json.load(f)
+    return name, rows, sm
 
 
 def identity(path: str | None) -> dict:
@@ -87,8 +89,9 @@ def main() -> int:
     ap.add_argument("--json")
     a = ap.parse_args()
     try:
-        bname, brows, bengine = load(a.buggy)
-        fname, frows, fengine = load(a.fixed)
+        bname, brows, bsum = load(a.buggy)
+        fname, frows, fsum = load(a.fixed)
+        bengine, fengine = bsum.get("engine"), fsum.get("engine")
         bid, fid = identity(a.buggy_binary), identity(a.fixed_binary)
     except (OSError, ValueError, json.JSONDecodeError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
@@ -115,17 +118,22 @@ def main() -> int:
                           if frows[i]["status"] == "FAIL" and brows[i]["status"] == "PASS" and frows[i].get("category") not in a.target)
     if newly_broken:
         problems.append(f"{len(newly_broken)} case(s) PASS on buggy but FAIL on fixed (the fix broke them), e.g. {newly_broken[:5]}")
-    for who, ident, engine in ((bname, bid, bengine), (fname, fid, fengine)):
+    for who, ident, engine, sm in ((bname, bid, bengine, bsum), (fname, fid, fengine, fsum)):
         if ident and engine and os.path.realpath(engine) != os.path.realpath(ident["path"]):
             problems.append(f"{who}: result engine {engine} is not the binary {ident['path']} (artifact mismatch)")
         if ident and not ident.get("build_id"):
             problems.append(f"{who}: no GNU build-id in {ident['path']} (identity evidence missing)")
+        if ident and sm and sm.get("engine_sha256") != ident["sha256"]:
+            problems.append(f"{who}: the runner attests engine sha256 {sm.get('engine_sha256')}, not {ident['sha256'][:16]}... (artifact mismatch or no run-time identity)")
+    if bsum and fsum and (bsum.get("oracle_sha256"), bsum.get("ids_sha256")) != (fsum.get("oracle_sha256"), fsum.get("ids_sha256")):
+        problems.append("the two runs attest different case sets (oracle/id-list sha256)")
     if bid and fid and bid.get("sha256") == fid.get("sha256"):
         problems.append("buggy and fixed binaries are the same file content (sha256)")
     shared = collections.Counter(frows[i].get("category") for i in set(brows) & set(frows)
                                  if frows[i]["status"] == "FAIL" and brows[i]["status"] == "FAIL")
     verdict = "PROVEN" if not problems else "NOT PROVEN"
     report = {"verdict": verdict, "buggy": {"name": bname, "engine": bengine, **bid}, "fixed": {"name": fname, "engine": fengine, **fid},
+              "oracle_sha256": fsum.get("oracle_sha256"), "ids_sha256": fsum.get("ids_sha256"),
               "targets": {c: {"buggy": dict(bc[c]), "fixed": dict(fc[c])} for c in a.target},
               "controls": {c: {"buggy": dict(bc[c]), "fixed": dict(fc[c])} for c in a.control},
               "failing_on_both_by_category": dict(shared), "problems": problems}

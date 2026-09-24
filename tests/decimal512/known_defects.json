@@ -1,8 +1,52 @@
 {
   "version": 1,
   "updated": "2026-09-24",
-  "about": "Open Decimal512/Int512 defects of the Sentio fork, as exposed by the checks in tests/. scripts/check_gate.py reads this file: a failing check that matches an OPEN defect is reported as known-open (quick/full exit 3, release BLOCKED), any other failing check is unexpected (exit 1). An open defect whose checks all pass is stale and fails the gate: mark it fixed with evidence in the same change. Expectations encode the intended semantics; they are never edited to make a binary pass.",
+  "about": "Open Decimal512/Int512 defects of the Sentio fork, as exposed by the checks in tests/. scripts/check_gate.py reads this file: a failing check that matches an OPEN defect is reported as known-open (quick/full exit 3, release BLOCKED), any other failing check is unexpected (exit 1). An open defect whose checks all pass is stale and fails the gate: mark it fixed with evidence in the same change. Expectations encode the intended semantics; they are never edited to make a binary pass. Entries with status `fixed` stay as regression guards: their checks must pass (a failure is unexpected), and a release needs a PROVEN regression proof (recomputed by the gate: the baseline fails, the candidate passes) for every `fixed` entry that names a `proof`.",
   "defects": [
+    {
+      "id": "KD-KEYSNULLMAP-512",
+      "title": "Nullable fixed keys packed into 33-64 bytes: GROUP BY merges NULL with 0; DISTINCT, IN with transform_null_in=1 and JOIN with NULL in a 32-byte column abort (libc++ hardening assertion). Production build a394e92fb5d",
+      "status": "fixed",
+      "fixed_by": "bae5ba481f3 (26.3 hotfix candidate branch claude/26.3-lts-decimal512-keysnullmap-512-20260924; not deployed)",
+      "effect": "silent wrong result / process abort",
+      "match": [
+        {
+          "suite": "keys-matrix",
+          "category": "keys-512"
+        }
+      ],
+      "proof": {
+        "matrix": "keys",
+        "targets": [
+          "keys-512"
+        ]
+      },
+      "evidence": "evidence/phase6/matrix_r4/proofs (PROD263 132/333 FAIL -> HOTFIX263v2 0/333)"
+    },
+    {
+      "id": "KD-MIDPOINT-DEC512",
+      "title": "midpoint/avg2 with a Decimal512 result type (Decimal512 mixed with integers or other decimals): exceptions or garbage values. Production build a394e92fb5d",
+      "status": "fixed",
+      "fixed_by": "cd0d6088c5a (26.3 hotfix candidate branch; not deployed)",
+      "effect": "query error / wrong result",
+      "match": [
+        {
+          "suite": "midpoint-matrix",
+          "category": "midpoint-dec512"
+        },
+        {
+          "suite": "midpoint-vector-matrix",
+          "category": "midpoint-dec512"
+        }
+      ],
+      "proof": {
+        "matrix": "midpoint",
+        "targets": [
+          "midpoint-dec512"
+        ]
+      },
+      "evidence": "evidence/phase6/matrix_r4/proofs (PROD263 1072/1120 FAIL -> HOTFIX263v2 0/1120)"
+    },
     {
       "id": "KD-D512-PRECISION-154",
       "title": "Decimal512 allows precision 154 but Int512 holds only |v| < 2^511 (~6.7e153): out-of-range literals/casts wrap silently. Fork-specific: upstream Decimal256 (precision 76) always fits Int256 (~5.8e76)",

@@ -1,0 +1,65 @@
+{
+ "matrices": {
+  "keys": {
+   "cases": 400,
+   "categories": {
+    "keys-512": 333,
+    "keys-control": 27,
+    "single-key-512": 24,
+    "single-key-control": 16
+   },
+   "generator": "gen_composite_keys.py",
+   "generator_sha256": "0caee132af34e875b91653424be3fb461e7816c789051e94c647c6e9f9e5a570",
+   "ids_sha256": "1e1ddc3ff49b437019ab859f9bfe061ebfb779ca16ca20dec21ad68c1333b183",
+   "oracle_sha256": "6d5f474a8ad321b76693fb30cc894d1a61c06b44245ee30a2972af8085f27b39",
+   "sql_sha256": "371921d5edd816b04e269488de1162ed52a5d0c7100820c3b0dd34c6affd9c2e"
+  },
+  "midpoint": {
+   "cases": 1192,
+   "categories": {
+    "midpoint-dec512": 1120,
+    "midpoint-reject": 72
+   },
+   "generator": "gen_midpoint_matrix.py",
+   "generator_sha256": "8b2bf8e266d2dde0329b3a24809fad6bbdeaa34bc8798c4f3db717587f488486",
+   "ids_sha256": "e5f1efbd08f3ecee8e8c2e938c3326d4eba9ae972393f914788fcc3d3f66ca01",
+   "oracle_sha256": "24153bd95edd32a0081ef21ae8289af3ee7cc23cbbe15bbfd793f9ac43a833cf",
+   "sql_sha256": "32d849ad70da811e2bbe1fd116107a8d8de8cb8645fb5fb4178d4fa5ab78aa3c"
+  },
+  "midpoint_vector": {
+   "cases": 1192,
+   "categories": {
+    "midpoint-dec512": 1120,
+    "midpoint-reject": 72
+   },
+   "generator": "gen_midpoint_vector.py",
+   "generator_sha256": "b76555e63da7c1682d6d6f246f05f5f06a527448ac779187a47ad6f488266398",
+   "ids_sha256": "772452787a7b00c04fd6641b18ea4fae12beba06458eee3c31221b5b84cab2f5",
+   "oracle_sha256": "7bf2afcdf33d460bbb8ab6851a7f67a8e4460d055573d31bc65d511f62f3b4c5",
+   "sql_sha256": "65041829468c0a933c64eb68558f6ead2c2a6a62a438f0803bb441a5320e4cfd"
+  },
+  "ops": {
+   "cases": 7026,
+   "categories": {
+    "arith": 3552,
+    "boundary": 43,
+    "compare": 2368,
+    "float": 720,
+    "int-supertype-control": 7,
+    "int-wrap-control": 14,
+    "int512-arith": 11,
+    "int512-supertype": 7,
+    "midpoint-int-control": 28,
+    "midpoint-int512": 28,
+    "null": 240,
+    "parse-boundary": 8
+   },
+   "generator": "gen_decimal512_ops_matrix.py",
+   "generator_sha256": "7107a8361d27b426bdf7d3fefc42078d7cd62aa2ec3ce0e7de17565120628c92",
+   "ids_sha256": "198ffe9ad1fd0df02c4972772e97f94d612f9edfc35401140d57cac7f564f597",
+   "oracle_sha256": "813e2e4000eca4cf66dc788083a0aa7ec7395d8c385de258e8ccea70a677b529",
+   "sql_sha256": "f999cda9e990850e23b61ac849834a3a4dd309a98d95fade034a0fa5ca302d91"
+  }
+ },
+ "schema": 1
+}

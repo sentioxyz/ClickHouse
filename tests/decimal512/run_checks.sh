@@ -14,11 +14,14 @@
 #       [--source-sha <commit the binary was built from>]  default: the binary's embedded GIT_HASH (a hint only)
 #       [--source-clean]                   the operator asserts the binary was built from a clean checkout of that
 #                                          commit (release requires it; the embedded GIT_HASH must also match)
-#       [--buggy-binary <clickhouse>]      release: the previous build; the targeted checks must FAIL on it
-#       [--old-binary <clickhouse>]        release: the build to be compatible with (default: --buggy-binary)
-#       [--image <ref>]                    release: the LOCAL image built from --binary (never pulled); its image id
-#                                          and the sha256 of /usr/bin/clickhouse inside it are recorded
-#       [--protocol-evidence <native_matrix.tsv>]  release: output of tools/compat/native_compat.sh (not run here)
+#       [--buggy-binary <clickhouse>]      release: the baseline, i.e. the previous production build: the targeted
+#                                          checks must FAIL on it (regression proof) and on-disk/aggregate-state data
+#                                          must be readable both ways between it and --binary (compatibility)
+#       [--image <ref>]                    release: the LOCAL image built from --binary (never pulled); the raw outputs
+#                                          of `docker image inspect` and of sha256sum inside a --network none container
+#                                          are kept as the (attested) image identity
+#       [--protocol-evidence <native_matrix.tsv>]  release: output of tools/compat/native_compat.sh OLD=<baseline>
+#                                          NEW=<binary> (not run here); its identities.tsv must sit next to it
 #       [--instance a|b|c]                 isolated server slot for the stateless tests (default c: ports 59000..)
 #
 # Exit status is the gate's (tools/check_gate.py): 0 PASS, 3 PASS WITH OPEN KNOWN DEFECTS (not releasable),
@@ -29,8 +32,8 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 TREE=$(cd "$HERE/../.." && pwd)
 T=$HERE/tools
 
-usage() { sed -n '2,24p' "$0" >&2; exit 2; }
-TIER= BIN= OUT= SRC= BUGGY= OLD= IMAGE= PROTO= CLEAN=null INST=c
+usage() { sed -n '2,/^set -u$/p' "$0" | sed '$d' >&2; exit 2; }
+TIER= BIN= OUT= SRC= BUGGY= IMAGE= PROTO= CLEAN=null INST=c
 while [ $# -gt 0 ]; do
   case $1 in
     --tier) TIER=$2; shift 2;;
@@ -39,7 +42,6 @@ while [ $# -gt 0 ]; do
     --source-sha) SRC=$2; shift 2;;
     --source-clean) CLEAN=false; shift;;
     --buggy-binary) BUGGY=$2; shift 2;;
-    --old-binary) OLD=$2; shift 2;;
     --image) IMAGE=$2; shift 2;;
     --protocol-evidence) PROTO=$2; shift 2;;
     --instance) INST=$2; shift 2;;
@@ -57,8 +59,6 @@ mkdir -p "$OUT"/{gen,results,logs}
 OUT=$(cd "$OUT" && pwd)
 BIN=$(readlink -f "$BIN")
 [ -z "$BUGGY" ] || BUGGY=$(readlink -f "$BUGGY")
-[ -z "$OLD" ] && OLD=$BUGGY
-[ -z "$OLD" ] || OLD=$(readlink -f "$OLD")
 log() { echo "[$(date -u +%FT%TZ)] $*" | tee -a "$OUT/logs/run_checks.log" >&2; }
 
 ident() {  # <binary> -> "sha256 build-id version git-hash" (clickhouse local, private cwd, no ports)
@@ -92,8 +92,11 @@ gen() {
 SUITES=()   # JSON objects, joined into evidence.json
 NOT_RUN=()
 suite() { SUITES+=("$1"); }
-matrix_suite() {  # <suite name> <matrix> <label>
-  suite "{\"name\": \"$1\", \"kind\": \"matrix\", \"result\": \"results/$2.$3.result.jsonl\", \"summary\": \"results/$2.$3.summary.json\"}"
+matrix_suite() {  # <suite name> <matrix> <label>: the gate checks the inputs against tools/matrix/cases.lock.json
+  suite "{\"name\": \"$1\", \"kind\": \"matrix\", \"matrix\": \"$2\", \"sql\": \"gen/$2.sql\", \"oracle\": \"gen/$2.oracle.jsonl\", \"result\": \"results/$2.$3.result.jsonl\", \"summary\": \"results/$2.$3.summary.json\"}"
+}
+proof_suite() {  # <matrix> <targets json> <controls json>: recomputed by the gate from both result files
+  suite "{\"name\": \"regression-proof:$1\", \"kind\": \"proof\", \"matrix\": \"$1\", \"targets\": $2, \"controls\": $3, \"sql\": \"gen/$1.sql\", \"oracle\": \"gen/$1.oracle.jsonl\", \"buggy\": {\"result\": \"results/$1.previous.result.jsonl\", \"summary\": \"results/$1.previous.summary.json\"}, \"fixed\": {\"result\": \"results/$1.tested.result.jsonl\", \"summary\": \"results/$1.tested.summary.json\"}, \"report\": \"results/proof.$1.json\"}"
 }
 
 gen
@@ -143,13 +146,16 @@ if [ "$TIER" != quick ]; then
   log "stateless run wrote $(wc -l < "$OUT/logs/tree_side_effects.txt") file(s) inside the tree (logs/tree_side_effects.txt)"
   TLOG=$(ls -t "$OUT"/logs/test_fork-stateless_*.log 2>/dev/null | head -1)
   sel_json=$(IFS=,; echo "${SELECTED[*]}"); exc_json=$(IFS=,; echo "${EXCLUDED[*]}")
-  suite "{\"name\": \"fork-stateless\", \"kind\": \"clickhouse-test\", \"log\": \"${TLOG#$OUT/}\", \"build_id\": \"$BBID\", \"selected\": [$sel_json], \"excluded\": [$exc_json]}"
+  suite "{\"name\": \"fork-stateless\", \"kind\": \"clickhouse-test\", \"log\": \"${TLOG#$OUT/}\", \"build_id\": \"$BBID\", \"selected\": [$sel_json], \"excluded\": [$exc_json], \"selection\": \"$HERE/stateless_tests.txt\", \"selection_sha256\": \"$(sha256sum "$HERE/stateless_tests.txt" | cut -d' ' -f1)\"}"
 fi
 
-IMG_JSON=
+IMG_JSON= BASE_JSON=
+if [ -n "$BUGGY" ]; then
+  read -r OSHA OBID OVER OGIT <<< "$(ident "$BUGGY")"
+  BASE_JSON=", \"baseline\": {\"path\": \"$BUGGY\", \"sha256\": \"$OSHA\", \"build_id\": \"$OBID\", \"version\": \"$OVER\", \"git_hash\": \"$OGIT\", \"role\": \"previous production build\"}"
+fi
 if [ "$TIER" = release ]; then
   if [ -n "$BUGGY" ]; then
-    read -r OSHA OBID _ <<< "$(ident "$BUGGY")"
     for m in midpoint keys; do run_matrix $m "$BUGGY" previous; done
     python3 "$T/regression_proof.py" --buggy previous="$OUT/results/keys.previous.result.jsonl:$OUT/results/keys.previous.summary.json" \
       --fixed tested="$OUT/results/keys.tested.result.jsonl:$OUT/results/keys.tested.summary.json" --target keys-512 \
@@ -161,32 +167,38 @@ if [ "$TIER" = release ]; then
       --control midpoint-reject --buggy-binary "$BUGGY" --fixed-binary "$BIN" \
       --json "$OUT/results/proof.midpoint.json" > "$OUT/results/proof.midpoint.txt" 2>&1
     log "regression proof midpoint: rc=$?"
-    suite '{"name": "regression-proof:keys", "kind": "proof", "result": "results/proof.keys.json"}'
-    suite '{"name": "regression-proof:midpoint", "kind": "proof", "result": "results/proof.midpoint.json"}'
+    proof_suite keys '["keys-512"]' '["keys-control", "single-key-control"]'
+    proof_suite midpoint '["midpoint-dec512"]' '["midpoint-reject"]'
   else
     NOT_RUN+=('{"name": "regression-proof", "reason": "no --buggy-binary given"}')
   fi
-  if [ -n "$OLD" ]; then
-    bash "$T/compat/run_compat2.sh" "$OUT/compat/old_writes" old="$OLD" tested="$BIN" > "$OUT/logs/compat_old_writes.log" 2>&1
-    bash "$T/compat/run_compat2.sh" "$OUT/compat/tested_writes" tested="$BIN" old="$OLD" > "$OUT/logs/compat_tested_writes.log" 2>&1
+  if [ -n "$BUGGY" ]; then
+    # engine labels are bound to binaries by the engine= lines run_compat2.sh writes (sha256 measured before the run)
+    bash "$T/compat/run_compat2.sh" "$OUT/compat/previous_writes" previous="$BUGGY" tested="$BIN" > "$OUT/logs/compat_previous_writes.log" 2>&1
+    bash "$T/compat/run_compat2.sh" "$OUT/compat/tested_writes" tested="$BIN" previous="$BUGGY" > "$OUT/logs/compat_tested_writes.log" 2>&1
     rm -rf "$OUT"/compat/*/data.*
-    suite '{"name": "compat-disk", "kind": "compat", "results": ["compat/old_writes/summary.old.txt", "compat/tested_writes/summary.tested.txt"]}'
+    suite '{"name": "compat-disk", "kind": "compat", "results": ["compat/previous_writes/summary.previous.txt", "compat/tested_writes/summary.tested.txt"]}'
   else
-    NOT_RUN+=('{"name": "compat-disk", "reason": "no --old-binary/--buggy-binary given"}')
+    NOT_RUN+=('{"name": "compat-disk", "reason": "no --buggy-binary (baseline) given"}')
   fi
   if [ -n "$PROTO" ]; then
     cp "$PROTO" "$OUT/results/native_matrix.tsv"
-    suite '{"name": "compat-protocol", "kind": "protocol", "result": "results/native_matrix.tsv"}'
+    cp "$(dirname "$PROTO")/identities.tsv" "$OUT/results/native_identities.tsv" 2>/dev/null || log "protocol evidence has no identities.tsv next to it"
+    suite '{"name": "compat-protocol", "kind": "protocol", "result": "results/native_matrix.tsv", "identities": "results/native_identities.tsv"}'
   else
     NOT_RUN+=('{"name": "compat-protocol", "reason": "run tools/compat/native_compat.sh on isolated servers and pass --protocol-evidence"}')
   fi
   if [ -n "$IMAGE" ]; then
     # local inspection only: the image id is the identity before a push; after the push, deploy the repo digest
     # whose config is this image id (the deployment approval checks that, this script never pushes)
-    IID=$(docker image inspect --format '{{.Id}}' "$IMAGE" 2>/dev/null)
-    RDIG=$(docker image inspect --format '{{range .RepoDigests}}{{.}} {{end}}' "$IMAGE" 2>/dev/null | xargs)
-    ISHA=$(timeout 300 docker run --rm --pull never --network none --entrypoint sha256sum "$IMAGE" /usr/bin/clickhouse 2>/dev/null | cut -d' ' -f1)
-    IMG_JSON=", \"image\": {\"ref\": \"$IMAGE\", \"id\": \"$IID\", \"repo_digests\": \"$RDIG\", \"binary_sha256\": \"$ISHA\"}"
+    # raw outputs are kept: the gate cross-checks the manifest against them (still an attestation, not proof)
+    docker image inspect "$IMAGE" > "$OUT/results/image_inspect.json" 2> "$OUT/logs/image_inspect.err"
+    timeout 300 docker run --rm --pull never --network none --entrypoint sha256sum "$IMAGE" /usr/bin/clickhouse \
+      > "$OUT/results/image_binary_sha256.txt" 2> "$OUT/logs/image_sha256.err"
+    IID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["Id"])' "$OUT/results/image_inspect.json" 2>/dev/null)
+    RDIG=$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))[0].get("RepoDigests") or []))' "$OUT/results/image_inspect.json" 2>/dev/null)
+    ISHA=$(cut -d' ' -f1 "$OUT/results/image_binary_sha256.txt" 2>/dev/null)
+    IMG_JSON=", \"image\": {\"ref\": \"$IMAGE\", \"id\": \"$IID\", \"repo_digests\": \"$RDIG\", \"binary_sha256\": \"$ISHA\", \"inspect\": \"results/image_inspect.json\", \"binary_sha256_output\": \"results/image_binary_sha256.txt\"}"
     log "image $IMAGE: id=${IID:-unknown} repo digests=${RDIG:-none} binary sha256=${ISHA:-unknown}"
   fi
   NOT_RUN+=('{"name": "keeper-replication", "reason": "no automated isolated Keeper/ReplicatedMergeTree mixed-version check exists yet"}')
@@ -194,18 +206,20 @@ if [ "$TIER" = release ]; then
 fi
 
 DIRTY=$CLEAN   # null unless --source-clean: this script cannot see the tree the binary was built from
+ATTEST=null; [ "$CLEAN" = false ] && ATTEST='"operator (run_checks.sh --source-clean)"'
 suites_json=$(IFS=,; echo "${SUITES[*]}"); not_run_json=$(IFS=,; echo "${NOT_RUN[*]}")
 cat > "$OUT/evidence.json" <<JSON
-{"schema": 1, "tier": "$TIER", "created_at": "$(date -u +%FT%TZ)",
- "source": {"sha": "$SRC", "dirty": $DIRTY, "binary_git_hash": "$BGIT"},
+{"schema": 2, "tier": "$TIER", "created_at": "$(date -u +%FT%TZ)",
+ "source": {"sha": "$SRC", "dirty": $DIRTY, "dirty_attested_by": $ATTEST, "binary_git_hash": "$BGIT",
+            "binary_git_hash_source": "runner: clickhouse local, system.build_options GIT_HASH"},
  "tests": {"repo": "$TREE", "sha": "$(git -C "$TREE" rev-parse HEAD)"},
- "binary": {"path": "$BIN", "sha256": "$BSHA", "build_id": "$BBID", "version": "$BVER"}$IMG_JSON,
+ "binary": {"path": "$BIN", "sha256": "$BSHA", "build_id": "$BBID", "version": "$BVER"}$BASE_JSON$IMG_JSON,
  "suites": [$suites_json],
  "not_run": [$not_run_json]}
 JSON
 python3 -m json.tool "$OUT/evidence.json" > /dev/null || { log "ERROR: evidence.json is not valid JSON"; exit 1; }
-python3 "$T/check_gate.py" --manifest "$OUT/evidence.json" --known-defects "$HERE/known_defects.json" --tier "$TIER" \
-  --json "$OUT/gate.json" | tee "$OUT/gate.txt"
+python3 "$T/check_gate.py" --manifest "$OUT/evidence.json" --known-defects "$HERE/known_defects.json" \
+  --case-lock "$T/matrix/cases.lock.json" --tier "$TIER" --json "$OUT/gate.json" | tee "$OUT/gate.txt"
 rc=${PIPESTATUS[0]}
 log "gate $TIER: exit $rc"
 exit $rc

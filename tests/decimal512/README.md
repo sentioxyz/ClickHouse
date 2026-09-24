@@ -18,8 +18,8 @@ deploy anything. `run_checks.sh` refuses to run when `CLICKHOUSE_HOST` points an
 tests/decimal512/run_checks.sh --tier quick   --binary <clickhouse> --out <empty dir>
 tests/decimal512/run_checks.sh --tier full    --binary <clickhouse> --out <empty dir> [--source-sha <sha>]
 tests/decimal512/run_checks.sh --tier release --binary <clickhouse> --out <empty dir> --source-sha <sha> --source-clean \
-    --buggy-binary <previous production build> [--old-binary <build to stay compatible with>] --image <local image> \
-    [--protocol-evidence <native_matrix.tsv>]
+    --buggy-binary <previous production build> --image <local image> \
+    [--protocol-evidence <native_matrix.tsv with identities.tsv next to it>]
 ```
 
 `--instance a|b|c` selects the isolated server slot for the stateless tests (ports 39000/49000/59000 and up; the
@@ -34,7 +34,7 @@ script never deletes them. `02483_capnp_decimals` writes outside the tree and is
 |---|---|---|---|
 | quick | every commit that touches 512-bit code | `midpoint`/`avg2` matrix (1192), operations matrix (7026), key matrix (400) | minutes |
 | full | periodically, and before a release | quick + vector form (1192) + 256-bit dispatch scan against `dispatch_scan_baseline.json` + the stateless tests in `stateless_tests.txt` (57 listed, 1 excluded through its known defect) | about 10 minutes |
-| release | before an image is built or deployed | full + regression proof against `--buggy-binary` + on-disk and aggregate-state compatibility with `--old-binary` in both directions + image identity; Keeper/replication and performance are declared not run | longer; it stays BLOCKED until those checks exist |
+| release | before an image is built or deployed | full + regression proof against `--buggy-binary` (the baseline) + on-disk and aggregate-state compatibility with the baseline in both directions + image identity; Keeper/replication and performance are declared not run | longer; it stays BLOCKED until those checks exist |
 
 Exit status (from `tools/check_gate.py`):
 
@@ -47,14 +47,34 @@ Exit status (from `tools/check_gate.py`):
 
 Rules the gate enforces:
 
-- Missing evidence is a failure. So is a check that ran zero cases, a skipped test, or an excluded test without an
-  open known defect.
-- Every result must come from the binary under test. The gate recomputes sha256 and build-id; a result produced by
-  another binary is an artifact mismatch and fails.
-- A release needs:
-  - the source commit, asserted clean, which must equal the binary's embedded `GIT_HASH`;
-  - the local image id;
-  - the sha256 of `/usr/bin/clickhouse` inside that image, equal to the tested binary.
+- **Missing evidence fails.** So do a check that ran zero cases, a skipped test, an excluded test without an open
+  known defect, and a `not_run` entry in a release.
+- **Exact matrix coverage.** The SQL and oracle files must be the ones pinned in `tools/matrix/cases.lock.json`
+  (written by `tools/matrix/lock_cases.py`). The result must contain every locked case id exactly once and nothing
+  else. Each row must carry the locked expectation. PASS/FAIL is recomputed from the expectation and the recorded
+  output; a recorded status that disagrees fails.
+- **Run-time identity.** The runner's summary must attest the input hashes, the result file's sha256 and the engine
+  sha256/build-id measured before the run, and that engine must be the binary under test. Truncated, duplicated,
+  foreign or stale case data, a replaced result file, or results from another engine all fail.
+- **Regression proofs are recomputed by the gate** from both result files. The buggy side must be the declared
+  baseline (`--buggy-binary`), the fixed side the candidate. Every `fixed` entry of `known_defects.json` that names a
+  proof must be PROVEN for a release.
+- **Compatibility and protocol checks** bind every engine label to a sha256 (`engine=` lines, `identities.tsv`). Both
+  directions between baseline and candidate must be present with rc 0 and SAME, and every required protocol step
+  must be there.
+- **Identity bases are reported, not blurred:**
+  - recomputed by the gate: sha256, build-id, and whether the commit id occurs inside the binary;
+  - attested by the runner or the operator: the `GIT_HASH` the binary reports, the image id, the sha256 of the binary
+    inside the image, and the clean source tree.
+
+  Attestations are required and are cross-checked against the raw outputs kept in `results/`. They are never
+  presented as independent or cryptographic proof. The gate itself runs no engine and no container.
+- **A release also needs:**
+  - the source commit, asserted clean by the operator, which the binary must report as its `GIT_HASH` and contain as
+    a string;
+  - a baseline;
+  - the local image id and the sha256 of `/usr/bin/clickhouse` inside that image, equal to the tested binary, with
+    both raw outputs kept.
 
 ## Known defects
 
@@ -75,7 +95,8 @@ marked fixed, with evidence, in the same change. While any defect is open, a rel
   review decision.
 - `tools/`: byte-identical copies of the `clickhouse-decimal512-upgrade` skill scripts. `tools/VENDORED.sha256`
   records their hashes.
-  - `tools/matrix/`: generators with independent oracles, and `run_matrix.py`.
+  - `tools/matrix/`: generators with independent oracles, `run_matrix.py`, `lock_cases.py`, and `cases.lock.json`
+    (the pinned case lock; a generator change needs a new lock in the same change).
   - `tools/regression_proof.py`: the buggy binary must FAIL and the fixed binary must PASS.
   - `tools/check_gate.py`: the gate.
   - `tools/scan_wide_dispatch.py`: the 256-bit dispatch scan.

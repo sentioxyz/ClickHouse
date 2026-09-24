@@ -6,6 +6,8 @@
 # expected output; reader outputs are diffed against it. Then every engine, the writer included (its run is the
 # expected output), merges its own aggregate states into a copy of the writer's AggregatingMergeTree table
 # (mixed_agg.sql, OPTIMIZE FINAL): lines `mixed=<engine> rc=<n> SAME|DIFF|ERROR(...)`.
+# The summary starts with one `engine=<name> sha256=<hex> build_id=<hex> path=<binary>` line per engine, measured
+# before the run: the labels are bound to binaries (check_gate.py requires it), not trusted as names.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=$1; shift
@@ -16,9 +18,15 @@ run() {  # binary, data dir, sql file, out prefix
 }
 D=$OUT/data.$W
 rm -rf "$D"; mkdir -p "$D"
+: > "$OUT/summary.$W.txt"
+for kv in "$W=$WB" "$@"; do
+  b=$(readlink -f "${kv#*=}")
+  printf 'engine=%s sha256=%s build_id=%s path=%s\n' "${kv%%=*}" "$(sha256sum "$b" | cut -d' ' -f1)" \
+    "$(readelf -n "$b" 2>/dev/null | awk '/Build ID/{print $3}')" "$b" | tee -a "$OUT/summary.$W.txt"
+done
 wrc=$(run "$WB" "$D" "$HERE/write_dyn_json.sql" "$OUT/write.$W")
 rrc=$(run "$WB" "$D" "$HERE/read_dyn_json.sql" "$OUT/read.$W.by.$W")
-printf 'writer=%s write_rc=%s self_read_rc=%s\n' "$W" "$wrc" "$rrc" | tee "$OUT/summary.$W.txt"
+printf 'writer=%s write_rc=%s self_read_rc=%s\n' "$W" "$wrc" "$rrc" | tee -a "$OUT/summary.$W.txt"
 for kv in "$@"; do
   R=${kv%%=*}; RB=${kv#*=}
   C=$OUT/copy.$W.for.$R

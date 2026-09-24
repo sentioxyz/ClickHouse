@@ -13,7 +13,8 @@
 # Channels: client<->server SELECT (client decodes Dynamic incl. shared variant) and INSERT Native, server<->server
 # remote() SELECT and INSERT INTO FUNCTION remote() in both directions (a canary replica next to old replicas),
 # plain typed columns as control; NEW<->UP strided QBit inside Dynamic (the ambiguous binary type index 0x37).
-# Output: <out-dir>/native_matrix.tsv. SAME = identical to the writer's own rendering.
+# Output: <out-dir>/native_matrix.tsv. SAME = identical to the writer's own rendering. <out-dir>/identities.tsv binds
+# each role to a binary (role, path, sha256, build-id; measured before the servers start).
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 ISO=${CH_ISO_SCRIPT:-$HERE/../../scripts/isolated_ch.sh}   # vendored copies set CH_ISO_SCRIPT to their isolated_ch.sh
@@ -31,6 +32,10 @@ done
 [ -n "${EXE[OLD]:-}" ] && [ -n "${EXE[NEW]:-}" ] || { echo "OLD and NEW are required" >&2; exit 2; }
 TSV=$OUT/native_matrix.tsv
 printf 'step\tclient\tserver\trc\tresult\n' > "$TSV"
+: > "$OUT/identities.tsv"
+for r in "${ROLES[@]}"; do
+  printf '%s\t%s\t%s\t%s\n' "$r" "${EXE[$r]}" "$(sha256sum "${EXE[$r]}" | cut -d' ' -f1)" "$(readelf -n "${EXE[$r]}" | awk '/Build ID/{print $3}')" >> "$OUT/identities.tsv"
+done
 
 cl() { timeout 300 "${EXE[$1]}" client --host 127.0.0.1 --port "${PORT[$2]}" --query "$3" < "${4:-/dev/null}"; }
 rec() {
