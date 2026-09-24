@@ -128,7 +128,7 @@ if [ "$TIER" != quick ]; then
       SEL+=("^$name\\."); SELECTED+=("\"$name\"")
     fi
   done < "$HERE/stateless_tests.txt"
-  before=$(git -C "$TREE" status --porcelain --untracked-files=all -- tests/queries/0_stateless | sort)
+  touch "$OUT/logs/.stateless_start"   # every file of the tree written after this marker is a side effect of the run
   if bash "$T/isolated_ch.sh" start "$INST" "$BIN" "$TREE" > "$OUT/logs/server_start.log" 2>&1; then
     bash "$T/isolated_ch.sh" test "$INST" "$TREE" fork-stateless "${BBID:0:12}" --no-random-settings --no-random-merge-tree-settings \
       --no-zookeeper --no-shard --no-stateful -j 4 "${SEL[@]}" > "$OUT/logs/stateless_driver.log" 2>&1
@@ -138,8 +138,9 @@ if [ "$TIER" != quick ]; then
   fi
   bash "$T/isolated_ch.sh" stop "$INST" >> "$OUT/logs/server_start.log" 2>&1
   rm -f "$OUT"/iso/bin/clickhouse-*   # the server's private copy of the binary (GBs); logs stay as evidence
-  after=$(git -C "$TREE" status --porcelain --untracked-files=all -- tests/queries/0_stateless | sort)
-  comm -13 <(echo "$before") <(echo "$after") > "$OUT/logs/tree_side_effects.txt"
+  # files the tests created or rewrote inside the source tree (reported, never deleted by this script)
+  find "$TREE/tests" -newer "$OUT/logs/.stateless_start" -type f 2>/dev/null | sed "s#^$TREE/##" | sort > "$OUT/logs/tree_side_effects.txt"
+  log "stateless run wrote $(wc -l < "$OUT/logs/tree_side_effects.txt") file(s) inside the tree (logs/tree_side_effects.txt)"
   TLOG=$(ls -t "$OUT"/logs/test_fork-stateless_*.log 2>/dev/null | head -1)
   sel_json=$(IFS=,; echo "${SELECTED[*]}"); exc_json=$(IFS=,; echo "${EXCLUDED[*]}")
   suite "{\"name\": \"fork-stateless\", \"kind\": \"clickhouse-test\", \"log\": \"${TLOG#$OUT/}\", \"build_id\": \"$BBID\", \"selected\": [$sel_json], \"excluded\": [$exc_json]}"

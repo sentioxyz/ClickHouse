@@ -25,6 +25,11 @@ tests/decimal512/run_checks.sh --tier release --binary <clickhouse> --out <empty
 `--instance a|b|c` selects the isolated server slot for the stateless tests (ports 39000/49000/59000 and up; the
 default is `c`). Parallel runs need different slots.
 
+Some fork tests write into the source tree (the `10303`-`10307` data files, `.stdout`/`.stderr` of failed tests);
+every file written under `tests/` during the stateless run is listed in `<out>/logs/tree_side_effects.txt`. The
+script never deletes them. `02483_capnp_decimals` writes outside the tree and is therefore excluded (see
+`known_defects.json`).
+
 | tier | when | what runs | typical time |
 |---|---|---|---|
 | quick | every commit that touches 512-bit code | `midpoint`/`avg2` matrix (1192), operations matrix (7026), key matrix (400) | minutes |
