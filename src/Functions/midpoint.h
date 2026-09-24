@@ -283,6 +283,7 @@ private:
                 DataTypeDecimal64,
                 DataTypeDecimal128,
                 DataTypeDecimal256,
+                DataTypeDecimal512,
                 DataTypeDateTime64,
                 DataTypeTime64>; /// these temporal types behave like decimals
 
@@ -317,12 +318,14 @@ private:
                 DataTypeUInt64,
                 DataTypeUInt128,
                 DataTypeUInt256,
+                DataTypeUInt512,
                 DataTypeInt8,
                 DataTypeInt16,
                 DataTypeInt32,
                 DataTypeInt64,
                 DataTypeInt128,
                 DataTypeInt256,
+                DataTypeInt512,
                 DataTypeBFloat16,
                 DataTypeFloat32,
                 DataTypeFloat64,
