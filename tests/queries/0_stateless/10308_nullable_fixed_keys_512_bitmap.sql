@@ -1,0 +1,18 @@
+-- Nullable fixed-size keys that need 29..64 bytes are packed into 512-bit keys (`keys512`).
+-- The packed key starts with a null bitmap; it must not be empty for 64-byte keys.
+
+-- No NULL values: every key must round-trip unchanged.
+SELECT 'single Nullable(UInt256)', count(), countIf(k IS NULL), sum(toUInt64(k % 1000)) FROM (SELECT toNullable(toUInt256(number * 1000003 + 12345)) AS k FROM numbers(1000) GROUP BY k);
+SELECT 'single Nullable(Decimal256)', count(), countIf(k IS NULL), toString(sum(k)) FROM (SELECT toNullable(toDecimal256(number, 2) + toDecimal256('0.37', 2)) AS k FROM numbers(1000) GROUP BY k);
+SELECT 'four Nullable(Int64)', count(), countIf(a IS NULL OR b IS NULL OR c IS NULL OR d IS NULL), sum(a), sum(d) FROM (SELECT toNullable(toInt64(number)) AS a, toNullable(toInt64(number * 3)) AS b, toNullable(toInt64(number * 5)) AS c, toNullable(toInt64(number * 7)) AS d FROM numbers(1000) GROUP BY a, b, c, d);
+SELECT 'eight Nullable(Int64)', count(), countIf(a IS NULL OR h IS NULL), sum(a), sum(h) FROM (SELECT toNullable(toInt64(number)) AS a, toNullable(toInt64(1)) AS b, toNullable(toInt64(2)) AS c, toNullable(toInt64(3)) AS d, toNullable(toInt64(4)) AS e, toNullable(toInt64(5)) AS f, toNullable(toInt64(6)) AS g, toNullable(toInt64(number + 255)) AS h FROM numbers(1000) GROUP BY a, b, c, d, e, f, g, h);
+
+-- NULL and 0 in the same key position must stay distinct.
+SELECT 'GROUP BY NULL vs 0', count() FROM (SELECT a, b, c, d, e FROM (SELECT arrayJoin([CAST(NULL AS Nullable(UInt64)), toNullable(toUInt64(0))]) AS a, toNullable(toUInt64(1)) AS b, toNullable(toUInt64(1)) AS c, toNullable(toUInt64(1)) AS d, toNullable(toUInt64(1)) AS e) GROUP BY a, b, c, d, e);
+SELECT 'DISTINCT NULL vs 0', count() FROM (SELECT DISTINCT a, b, c, d, e FROM (SELECT arrayJoin([CAST(NULL AS Nullable(UInt64)), toNullable(toUInt64(0))]) AS a, toNullable(toUInt64(1)) AS b, toNullable(toUInt64(1)) AS c, toNullable(toUInt64(1)) AS d, toNullable(toUInt64(1)) AS e));
+SELECT 'IN 0 vs NULL set', count() FROM (SELECT toNullable(toUInt64(0)) AS a, toNullable(toUInt64(1)) AS b, toNullable(toUInt64(1)) AS c, toNullable(toUInt64(1)) AS d, toNullable(toUInt64(1)) AS e) WHERE (a, b, c, d, e) IN (SELECT CAST(NULL AS Nullable(UInt64)), toNullable(toUInt64(1)), toNullable(toUInt64(1)), toNullable(toUInt64(1)), toNullable(toUInt64(1))) SETTINGS transform_null_in = 1;
+SELECT 'IN NULL vs NULL set', count() FROM (SELECT CAST(NULL AS Nullable(UInt64)) AS a, toNullable(toUInt64(1)) AS b, toNullable(toUInt64(1)) AS c, toNullable(toUInt64(1)) AS d, toNullable(toUInt64(1)) AS e) WHERE (a, b, c, d, e) IN (SELECT CAST(NULL AS Nullable(UInt64)), toNullable(toUInt64(1)), toNullable(toUInt64(1)), toNullable(toUInt64(1)), toNullable(toUInt64(1))) SETTINGS transform_null_in = 1;
+SELECT 'JOIN 0 vs NULL', count() FROM (SELECT toNullable(toUInt64(0)) AS a, toNullable(toUInt64(1)) AS b, toNullable(toUInt64(1)) AS c, toNullable(toUInt64(1)) AS d, toNullable(toUInt64(1)) AS e) AS l INNER JOIN (SELECT CAST(NULL AS Nullable(UInt64)) AS a, toNullable(toUInt64(1)) AS b, toNullable(toUInt64(1)) AS c, toNullable(toUInt64(1)) AS d, toNullable(toUInt64(1)) AS e) AS r USING (a, b, c, d, e);
+
+-- Nullable(Decimal512) join key with NULLs and join runtime filters (the default).
+SELECT 'JOIN Nullable(Decimal512)', count() FROM (SELECT if(number = 0, CAST(NULL AS Nullable(Decimal512(0))), CAST(toDecimal512(number, 0) AS Nullable(Decimal512(0)))) AS k FROM numbers(1001)) AS probe INNER JOIN (SELECT if(number = 0, CAST(NULL AS Nullable(Decimal512(0))), CAST(toDecimal512(number, 0) AS Nullable(Decimal512(0)))) AS k FROM numbers(1002)) AS build USING (k) SETTINGS enable_join_runtime_filters = 1;

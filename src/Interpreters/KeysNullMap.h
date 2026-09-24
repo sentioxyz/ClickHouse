@@ -11,6 +11,8 @@ template <typename T>
 constexpr auto getBitmapSize()
 {
     return
+        (sizeof(T) == 64) ?
+            8 :
         (sizeof(T) == 32) ?
             4 :
         (sizeof(T) == 16) ?

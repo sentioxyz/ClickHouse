@@ -1,0 +1,10 @@
+single Nullable(UInt256)	1000	0	499500
+single Nullable(Decimal256)	1000	0	499870
+four Nullable(Int64)	1000	0	499500	3496500
+eight Nullable(Int64)	1000	0	499500	754500
+GROUP BY NULL vs 0	2
+DISTINCT NULL vs 0	2
+IN 0 vs NULL set	0
+IN NULL vs NULL set	1
+JOIN 0 vs NULL	0
+JOIN Nullable(Decimal512)	1000
