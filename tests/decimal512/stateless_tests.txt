@@ -1,0 +1,62 @@
+# Stateless tests of the Sentio fork's Decimal512/Int512 work: every test added or modified by the fork relative to
+# the upstream base (git diff --name-only --diff-filter=AM v26.3.12.3-lts(d23c7536b98) cd0d6088c5a -- tests/queries/0_stateless).
+# Selected by exact name (the runner builds "^<name>\." selectors); every listed test must produce a result line.
+# A line "<name>  # exclude: <KD-id>: <reason>" is not run; the gate counts it as a failure of that open known defect,
+# never as a pass. An exclusion without an open entry in known_defects.json fails the gate.
+00000_decimal128_op_overflow
+01804_dictionary_decimal512_type
+01875_ssd_cache_dictionary_decimal256_type
+01875_ssd_cache_dictionary_decimal512_type
+02452_decimal512_extended_validation
+02452_decimal512_validation
+02453_decimal512_type_conversion
+02453_decimal512_type_conversion_simple
+02454_decimal512_basic_operations
+02455_decimal512_comparison_operations
+02456_decimal512_math_functions
+02457_decimal512_type_conversion_functions
+02458_decimal512_conditional_functions
+02459_decimal512_hash_functions
+02460_decimal512_aggregate_functions
+02461_decimal512_statistical_functions
+02462_decimal512_array_operations
+02463_decimal512_array_advanced
+02464_decimal512_sorting
+02465_decimal512_grouping
+02466_decimal512_serialization
+02467_decimal512_boundary_values
+02468_decimal512_exception_handling
+02469_decimal512_performance
+02475_precise_decimal_arithmetics
+02483_capnp_decimals  # exclude: KD-TEST-02483-PATH: copies its schema into the hard-coded /workspace/.clickhouse_runtime (writes outside the test tree); not run until the test is fixed, counted as a known-open failure
+02676_to_decimal_string
+02685_decimal512_various
+02686_postgres_protocol_decimal_512
+03786_AST_formatting_inconsistencies_in_debug_check
+04058_paste_join_strictness_formatting
+04712_materialized_cte_nested_in_set
+10300_decimal512_mul_div
+10301_decimal512_array_funcs
+10302_decimal512_functions
+10303_arrow_decimal512
+10304_parquet_orc_decimal512
+10305_avro_bson_decimal512
+10306_dictionary_decimal512
+10307_decimal512_end_to_end
+10308_nullable_fixed_keys_512_bitmap
+10309_decimal512_midpoint_mixed_types
+alter_add_decimal_column
+alter_decimal_256_to_512_conversion
+blockchain_decimal512_added_condition
+blockchain_decimal512_aggregation_functions
+blockchain_decimal512_arithmetic_operations
+blockchain_decimal512_array_operations
+blockchain_decimal512_basic_operations
+blockchain_decimal512_boundary_limits
+blockchain_decimal512_comparison_operations
+blockchain_decimal512_creation_insertion_errors
+blockchain_decimal512_implicit_conversion
+blockchain_decimal512_implicit_conversion_blockchain
+blockchain_decimal512_implicit_conversion_edge_cases
+blockchain_decimal512_special_scenarios
+blockchain_decimal512_type_conversion

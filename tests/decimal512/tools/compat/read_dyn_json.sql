@@ -1,0 +1,11 @@
+SELECT 'dyn', dynamicType(v) AS t, count(), toString(sum(toFloat64(toString(v)))) FROM compat.t_dyn GROUP BY t ORDER BY t;
+SELECT 'dyn_rows', id, toString(v), dynamicType(v) FROM compat.t_dyn WHERE id IN (0, 1, 2, 27, 28, 29) ORDER BY id;
+SELECT 'shared', dynamicType(v) AS t, isDynamicElementInSharedData(v) AS in_shared, count() FROM compat.t_dyn_shared GROUP BY t, in_shared ORDER BY t, in_shared;
+SELECT 'shared_rows', id, toString(v), dynamicType(v) FROM compat.t_dyn_shared WHERE id IN (0, 1, 2, 29) ORDER BY id;
+SELECT 'json', id, toString(j.a), toTypeName(j.a), toString(j.b), dynamicType(j.b) FROM compat.t_json WHERE id IN (0, 9) ORDER BY id;
+SELECT 'parts', table, part_type, count() FROM system.parts WHERE database = 'compat' AND active GROUP BY table, part_type ORDER BY table, part_type;
+SELECT 'dyn_wide', dynamicType(v) AS t, count(), toString(sum(toFloat64(toString(v)))) FROM compat.t_dyn_wide GROUP BY t ORDER BY t;
+SELECT 'shared_wide', dynamicType(v) AS t, isDynamicElementInSharedData(v) AS in_shared, count(), toString(sum(toFloat64(toString(v)))) FROM compat.t_dyn_shared_wide GROUP BY t, in_shared ORDER BY t, in_shared;
+SELECT 'nested', id, toString(a), toString(m), toString(t), dynamicType(a[1]), dynamicType(m['k']), dynamicType(t.x) FROM compat.t_nested WHERE id IN (0, 1, 2) ORDER BY id;
+SELECT 'plain', count(), sum(cityHash64(s, n, lc, m)), toString(sum(d)), toString(sum(i)), toString(sum(u)), toString(sum(nd)), countIf(isNull(nd)) FROM compat.t_plain;
+SELECT 'agg', k, toString(sumMerge(s)), toString(avgMerge(a)), toString(minMerge(mn)), toString(maxMerge(mx)), uniqExactMerge(ue), toString(arraySort(groupArrayMerge(ga))), toString(argMaxMerge(am)), toString(quantileExactMerge(q)), toString(sum(ss)) FROM compat.t_agg GROUP BY k ORDER BY k;

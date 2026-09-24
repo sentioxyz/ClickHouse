@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "updated": "2026-09-24",
+  "about": "Open Decimal512/Int512 defects of the Sentio fork, as exposed by the checks in tests/. scripts/check_gate.py reads this file: a failing check that matches an OPEN defect is reported as known-open (quick/full exit 3, release BLOCKED), any other failing check is unexpected (exit 1). An open defect whose checks all pass is stale and fails the gate: mark it fixed with evidence in the same change. Expectations encode the intended semantics; they are never edited to make a binary pass.",
+  "defects": [
+    {
+      "id": "KD-D512-PRECISION-154",
+      "title": "Decimal512 allows precision 154 but Int512 holds only |v| < 2^511 (~6.7e153): out-of-range literals/casts wrap silently. Fork-specific: upstream Decimal256 (precision 76) always fits Int256 (~5.8e76)",
+      "status": "open",
+      "effect": "silent wrong result",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 hotfix cd0d6088c5a",
+        "26.8 port fff703a776e"
+      ],
+      "decision": "user: reject values outside the Int512 range on parse/cast (keep precision 154), or cap the precision at 153 (changes the type, needs a migration plan)",
+      "match": [
+        {
+          "suite": "ops-matrix",
+          "category": "parse-boundary"
+        }
+      ],
+      "evidence": "evidence/phase6/matrix_r4 (ops, category parse-boundary)"
+    },
+    {
+      "id": "KD-D512-MUL-OVERFLOW",
+      "title": "Decimal512 multiply does not detect overflow (decimal_check_overflow=1) and wraps silently; plus/minus at the Int512 limit are detected. Inherited: upstream documents that overflow checks are not implemented for Decimal128/Decimal256 (docs/en/sql-reference/data-types/decimal.md:70-72) and official 26.8.8.8 wraps the same way",
+      "status": "open",
+      "effect": "silent wrong result (upstream-documented limitation for wide decimals)",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 hotfix cd0d6088c5a",
+        "26.8 port fff703a776e"
+      ],
+      "decision": "user: implement an overflow-checked 512-bit multiply (the expectation used here, as Decimal32/Decimal64 behave), or accept the upstream limitation for Decimal512 in writing; the checks keep failing either way until implemented, so an accepted limitation is an explicit release decision, never a pass",
+      "match": [
+        {
+          "suite": "ops-matrix",
+          "category": "boundary",
+          "op": "multiply"
+        }
+      ],
+      "evidence": "evidence/phase6/matrix_r4 (ops, category boundary, op multiply); official 26.8.8.8: toDecimal128/256 multiply wraps, toDecimal32/64 multiply -> DECIMAL_OVERFLOW (2026-09-24)"
+    },
+    {
+      "id": "KD-I512-SINGLE-KEY",
+      "title": "A single (U)Int512 key (non-nullable, or nullable with its null map stripped) in IN / DISTINCT / JOIN throws LOGICAL_ERROR 'Numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32'",
+      "status": "open",
+      "effect": "query error (LOGICAL_ERROR; aborts builds that abort on logical errors, e.g. Debug)",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 hotfix cd0d6088c5a",
+        "26.8 port fff703a776e"
+      ],
+      "decision": "none needed for the expectation (same result as Int256/Decimal512(0)); fix: let SetVariants/HashJoin choose a method for 64-byte numeric keys",
+      "match": [
+        {
+          "suite": "keys-matrix",
+          "category": "single-key-512"
+        }
+      ],
+      "evidence": "evidence/phase6/matrix_r4 (keys, category single-key-512); src/Interpreters/SetVariants.cpp:147, src/Interpreters/HashJoin/HashJoin.cpp:347 (26.3)"
+    },
+    {
+      "id": "KD-I512-ARITH",
+      "title": "(U)Int512 integer arithmetic (+ - * intDiv modulo) is not implemented: ILLEGAL_TYPE_OF_ARGUMENT",
+      "status": "open",
+      "effect": "query error",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 hotfix cd0d6088c5a",
+        "26.8 port fff703a776e"
+      ],
+      "decision": "user: implement with (U)Int256 semantics (the expectation used here), or declare (U)Int512 arithmetic unsupported (then the expectation becomes an explicit error and this entry is closed by a documented decision)",
+      "match": [
+        {
+          "suite": "ops-matrix",
+          "category": "int512-arith"
+        }
+      ],
+      "evidence": "evidence/phase6/matrix_r4 (ops, category int512-arith); src/Functions/FunctionBinaryArithmetic.h:837 IntegerTypes lacks 512 (26.3)"
+    },
+    {
+      "id": "KD-I512-SUPERTYPE",
+      "title": "The common supertype of (U)Int512 and another integer is Variant(...) instead of (U)Int512 (getLeastSupertype ladder stops at 256); greatest/least throw",
+      "status": "open",
+      "effect": "silent type change (Variant result), query errors downstream",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 hotfix cd0d6088c5a",
+        "26.8 port fff703a776e"
+      ],
+      "decision": "user: extend the ladder to 512 (the expectation used here) or keep the current behaviour and document it",
+      "match": [
+        {
+          "suite": "ops-matrix",
+          "category": "int512-supertype"
+        }
+      ],
+      "evidence": "evidence/phase6/matrix_r4 (ops, category int512-supertype); src/DataTypes/getLeastSupertype.cpp:185-207 (26.3)"
+    },
+    {
+      "id": "KD-I512-MIDPOINT",
+      "title": "avg2/midpoint of two (U)Int512 throw LOGICAL_ERROR 'Arguments of midpoint have incorrect data types' (same root cause as KD-I512-ARITH)",
+      "status": "open",
+      "effect": "query error (LOGICAL_ERROR)",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 hotfix cd0d6088c5a",
+        "26.8 port fff703a776e"
+      ],
+      "decision": "follows KD-I512-ARITH; expectation = (U)Int256 semantics (truncation toward zero, no overflow)",
+      "match": [
+        {
+          "suite": "ops-matrix",
+          "category": "midpoint-int512"
+        }
+      ],
+      "evidence": "evidence/phase6/matrix_r4 (ops, category midpoint-int512)"
+    },
+    {
+      "id": "KD-TEST-01875-512-PATH",
+      "title": "fork test 01875_ssd_cache_dictionary_decimal512_type hard-codes /workspace/.clickhouse_runtime/user_files: PATH_ACCESS_DENIED outside that layout",
+      "status": "open",
+      "effect": "test defect (coverage missing, not a product result)",
+      "decision": "fix the test to use the runner's user_files path; do not delete it",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "01875_ssd_cache_dictionary_decimal512_type"
+        }
+      ],
+      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.1"
+    },
+    {
+      "id": "KD-TEST-02483-PATH",
+      "title": "fork test 02483_capnp_decimals copies its schema to the hard-coded /workspace/.clickhouse_runtime/format_schemas (writes outside the test tree) and fails elsewhere",
+      "status": "open",
+      "effect": "test defect (coverage missing; side effect on the host)",
+      "decision": "fix the test to use the runner's format_schemas path; do not delete it",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "02483_capnp_decimals"
+        }
+      ],
+      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.2"
+    },
+    {
+      "id": "KD-TEST-BLOCKCHAIN-ULP",
+      "title": "fork test blockchain_decimal512_arithmetic_operations: reference differs by 1 ulp in exp(toDecimal512('1', 0)) (same output on buggy and fixed builds)",
+      "status": "open",
+      "effect": "test defect (weak/environment-dependent reference)",
+      "decision": "compare with a tolerance or round the Float64 result in the test; do not re-record the reference from one binary",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "blockchain_decimal512_arithmetic_operations"
+        }
+      ],
+      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.3"
+    },
+    {
+      "id": "KD-TEST-01875-256-VACUOUS",
+      "title": "fork test 01875_ssd_cache_dictionary_decimal256_type is disabled: the script prints its reference and exits 0, so its OK runs no query",
+      "status": "open",
+      "effect": "vacuous test (reported OK, covers nothing)",
+      "decision": "re-enable after fixing the path issue, or remove it from the selection with a recorded reason",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "01875_ssd_cache_dictionary_decimal256_type",
+          "vacuous": true
+        }
+      ],
+      "evidence": "evidence/phase6/goalb_detect_analysis.md footnote 1 (script lines 8-11)"
+    }
+  ]
+}

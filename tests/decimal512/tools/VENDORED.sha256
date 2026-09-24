@@ -1,0 +1,15 @@
+# sha256  tools/<path>  <- clickhouse-decimal512-upgrade skill <path> (copied verbatim 2026-09-24; update both together)
+8b2bf8e266d2dde0329b3a24809fad6bbdeaa34bc8798c4f3db717587f488486  matrix/gen_midpoint_matrix.py  <- tests/matrix/gen_midpoint_matrix.py
+b76555e63da7c1682d6d6f246f05f5f06a527448ac779187a47ad6f488266398  matrix/gen_midpoint_vector.py  <- tests/matrix/gen_midpoint_vector.py
+7107a8361d27b426bdf7d3fefc42078d7cd62aa2ec3ce0e7de17565120628c92  matrix/gen_decimal512_ops_matrix.py  <- tests/matrix/gen_decimal512_ops_matrix.py
+0caee132af34e875b91653424be3fb461e7816c789051e94c647c6e9f9e5a570  matrix/gen_composite_keys.py  <- tests/matrix/gen_composite_keys.py
+eaae955a9360adec72e08f51aa0b3d00a23b051ce1ddb979a0addd7f1e400ba1  matrix/run_matrix.py  <- tests/matrix/run_matrix.py
+c0e8a7cc871434dcb8ee9231da6e4f7b5aca54f578539bed8a688055e8812da0  regression_proof.py  <- scripts/regression_proof.py
+7bb9a357fc96b22373fffa573cd41dcb126439a835ab65b96ce1c7da7521a405  check_gate.py  <- scripts/check_gate.py
+b45af979aa15cad7c12a4fc376da7485f649f07652a3518aa0de4cf98251d9a7  scan_wide_dispatch.py  <- scripts/scan_wide_dispatch.py
+57316733e0a76fcbfa6c9bcdb99a08fc4f024677b5ee0f28276f26113531dc1b  isolated_ch.sh  <- scripts/isolated_ch.sh
+8223aeeb1713098ad67a4eea6e8b8489a981bb26a14fd2a24379f142bfa86483  compat/run_compat2.sh  <- tests/compat/run_compat2.sh
+1b82858fb4bcc2a7d1d93c3a33f98e703c8cdee95207a201f19fc32bb138177b  compat/write_dyn_json.sql  <- tests/compat/write_dyn_json.sql
+17cc8975a21720a9defcedf536cb900e6cc7c3315f7db149c9ba503d92c6fd09  compat/read_dyn_json.sql  <- tests/compat/read_dyn_json.sql
+af2186c51903e8ac1893e4feca5d0dbad4059e5aa25be4e652f27cf77d788065  compat/mixed_agg.sql  <- tests/compat/mixed_agg.sql
+e78a34b37b72831baf4442c6e7d0fb99cb07007abd817e41c46b40f8bb4baf4d  compat/native_compat.sh  <- tests/compat/native_compat.sh
