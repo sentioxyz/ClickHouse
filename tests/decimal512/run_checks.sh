@@ -30,6 +30,20 @@
 #                                          saying where it comes from (an operator attestation, compared by the gate)
 #       [--perf-rounds <n>]                release: rounds of tools/perf/perf_compare.py (default 7, at least 5)
 #       [--instance a|b|c]                 isolated server slot for the stateless tests (default c: ports 59000..)
+#       [--workers N]                      engine processes per matrix run (run_matrix.py --workers; default
+#                                          $DECIMAL512_MATRIX_WORKERS or 1). Results do not depend on N.
+#       [--matrix-cache DIR]               reuse a matrix result (tools/matrix/matrix_cache.py) only when the engine, the SQL,
+#                                          the oracle, run_matrix.py, python and the time zone are byte-identical; the
+#                                          result is then recorded as REUSED historical evidence (results/*.reuse.json,
+#                                          checked by the gate), never as a new run. A cache entry that fails verification
+#                                          stops the run. Default $DECIMAL512_MATRIX_CACHE or none.
+#
+# Checks tree vs binary: the checks come from this tree's HEAD. When HEAD differs from --source-sha (the binary's
+# commit), the diff must touch only tests/, docs/ and .github/ (nothing compiled into the binary); it is recorded in
+# evidence.json and re-checked by the gate. Anything else stops the run: rebuild the binary first.
+# CPU (optional, DECIMAL512_SCOPE_CPU_SPLIT=1 inside a ch-validation-*.scope): while the stateless server container runs
+# (CH_ISO_DOCKER_CPUS), this scope's CPUQuota is lowered to DECIMAL512_STATELESS_SCOPE_CPU (400%) and restored to
+# DECIMAL512_SCOPE_CPU (800%) afterwards, so the task never uses more than 8 cores in total.
 #
 # Host name of the stateless server (full/nightly/release): CH_ISO_HOST_ISOLATION=container (the default here) runs it
 # in a local docker container whose host name is "localhost", and clickhouse-test sees the same name, so the runner's
@@ -46,6 +60,7 @@ T=$HERE/tools
 
 usage() { sed -n '2,/^set -u$/p' "$0" | sed '$d' >&2; exit 2; }
 TIER= BIN= OUT= SRC= BUGGY= IMAGE= PROTO= CLEAN=null INST=c KEEPER= KEEPER_SHA= KEEPER_BASIS= PERF_ROUNDS=7
+WORKERS=${DECIMAL512_MATRIX_WORKERS:-1} CACHE=${DECIMAL512_MATRIX_CACHE:-}
 while [ $# -gt 0 ]; do
   case $1 in
     --tier) TIER=$2; shift 2;;
@@ -61,6 +76,8 @@ while [ $# -gt 0 ]; do
     --keeper-expected-sha256) KEEPER_SHA=$2; shift 2;;
     --keeper-basis) KEEPER_BASIS=$2; shift 2;;
     --perf-rounds) PERF_ROUNDS=$2; shift 2;;
+    --workers) WORKERS=$2; shift 2;;
+    --matrix-cache) CACHE=$2; shift 2;;
     *) usage;;
   esac
 done
@@ -71,6 +88,8 @@ case $INST in a|b|c) ;; *) usage;; esac
 if [ -e "$OUT" ] && [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then echo "ERROR: --out $OUT is not empty (evidence is never mixed)" >&2; exit 2; fi
 # the only server this script talks to is its own loopback instance; refuse an environment pointing elsewhere
 case ${CLICKHOUSE_HOST:-127.0.0.1} in 127.0.0.1|localhost) ;; *) echo "REFUSE: CLICKHOUSE_HOST=$CLICKHOUSE_HOST" >&2; exit 2;; esac
+case $WORKERS in ''|*[!0-9]*|0) echo "ERROR: --workers must be a positive integer" >&2; exit 2;; esac
+RUN_STARTED_AT=$(date -u +%FT%TZ)
 mkdir -p "$OUT"/{gen,results,logs}
 OUT=$(cd "$OUT" && pwd)
 BIN=$(readlink -f "$BIN")
@@ -88,13 +107,51 @@ ident() {  # <binary> -> "sha256 build-id version git-hash" (clickhouse local, p
 }
 read -r BSHA BBID BVER BGIT <<< "$(ident "$BIN")"
 [ -n "$SRC" ] || SRC=$BGIT
-log "tier=$TIER binary=$BIN sha256=$BSHA build-id=$BBID version=$BVER git_hash=$BGIT source=$SRC tests=$(git -C "$TREE" rev-parse HEAD)"
+TESTS_SHA=$(git -C "$TREE" rev-parse HEAD)
+log "tier=$TIER binary=$BIN sha256=$BSHA build-id=$BBID version=$BVER git_hash=$BGIT source=$SRC tests=$TESTS_SHA workers=$WORKERS cache=${CACHE:-none}"
+# checks from a newer commit than the binary: allowed only for a diff that cannot change the binary
+HARNESS_JSON=
+if [ "$TESTS_SHA" != "$SRC" ]; then
+  if ! diff_files=$(git -C "$TREE" diff --name-only "$SRC" "$TESTS_SHA" 2>/dev/null); then
+    log "ERROR: cannot diff the binary's commit $SRC against the checks' tree $TESTS_SHA"; exit 1
+  fi
+  bad=$(echo "$diff_files" | grep -v -E '^(tests/|docs/|\.github/)' | grep -v '^$' || true)
+  if [ -n "$bad" ]; then
+    log "ERROR: the checks' tree $TESTS_SHA differs from the binary's commit $SRC in paths that can change the binary (rebuild first): $(echo $bad | cut -c1-300)"
+    exit 1
+  fi
+  HARNESS_JSON=", \"harness_diff\": {\"from\": \"$SRC\", \"to\": \"$TESTS_SHA\", \"files\": $(echo "$diff_files" | python3 -c 'import json,sys; print(json.dumps([l for l in sys.stdin.read().splitlines() if l]))')}"
+  log "checks tree $TESTS_SHA differs from the binary's commit $SRC only in tests/, docs/, .github/ ($(echo "$diff_files" | grep -c .) files)"
+fi
 
-run_matrix() {  # <matrix name> <binary> <label> -> results/<name>.<label>.{result.jsonl,summary.json}
-  local m=$1 b=$2 l=$3
-  python3 "$T/matrix/run_matrix.py" --binary "$b" "$OUT/gen/$m.sql" "$OUT/gen/$m.oracle.jsonl" \
+run_matrix() {  # <matrix name> <binary> <label> -> results/<name>.<label>.{result.jsonl,summary.json[,reuse.json]}
+  local m=$1 b=$2 l=$3 rc t0
+  local cargs=(--cache "$CACHE" --matrix "$m" --engine "$b" --sql "$OUT/gen/$m.sql" --oracle "$OUT/gen/$m.oracle.jsonl"
+               --runner "$T/matrix/run_matrix.py" --result "$OUT/results/$m.$l.result.jsonl" --summary "$OUT/results/$m.$l.summary.json")
+  if [ -n "$CACHE" ]; then
+    python3 "$T/matrix/matrix_cache.py" fetch "${cargs[@]}" --reuse "$OUT/results/$m.$l.reuse.json" > "$OUT/results/$m.$l.cache.json" 2>&1
+    rc=$?
+    if [ $rc = 0 ]; then
+      log "matrix $m on $l: REUSED historical evidence, not re-run: $(cut -c1-220 "$OUT/results/$m.$l.cache.json")"
+      return
+    elif [ $rc = 3 ]; then
+      log "ERROR: matrix $m on $l: the cache entry for this key failed verification: $(cut -c1-300 "$OUT/results/$m.$l.cache.json")"
+      exit 1
+    fi
+  fi
+  t0=$(date +%s)
+  python3 "$T/matrix/run_matrix.py" --binary "$b" --workers "$WORKERS" "$OUT/gen/$m.sql" "$OUT/gen/$m.oracle.jsonl" \
     "$OUT/results/$m.$l.result.jsonl" > "$OUT/results/$m.$l.summary.json" 2> "$OUT/results/$m.$l.err"
-  log "matrix $m on $l: rc=$? $(cat "$OUT/results/$m.$l.summary.json" 2>/dev/null | cut -c1-200)"
+  rc=$?
+  log "matrix $m on $l: rc=$rc ($(( $(date +%s) - t0 )) s, $WORKERS worker(s)) $(cut -c1-200 "$OUT/results/$m.$l.summary.json" 2>/dev/null)"
+  if [ -n "$CACHE" ]; then
+    python3 "$T/matrix/matrix_cache.py" store "${cargs[@]}" \
+      --origin "{\"out\": \"$OUT\", \"tests_sha\": \"$TESTS_SHA\", \"source_sha\": \"$SRC\", \"run_started_at\": \"$RUN_STARTED_AT\"}" \
+      >> "$OUT/results/$m.$l.cache.json" 2>&1
+  fi
+}
+reuse_ref() {  # <matrix> <label> -> the JSON member naming the reuse record, when that run was reused
+  [ -f "$OUT/results/$1.$2.reuse.json" ] && echo ", \"reuse\": \"results/$1.$2.reuse.json\""
 }
 gen() {
   (cd "$T/matrix" &&
@@ -112,10 +169,10 @@ SUITES=()   # JSON objects, joined into evidence.json
 NOT_RUN=()
 suite() { SUITES+=("$1"); }
 matrix_suite() {  # <suite name> <matrix> <label>: the gate checks the inputs against tools/matrix/cases.lock.json
-  suite "{\"name\": \"$1\", \"kind\": \"matrix\", \"matrix\": \"$2\", \"sql\": \"gen/$2.sql\", \"oracle\": \"gen/$2.oracle.jsonl\", \"result\": \"results/$2.$3.result.jsonl\", \"summary\": \"results/$2.$3.summary.json\"}"
+  suite "{\"name\": \"$1\", \"kind\": \"matrix\", \"matrix\": \"$2\", \"sql\": \"gen/$2.sql\", \"oracle\": \"gen/$2.oracle.jsonl\", \"result\": \"results/$2.$3.result.jsonl\", \"summary\": \"results/$2.$3.summary.json\"$(reuse_ref "$2" "$3")}"
 }
 proof_suite() {  # <matrix> <targets json> <controls json>: recomputed by the gate from both result files
-  suite "{\"name\": \"regression-proof:$1\", \"kind\": \"proof\", \"matrix\": \"$1\", \"targets\": $2, \"controls\": $3, \"sql\": \"gen/$1.sql\", \"oracle\": \"gen/$1.oracle.jsonl\", \"buggy\": {\"result\": \"results/$1.previous.result.jsonl\", \"summary\": \"results/$1.previous.summary.json\"}, \"fixed\": {\"result\": \"results/$1.tested.result.jsonl\", \"summary\": \"results/$1.tested.summary.json\"}, \"report\": \"results/proof.$1.json\"}"
+  suite "{\"name\": \"regression-proof:$1\", \"kind\": \"proof\", \"matrix\": \"$1\", \"targets\": $2, \"controls\": $3, \"sql\": \"gen/$1.sql\", \"oracle\": \"gen/$1.oracle.jsonl\", \"buggy\": {\"result\": \"results/$1.previous.result.jsonl\", \"summary\": \"results/$1.previous.summary.json\"$(reuse_ref "$1" previous)}, \"fixed\": {\"result\": \"results/$1.tested.result.jsonl\", \"summary\": \"results/$1.tested.summary.json\"$(reuse_ref "$1" tested)}, \"report\": \"results/proof.$1.json\"}"
 }
 
 gen
@@ -161,6 +218,16 @@ if [ "$TIER" != quick ]; then
   # generateSerialID, ...) run as in upstream CI instead of failing on "no Zookeeper configuration"
   HOST_ISOLATION=${CH_ISO_HOST_ISOLATION:-container}
   log "stateless server host name isolation: $HOST_ISOLATION"
+  # total CPU of the task stays within 8 cores: the container gets CH_ISO_DOCKER_CPUS, this scope gives up as much
+  SCOPE_UNIT=
+  if [ "${DECIMAL512_SCOPE_CPU_SPLIT:-0}" = 1 ]; then
+    SCOPE_UNIT=$(sed -n 's|^0::.*/\(ch-validation-[A-Za-z0-9_-]*\.scope\)$|\1|p' /proc/self/cgroup)
+    if [ -n "$SCOPE_UNIT" ] && systemctl --user set-property --runtime "$SCOPE_UNIT" CPUQuota="${DECIMAL512_STATELESS_SCOPE_CPU:-400%}"; then
+      log "cpu: $SCOPE_UNIT CPUQuota ${DECIMAL512_STATELESS_SCOPE_CPU:-400%} while the container (${CH_ISO_DOCKER_CPUS:-all} cpus) runs"
+    else
+      log "cpu: no ch-validation scope found or quota not changed (SCOPE_UNIT='$SCOPE_UNIT')"; SCOPE_UNIT=
+    fi
+  fi
   if CH_ISO_KEEPER=1 CH_ISO_HOST_ISOLATION=$HOST_ISOLATION bash "$T/isolated_ch.sh" start "$INST" "$BIN" "$TREE" > "$OUT/logs/server_start.log" 2>&1; then
     bash "$T/isolated_ch.sh" test "$INST" "$TREE" fork-stateless "${BBID:0:12}" --no-random-settings --no-random-merge-tree-settings \
       --no-stateful -j 4 "${SEL[@]}" > "$OUT/logs/stateless_driver.log" 2>&1
@@ -169,6 +236,9 @@ if [ "$TIER" != quick ]; then
     log "ERROR: isolated server did not start (see logs/server_start.log)"
   fi
   bash "$T/isolated_ch.sh" stop "$INST" >> "$OUT/logs/server_start.log" 2>&1
+  if [ -n "$SCOPE_UNIT" ]; then
+    systemctl --user set-property --runtime "$SCOPE_UNIT" CPUQuota="${DECIMAL512_SCOPE_CPU:-800%}" && log "cpu: $SCOPE_UNIT CPUQuota restored to ${DECIMAL512_SCOPE_CPU:-800%}"
+  fi
   rm -f "$OUT"/iso/bin/clickhouse-*   # the server's private copy of the binary (GBs); logs stay as evidence
   # files the tests created or rewrote inside the source tree (reported, never deleted by this script)
   find "$TREE/tests" -newer "$OUT/logs/.stateless_start" -type f 2>/dev/null | sed "s#^$TREE/##" | sort > "$OUT/logs/tree_side_effects.txt"
@@ -274,10 +344,11 @@ DIRTY=$CLEAN   # null unless --source-clean: this script cannot see the tree the
 ATTEST=null; [ "$CLEAN" = false ] && ATTEST='"operator (run_checks.sh --source-clean)"'
 suites_json=$(IFS=,; echo "${SUITES[*]}"); not_run_json=$(IFS=,; echo "${NOT_RUN[*]}")
 cat > "$OUT/evidence.json" <<JSON
-{"schema": 2, "tier": "$TIER", "created_at": "$(date -u +%FT%TZ)",
+{"schema": 2, "tier": "$TIER", "created_at": "$(date -u +%FT%TZ)", "run_started_at": "$RUN_STARTED_AT",
+ "scheduling": {"matrix_workers": $WORKERS, "matrix_cache": "${CACHE:-}"},
  "source": {"sha": "$SRC", "dirty": $DIRTY, "dirty_attested_by": $ATTEST, "binary_git_hash": "$BGIT",
             "binary_git_hash_source": "runner: clickhouse local, system.build_options GIT_HASH"},
- "tests": {"repo": "$TREE", "sha": "$(git -C "$TREE" rev-parse HEAD)"},
+ "tests": {"repo": "$TREE", "sha": "$TESTS_SHA"}$HARNESS_JSON,
  "binary": {"path": "$BIN", "sha256": "$BSHA", "build_id": "$BBID", "version": "$BVER"}$BASE_JSON$IMG_JSON,
  "suites": [$suites_json],
  "not_run": [$not_run_json]}

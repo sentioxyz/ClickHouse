@@ -54,6 +54,7 @@ Manifest format: references/migration-ci-process.md (section "Evidence manifest"
 from __future__ import annotations
 
 import argparse
+import datetime
 import collections
 import hashlib
 import json
@@ -79,6 +80,12 @@ GROUPBY_LOCK = next((p for p in (os.path.join(os.path.dirname(os.path.abspath(__
                                  os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "replication", "groupby_cases.lock.json"))
                      if os.path.isfile(p)), os.path.join(os.path.dirname(os.path.abspath(__file__)), "replication", "groupby_cases.lock.json"))
 HEX40, HEX64 = re.compile(r"^[0-9a-f]{40}$"), re.compile(r"^[0-9a-f]{64}$")
+# run_matrix.py: the fork keeps it under tools/matrix/, the skill under tests/matrix/; results must come from this runner
+RUNNER = next((p for p in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "matrix", "run_matrix.py"),
+                           os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "matrix", "run_matrix.py"))
+               if os.path.isfile(p)), None)
+# paths a checks tree may change against the binary's commit without a rebuild: none of them is compiled into the binary
+HARNESS_PREFIXES = ("tests/", "docs/", ".github/")
 SUMMARY_ATTESTATION = ("sql_sha256", "oracle_sha256", "ids_sha256", "cases", "result_sha256")
 REPLICATION_REQUIRED_STEPS = ("keeper.start", "r1.start.baseline", "r2.start.baseline", "create", "fetch.baseline_to_baseline",
                               "r2.start.candidate", "read.after_upgrade", "fetch.baseline_to_candidate", "fetch.candidate_to_baseline",
@@ -127,6 +134,9 @@ class Gate:
         self.binary: dict = {}
         self.baseline: dict = {}
         self.binary_git_hash: str | None = None
+        self.run_started_at = None                # evidence.run_started_at: results attested earlier must be marked reused
+        self.runner_sha256 = None                 # sha256 of the run_matrix.py next to this gate
+        self.reused: list[str] = []
         self._cache: dict[str, tuple[str, str | None]] = {}
 
     def path(self, p: str) -> str:
@@ -155,6 +165,23 @@ class Gate:
 
     def record(self, item: str, value, basis: str, status: str) -> None:
         self.identity.append({"item": item, "value": value, "basis": basis, "status": status})
+
+
+def harness_paths_ok(files: list) -> list:
+    """the paths (of a diff between the binary's commit and the checks' tree) that could change the binary"""
+    return [f for f in files if not str(f).startswith(HARNESS_PREFIXES)]
+
+
+def parse_ts(ts):
+    try:
+        return datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def cache_key_of(material: dict) -> str:
+    """the same key as matrix_cache.py"""
+    return hashlib.sha256(json.dumps(material, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def file_contains(path: str, needle: bytes) -> bool:
@@ -221,6 +248,7 @@ def check_identity(g: Gate, m: dict, tier: str) -> dict:
             g.record("clean source tree", src.get("dirty"), "missing", "FAIL")
     elif src.get("dirty"):
         g.notes.append("source tree is dirty (allowed below release)")
+    check_harness_tree(g, m, sha_claim, tier)
     if m.get("baseline"):
         g.baseline = verify_file_identity(g, "baseline", m["baseline"])
         if g.baseline and binary and g.baseline["sha256"] == binary["sha256"]:
@@ -265,8 +293,80 @@ def check_image(g: Gate, img: dict, binary: dict) -> None:
         g.problems.append(f"image.binary_sha256 {isha} is not the tested binary {binary.get('sha256')}")
 
 
+def check_harness_tree(g: Gate, m: dict, sha_claim: str, tier: str) -> None:
+    """The checks may come from a newer commit than the binary only if the difference cannot change the binary."""
+    tests = m.get("tests") or {}
+    tsha = str(tests.get("sha") or "")
+    if not HEX40.match(tsha) or not HEX40.match(sha_claim) or tsha == sha_claim:
+        return
+    hd = m.get("harness_diff") or {}
+    files = hd.get("files")
+    if hd.get("from") != sha_claim or hd.get("to") != tsha or not isinstance(files, list):
+        (g.problems if tier == "release" else g.notes).append(
+            f"the checks ran from tree {tsha[:11]} but the binary is from {sha_claim[:11]}, and no diff between them was recorded")
+        g.record("checks tree", tsha, "missing harness diff", "FAIL")
+        return
+    basis, recomputed = "attested (run_checks.sh)", None
+    repo = tests.get("repo")
+    if repo and os.path.isdir(repo):
+        p = subprocess.run(["git", "-C", repo, "diff", "--name-only", sha_claim, tsha], capture_output=True, text=True, timeout=120,
+                           env=dict(os.environ, GIT_NO_LAZY_FETCH="1", GIT_OPTIONAL_LOCKS="0"))
+        if p.returncode == 0:
+            recomputed, basis = [l for l in p.stdout.splitlines() if l], "recomputed (git diff --name-only)"
+    if recomputed is not None and sorted(recomputed) != sorted(files):
+        g.problems.append(f"the recorded harness diff {sha_claim[:11]}..{tsha[:11]} is not what git reports")
+    bad = harness_paths_ok(recomputed if recomputed is not None else files)
+    if bad:
+        g.problems.append(f"the checks' tree {tsha[:11]} differs from the binary's commit {sha_claim[:11]} in paths that can change the "
+                          f"binary (rebuild needed): {bad[:5]}")
+    g.record("checks tree", tsha, f"{basis}; differs from the binary's commit only in {', '.join(HARNESS_PREFIXES)}: "
+             f"{len(recomputed if recomputed is not None else files)} file(s)", "FAIL" if bad else "OK")
+
+
+def check_reuse_and_age(g: Gate, label: str, sm: dict, reuse: str | None, expect: dict, sql_sha: str, orc_sha: str,
+                        res_sha: str, summary: str) -> None:
+    """A result older than the run must be declared as reused, and the reuse record must bind the same engine, inputs,
+    runner and files; results of another runner version never count."""
+    if "runner_sha256" in sm:
+        if g.runner_sha256 and sm["runner_sha256"] != g.runner_sha256:
+            g.problems.append(f"{label}: produced by run_matrix.py {str(sm['runner_sha256'])[:12]}, not the current runner "
+                              f"{g.runner_sha256[:12]} (stale results of another runner version)")
+    elif reuse:
+        g.problems.append(f"{label}: reused results without a runner attestation")
+    if reuse:
+        try:
+            rec = json.load(open(g.path(reuse), encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            g.problems.append(f"{label}: reuse record {reuse} unreadable: {e}")
+            return
+        km = rec.get("key_material") or {}
+        want = {"engine_sha256": (expect or {}).get("sha256"), "engine_build_id": (expect or {}).get("build_id"),
+                "sql_sha256": sql_sha, "oracle_sha256": orc_sha, "runner_sha256": g.runner_sha256 or sm.get("runner_sha256")}
+        bad = [k for k, v in want.items() if km.get(k) != v]
+        if rec.get("reused") is not True:
+            bad.append("reused flag")
+        if cache_key_of(km) != rec.get("cache_key"):
+            bad.append("cache key")
+        files = rec.get("files") or {}
+        if files.get("result_sha256") != res_sha or files.get("summary_sha256") != g.sha(g.path(summary)):
+            bad.append("file hashes")
+        if bad:
+            g.problems.append(f"{label}: the reuse record does not bind this evidence ({bad}): cached results cannot be trusted")
+            return
+        origin = rec.get("origin") or {}
+        g.reused.append(label)
+        g.notes.append(f"{label}: REUSED historical evidence (not re-run by this run): created {rec.get('created_at')} by "
+                       f"{origin.get('out') or origin}, key {str(rec.get('cache_key'))[:12]}; engine, inputs, runner and files verified")
+        return
+    if g.run_started_at:
+        att = parse_ts(sm.get("attested_at"))
+        if att is None or att < g.run_started_at:
+            g.problems.append(f"{label}: results attested at {sm.get('attested_at')}, before this run started "
+                              f"({g.run_started_at.isoformat()}), and not declared as reused (stale evidence presented as new)")
+
+
 def validate_matrix_run(g: Gate, label: str, matrix: str, sql: str, oracle: str, result: str, summary: str,
-                        expect: dict) -> dict | None:
+                        expect: dict, reuse: str | None = None) -> dict | None:
     """Exact coverage and identity of one run_matrix.py run; returns {id: {status, category, op}} with recomputed
     statuses, or None when the rows cannot be trusted at all."""
     n0 = len(g.problems)
@@ -306,6 +406,7 @@ def validate_matrix_run(g: Gate, label: str, matrix: str, sql: str, oracle: str,
         g.problems.append(f"{label}: results come from engine sha256 {sm.get('engine_sha256')}, not {expect.get('sha256')} (artifact mismatch or no run-time identity)")
     elif sm.get("engine_build_id") != expect.get("build_id"):
         g.problems.append(f"{label}: engine build-id {sm.get('engine_build_id')} attested at run time is not {expect.get('build_id')}")
+    check_reuse_and_age(g, label, sm, reuse, expect, sql_sha, orc_sha, res_sha, summary)
     rows, dup, bad_exp, bad_cat, disagree, weird = {}, set(), 0, 0, 0, 0
     for line in open(g.path(result), encoding="utf-8"):
         if not line.strip():
@@ -352,7 +453,7 @@ def suite_matrix(g: Gate, s: dict, binary: dict) -> None:
     if need:
         g.problems.append(f"{s.get('name')}: matrix suite lacks {need} (cannot verify case coverage or identity)")
         return
-    rows = validate_matrix_run(g, s["name"], s["matrix"], s["sql"], s["oracle"], s["result"], s["summary"], binary)
+    rows = validate_matrix_run(g, s["name"], s["matrix"], s["sql"], s["oracle"], s["result"], s["summary"], binary, s.get("reuse"))
     if rows is None:
         return
     for rid, r in rows.items():
@@ -373,8 +474,10 @@ def suite_proof(g: Gate, s: dict, binary: dict) -> None:
     if not g.baseline:
         g.problems.append(f"{name}: no verified baseline identity to bind the buggy side to")
     lock = g.lock.get(s["matrix"], {})
-    b = validate_matrix_run(g, f"{name} (buggy)", s["matrix"], s["sql"], s["oracle"], s["buggy"].get("result"), s["buggy"].get("summary"), g.baseline)
-    f = validate_matrix_run(g, f"{name} (fixed)", s["matrix"], s["sql"], s["oracle"], s["fixed"].get("result"), s["fixed"].get("summary"), binary)
+    b = validate_matrix_run(g, f"{name} (buggy)", s["matrix"], s["sql"], s["oracle"], s["buggy"].get("result"), s["buggy"].get("summary"), g.baseline,
+                            s["buggy"].get("reuse"))
+    f = validate_matrix_run(g, f"{name} (fixed)", s["matrix"], s["sql"], s["oracle"], s["fixed"].get("result"), s["fixed"].get("summary"), binary,
+                            s["fixed"].get("reuse"))
     proven = b is not None and f is not None and bool(g.baseline)
     if b is None or f is None:
         g.proofs[name] = {"matrix": s["matrix"], "targets": set(s["targets"]), "proven": False}
@@ -769,6 +872,8 @@ def main() -> int:
         print(f"ERROR: manifest was produced for tier {m['tier']!r}, not {a.tier!r}", file=sys.stderr)
         return 2
     g = Gate(os.path.dirname(os.path.abspath(a.manifest)), tier, lock)
+    g.run_started_at = parse_ts(m["run_started_at"]) if m.get("run_started_at") else None
+    g.runner_sha256 = g.sha(RUNNER) if RUNNER else None
     binary = check_identity(g, m, tier)
     suites = {s.get("name"): s for s in m.get("suites") or []}
     for name in REQUIRED[tier]:  # "regression-proof" is satisfied by "regression-proof:keys" etc.

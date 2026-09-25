@@ -32,8 +32,8 @@
 #                   namespace, this user's uid, only $CH_ISO_ROOT and <tree> mounted, plus the host's
 #                   /usr/share/zoneinfo read-only and TZ set to the host's zone name, so time zone lookups and the
 #                   default time zone match a server on the host (without them 05059 failed: its fallback to the
-#                   system zoneinfo directory found nothing), memory/pids capped by
-#                   $CH_ISO_DOCKER_MEM (12g) / $CH_ISO_DOCKER_PIDS (8192)), and `test` runs clickhouse-test and its
+#                   system zoneinfo directory found nothing), memory/pids/CPUs capped by $CH_ISO_DOCKER_MEM (12g) /
+#                   $CH_ISO_DOCKER_PIDS (8192) / $CH_ISO_DOCKER_CPUS (default: all)), and `test` runs clickhouse-test and its
 #                   shells with the LD_PRELOAD library of hostname_shim.c, so the runner's host name is "localhost" too
 #                   and its substitution changes nothing. (ClickHouse itself ignores LD_PRELOAD: it clears the variable
 #                   and re-executes itself, see checkHarmfulEnvironmentVariables, hence the container for the server.)
@@ -201,7 +201,7 @@ XML
     [ -n "$HOST_TZ" ] && TZ_ARGS+=(-e "TZ=$HOST_TZ")
     docker run -d --rm --pull never --name "$CNAME" --hostname localhost --network host --pid host --user "$(id -u):$(id -g)" \
       --memory="${CH_ISO_DOCKER_MEM:-12g}" --memory-swap="${CH_ISO_DOCKER_MEM:-12g}" --pids-limit="${CH_ISO_DOCKER_PIDS:-8192}" \
-      --cpus="$(nproc)" "${TZ_ARGS[@]}" -v "$ROOT:$ROOT" -v "$TREE:$TREE" -w "$D" "$IMG" \
+      --cpus="${CH_ISO_DOCKER_CPUS:-$(nproc)}" "${TZ_ARGS[@]}" -v "$ROOT:$ROOT" -v "$TREE:$TREE" -w "$D" "$IMG" \
       sh -c 'exec "$0" server --config-file="$1" --pid-file="$2" > "$3" 2>&1 < /dev/null' \
       "$COPY" "$D/conf/config.xml" "$D/server.pid" "$D/log/stdout.log" > "$D/log/docker_run.log" 2>&1 \
       || { echo "REFUSE: docker run failed (see $D/log/docker_run.log)"; exit 95; }

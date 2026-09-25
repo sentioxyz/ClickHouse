@@ -12,7 +12,11 @@ protocol steps missing, swapped or DIFF, proofs on the wrong binaries or without
 for fixed defects, absent or inconsistent source/image identity, stateless runs outside the pinned selection,
 replication steps missing, duplicated or DIFF or run by other binaries, a Keeper that is not the declared one,
 performance thresholds loosened or presented as an SLO, too few rounds, verdicts that disagree with the raw timings,
-noisy controls, failed queries - adds its specific PROBLEM. It also replays the two counterexamples of the
+noisy controls, failed queries, results of another run_matrix.py version, results older than the run that are not
+declared as reused, reuse records bound to another engine or with edited files, a checks tree that differs from the
+binary's commit in compiled paths - adds its specific PROBLEM. A valid reuse record is accepted and labelled as
+historical evidence; run_matrix.py gives the same result file for 1 and 2 workers; matrix_cache.py hits, misses on any
+changed input and fails closed on an edited entry. It also replays the two counterexamples of the
 2026-09-24 acceptance review as pure-function calls, and checks that the gate's recomputation agrees with
 run_matrix.py on a stub-engine run.
   gate_mutation_test.py <skill-dir>                  (skill layout: scripts/, tests/matrix/)
@@ -367,6 +371,61 @@ def main():
                lambda d: jdump(os.path.join(d, KS), {"engine": os.path.join(d, "bin/cand.bin")}))
         mutate("matrix result file replaced after the run", "not the one the runner wrote",
                lambda d: edit_lines(os.path.join(d, KR), lambda rows: rows[::-1]))
+        RUNNER_SHA = sha(C.RUNNER)
+        mutate("matrix results of another run_matrix.py version", "not the current runner",
+               lambda d: edit_json(os.path.join(d, KS), lambda s: s.update(runner_sha256="0" * 64)))
+        mutate("stale results presented as new (older than the run, no reuse record)", "not declared as reused",
+               lambda d: (edit_json(os.path.join(d, "release.json"), lambda m: m.update(run_started_at="2999-01-01T00:00:00Z")),
+                          edit_json(os.path.join(d, KS), lambda s: s.update(attested_at="2026-01-01T00:00:00+00:00"))))
+
+        def reuse_record(d, engine="bin/cand.bin", tamper=False):
+            edit_json(os.path.join(d, KS), lambda s: s.update(runner_sha256=RUNNER_SHA))
+            km = {"matrix": "keys", "engine_sha256": sha(os.path.join(d, engine)), "engine_build_id": bid(os.path.join(d, engine)),
+                  "sql_sha256": sha(os.path.join(d, "gen/keys.sql")), "oracle_sha256": sha(os.path.join(d, "gen/keys.oracle.jsonl")),
+                  "runner_sha256": RUNNER_SHA, "python": "3", "tz": "UTC"}
+            rec = {"reused": True, "cache_key": C.cache_key_of(km), "key_material": km, "origin": {"out": "earlier-run"}, "created_at": "2026-09-25T00:00:00+00:00",
+                   "files": {"result_sha256": "0" * 64 if tamper else sha(os.path.join(d, KR)), "summary_sha256": sha(os.path.join(d, KS))}}
+            jdump(os.path.join(d, "results/keys.tested.reuse.json"), rec)
+            # the keys-matrix suite and the fixed side of the keys proof read the same files (run_checks.sh refers both to the record)
+            edit_json(os.path.join(d, "release.json"), lambda m: [x.update(reuse="results/keys.tested.reuse.json") if x["name"] == "keys-matrix"
+                                                                else x["fixed"].update(reuse="results/keys.tested.reuse.json")
+                                                                for x in m["suites"] if x["name"] in ("keys-matrix", "regression-proof:keys")])
+        mutate("reuse record bound to another engine", "reuse record does not bind", lambda d: reuse_record(d, engine="bin/base.bin"))
+        mutate("reuse record whose result file was edited", "reuse record does not bind", lambda d: reuse_record(d, tamper=True))
+        okr = os.path.join(root, "reuse_ok")
+        shutil.copytree(base, okr)
+        reuse_record(okr)
+        edit_json(os.path.join(okr, "release.json"), lambda m: m.update(run_started_at="2999-01-01T00:00:00Z"))
+        for m_ in ("midpoint", "ops"):  # the other runs of the fixture are "fresh": attested after the (fixture) run start
+            for who in ("tested", "previous"):
+                sp = os.path.join(okr, f"results/{m_}.{who}.summary.json")
+                if os.path.isfile(sp):
+                    edit_json(sp, lambda s: s.update(attested_at="2999-01-01T00:00:01+00:00"))
+        edit_json(os.path.join(okr, "results/keys.previous.summary.json"), lambda s: s.update(attested_at="2999-01-01T00:00:01+00:00"))
+        for x in json.load(open(os.path.join(okr, "release.json")))["suites"]:
+            for part in ([x] if x.get("kind") == "matrix" else [x.get("buggy") or {}, x.get("fixed") or {}] if x.get("kind") == "proof" else []):
+                sp = part.get("summary")
+                if sp and "keys.tested" not in sp and os.path.isfile(os.path.join(okr, sp)):
+                    edit_json(os.path.join(okr, sp), lambda s: s.update(attested_at="2999-01-01T00:00:01+00:00"))
+        rc, res = gate(okr)
+        newp = [p for p in res["problems"] if p not in basep]
+        check("a valid reuse record is accepted and labelled as historical evidence (no new problems)",
+              rc == 1 and not newp and any("REUSED historical evidence" in n for n in res.get("notes", [])), f"rc={rc} new {newp[:4]}")
+        mutate("checks tree differs from the binary's commit without a recorded diff", "no diff between them was recorded",
+               lambda d: edit_json(os.path.join(d, "release.json"), lambda m: m.update(tests={"sha": "f" * 40})))
+        mutate("checks tree differs from the binary's commit in compiled paths", "paths that can change the binary",
+               lambda d: edit_json(os.path.join(d, "release.json"), lambda m: m.update(tests={"sha": "f" * 40},
+                                   harness_diff={"from": SRC, "to": "f" * 40, "files": ["tests/decimal512/run_checks.sh", "src/Interpreters/Aggregator.cpp"]})))
+        okh = os.path.join(root, "harness_ok")
+        shutil.copytree(base, okh)
+        edit_json(os.path.join(okh, "release.json"), lambda m: m.update(tests={"sha": "f" * 40},
+                  harness_diff={"from": SRC, "to": "f" * 40, "files": ["tests/decimal512/run_checks.sh", "docs/x.md", ".github/workflows/y.yml"]}))
+        rc, res = gate(okh)
+        newp = [p for p in res["problems"] if p not in basep]
+        check("a checks tree that differs only in tests/, docs/, .github/ is accepted and recorded",
+              rc == 1 and not newp and any(i["item"] == "checks tree" and i["status"] == "OK" for i in res.get("identity", [])), f"rc={rc} new {newp[:4]}")
+        check("harness_paths_ok: tests/docs/.github allowed, src/ rejected",
+              C.harness_paths_ok(["tests/a", "docs/b", ".github/c"]) == [] and C.harness_paths_ok(["tests/a", "src/b.cpp"]) == ["src/b.cpp"])
         CO, CT = "compat/summary.old.txt", "compat/summary.tested.txt"
         mutate("compat reader rc != 0 although SAME", "rc=9", lambda d: sub(d, CO, "reader=tested rc=0 SAME", "reader=tested rc=9 SAME"))
         mutate("compat only same-version pairs", "missing reader",
@@ -492,6 +551,35 @@ def main():
         check("run_matrix.py attests inputs, ids, engine and result; the gate's recomputation agrees (1 PASS, 1 FAIL, no problems)",
               p.returncode == 1 and all(k in smry for k in C.SUMMARY_ATTESTATION + ("engine_sha256",)) and rows is not None
               and [rows[i]["status"] for i in ("m00001", "m00002")] == ["PASS", "FAIL"] and not g.problems, f"rc={p.returncode} {g.problems} {sorted(smry)}")
+        p2 = subprocess.run([sys.executable, RUN_MATRIX, "--binary", stub, "--workers", "2", os.path.join(st, "s.sql"),
+                             os.path.join(st, "s.jsonl"), os.path.join(st, "r2.jsonl")], capture_output=True, text=True)
+        s2 = json.loads(p2.stdout)
+        check("run_matrix.py --workers 2 writes the same result file as 1 worker and attests its runner",
+              open(os.path.join(st, "r.jsonl"), "rb").read() == open(os.path.join(st, "r2.jsonl"), "rb").read()
+              and s2.get("workers") == 2 and s2.get("runner_sha256") == sha(RUN_MATRIX) and smry.get("runner_sha256") == sha(RUN_MATRIX), str(s2)[:300])
+        cache_tool = os.path.join(os.path.dirname(RUN_MATRIX), "matrix_cache.py")
+        cache = os.path.join(root, "mcache")
+        base_args = ["--cache", cache, "--matrix", "stub", "--engine", stub, "--sql", os.path.join(st, "s.sql"), "--oracle", os.path.join(st, "s.jsonl"),
+                     "--runner", RUN_MATRIX]
+        cm = lambda cmd, *extra: subprocess.run([sys.executable, cache_tool, cmd] + base_args + list(extra), capture_output=True, text=True).returncode
+        rc_miss = cm("fetch", "--result", os.path.join(st, "f.jsonl"), "--summary", os.path.join(st, "f.json"), "--reuse", os.path.join(st, "f.reuse.json"))
+        rc_store = cm("store", "--result", os.path.join(st, "r.jsonl"), "--summary", os.path.join(st, "summary.json"), "--origin", '{"out": "stub"}')
+        rc_hit = cm("fetch", "--result", os.path.join(st, "f.jsonl"), "--summary", os.path.join(st, "f.json"), "--reuse", os.path.join(st, "f.reuse.json"))
+        hit_ok = rc_hit == 0 and open(os.path.join(st, "f.jsonl"), "rb").read() == open(os.path.join(st, "r.jsonl"), "rb").read() \
+            and json.load(open(os.path.join(st, "f.reuse.json"))).get("reused") is True
+        entry = os.path.join(cache, os.listdir(cache)[0]) if os.path.isdir(cache) and os.listdir(cache) else None
+        if entry:
+            open(os.path.join(entry, "result.jsonl"), "a").write("\n")
+        rc_tamper = cm("fetch", "--result", os.path.join(st, "t.jsonl"), "--summary", os.path.join(st, "t.json"), "--reuse", os.path.join(st, "t.reuse.json"))
+        open(os.path.join(st, "s2.sql"), "w").write(open(os.path.join(st, "s.sql")).read() + "\n")
+        rc_changed = subprocess.run([sys.executable, cache_tool, "fetch", "--cache", cache, "--matrix", "stub", "--engine", stub, "--sql", os.path.join(st, "s2.sql"),
+                                     "--oracle", os.path.join(st, "s.jsonl"), "--runner", RUN_MATRIX, "--result", os.path.join(st, "c.jsonl"),
+                                     "--summary", os.path.join(st, "c.json"), "--reuse", os.path.join(st, "c.reuse.json")], capture_output=True, text=True).returncode
+        rc_refuse = cm("store", "--result", os.path.join(st, "r2.jsonl"), "--summary", os.path.join(st, "s.jsonl"), "--origin", "{}")
+        check("matrix_cache.py: miss, store, verified hit with a reuse record, fail closed on an edited entry, miss on a changed input, "
+              "refuses a summary that does not attest the run",
+              (rc_miss, rc_store, hit_ok, rc_tamper, rc_changed, rc_refuse) == (1, 0, True, 3, 1, 2),
+              f"miss={rc_miss} store={rc_store} hit={rc_hit}/{hit_ok} tamper={rc_tamper} changed={rc_changed} refuse={rc_refuse}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
     print(f"\n{'all passed' if not FAILS else str(len(FAILS)) + ' failed: ' + ', '.join(FAILS)}")
