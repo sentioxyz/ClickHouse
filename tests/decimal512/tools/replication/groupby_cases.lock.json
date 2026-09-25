@@ -1,0 +1,1654 @@
+{
+ "about": "mixed_distributed_groupby.sh cases; expectations computed by groupby_oracle.py (no ClickHouse build)",
+ "cases": [
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "new_only:nullable_u256_single:default",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "new_only:nullable_u256_single:two_level",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "new_only:nullable_u256_single:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "new_only:nullable_u256_single:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "new_only:nullable_i64_x4:default",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "new_only:nullable_i64_x4:two_level",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "new_only:nullable_i64_x4:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "new_only:nullable_i64_x4:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "new_only:u256_u128_48b:default",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "new_only:u256_u128_48b:two_level",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "new_only:u256_u128_48b:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "new_only:u256_u128_48b:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "new_only:int512_single:default",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "new_only:int512_single:two_level",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "new_only:int512_single:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "new_only:int512_single:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "new_only:decimal512_single:default",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "new_only:decimal512_single:two_level",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "new_only:decimal512_single:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "new_only:decimal512_single:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "new_only:u64_nullable_d76:default",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "new_only:u64_nullable_d76:two_level",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "new_only:u64_nullable_d76:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "new_only:u64_nullable_d76:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "new_only:u256_u64_40b:default",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "new_only:u256_u64_40b:two_level",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "new_only:u256_u64_40b:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "new_only:u256_u64_40b:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "new",
+    "new"
+   ],
+   "topology": "new_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "mixed_init_new:nullable_u256_single:default",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "mixed_init_new:nullable_u256_single:two_level",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "mixed_init_new:nullable_u256_single:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "mixed_init_new:nullable_u256_single:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "mixed_init_new:nullable_i64_x4:default",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "mixed_init_new:nullable_i64_x4:two_level",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "mixed_init_new:nullable_i64_x4:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "mixed_init_new:nullable_i64_x4:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "mixed_init_new:u256_u128_48b:default",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "mixed_init_new:u256_u128_48b:two_level",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "mixed_init_new:u256_u128_48b:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "mixed_init_new:u256_u128_48b:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "mixed_init_new:int512_single:default",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "mixed_init_new:int512_single:two_level",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "mixed_init_new:int512_single:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "mixed_init_new:int512_single:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "mixed_init_new:decimal512_single:default",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "mixed_init_new:decimal512_single:two_level",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "mixed_init_new:decimal512_single:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "mixed_init_new:decimal512_single:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "mixed_init_new:u64_nullable_d76:default",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "mixed_init_new:u64_nullable_d76:two_level",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "mixed_init_new:u64_nullable_d76:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "mixed_init_new:u64_nullable_d76:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "mixed_init_new:u256_u64_40b:default",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "mixed_init_new:u256_u64_40b:two_level",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "mixed_init_new:u256_u64_40b:two_level_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "mixed_init_new:u256_u64_40b:two_level_not_memory_efficient",
+   "initiator": "new",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_new",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "mixed_init_old:nullable_u256_single:default",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "mixed_init_old:nullable_u256_single:two_level",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "mixed_init_old:nullable_u256_single:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": true,
+   "id": "mixed_init_old:nullable_u256_single:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "mixed_init_old:nullable_i64_x4:default",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "mixed_init_old:nullable_i64_x4:two_level",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "mixed_init_old:nullable_i64_x4:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": true,
+   "id": "mixed_init_old:nullable_i64_x4:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "mixed_init_old:u256_u128_48b:default",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "mixed_init_old:u256_u128_48b:two_level",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "mixed_init_old:u256_u128_48b:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": true,
+   "id": "mixed_init_old:u256_u128_48b:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "mixed_init_old:int512_single:default",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "mixed_init_old:int512_single:two_level",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "mixed_init_old:int512_single:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": true,
+   "id": "mixed_init_old:int512_single:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "mixed_init_old:decimal512_single:default",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "mixed_init_old:decimal512_single:two_level",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "mixed_init_old:decimal512_single:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": true,
+   "id": "mixed_init_old:decimal512_single:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "mixed_init_old:u64_nullable_d76:default",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "mixed_init_old:u64_nullable_d76:two_level",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "mixed_init_old:u64_nullable_d76:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": true,
+   "id": "mixed_init_old:u64_nullable_d76:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "mixed_init_old:u256_u64_40b:default",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "mixed_init_old:u256_u64_40b:two_level",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "mixed_init_old:u256_u64_40b:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": true,
+   "id": "mixed_init_old:u256_u64_40b:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "new"
+   ],
+   "topology": "mixed_init_old",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": false,
+   "id": "old_only:nullable_u256_single:default",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": false,
+   "id": "old_only:nullable_u256_single:two_level",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": false,
+   "id": "old_only:nullable_u256_single:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "2936b7b74a5a35bb4263b562d36d2516bef60f0b8fd2addd5088c57e890a2041",
+   "gated": false,
+   "id": "old_only:nullable_u256_single:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_u256_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": false,
+   "id": "old_only:nullable_i64_x4:default",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": false,
+   "id": "old_only:nullable_i64_x4:two_level",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": false,
+   "id": "old_only:nullable_i64_x4:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "b876a0e1cb38d8c548c1937b7fec0986c161d1437869e1a2c5abf787e8a8810c",
+   "gated": false,
+   "id": "old_only:nullable_i64_x4:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "nullable_i64_x4",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": false,
+   "id": "old_only:u256_u128_48b:default",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": false,
+   "id": "old_only:u256_u128_48b:two_level",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": false,
+   "id": "old_only:u256_u128_48b:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "f2921ceee7460158363237ac624386265d9c895cb5f50c91fc2e34731af7078c",
+   "gated": false,
+   "id": "old_only:u256_u128_48b:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u128_48b",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": false,
+   "id": "old_only:int512_single:default",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": false,
+   "id": "old_only:int512_single:two_level",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": false,
+   "id": "old_only:int512_single:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "c6280b03f046f7edf441b7ee8bd1e93a7acfe0aa9084f95f4dfee8ec41ff54e1",
+   "gated": false,
+   "id": "old_only:int512_single:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "int512_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": false,
+   "id": "old_only:decimal512_single:default",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": false,
+   "id": "old_only:decimal512_single:two_level",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": false,
+   "id": "old_only:decimal512_single:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "a0e1cf5686e808171a9b6f271c0592674c9697c6aa3db8d38a44904ce8d5013c",
+   "gated": false,
+   "id": "old_only:decimal512_single:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "decimal512_single",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": false,
+   "id": "old_only:u64_nullable_d76:default",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": false,
+   "id": "old_only:u64_nullable_d76:two_level",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": false,
+   "id": "old_only:u64_nullable_d76:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "98be0987fc4690a3f76228c432bca24efc163f413ed1a632f70b085dc61a49dd",
+   "gated": false,
+   "id": "old_only:u64_nullable_d76:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": true,
+   "shape": "u64_nullable_d76",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_not_memory_efficient"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": false,
+   "id": "old_only:u256_u64_40b:default",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "default"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": false,
+   "id": "old_only:u256_u64_40b:two_level",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": false,
+   "id": "old_only:u256_u64_40b:two_level_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_memory_efficient"
+  },
+  {
+   "expected_sha256": "19d6bac0196f33c67fd1a3a6817c1c40470ee32a154d765d1410888836f7f085",
+   "gated": false,
+   "id": "old_only:u256_u64_40b:two_level_not_memory_efficient",
+   "initiator": "old",
+   "nullable_29_64": false,
+   "shape": "u256_u64_40b",
+   "shards": [
+    "old",
+    "old"
+   ],
+   "topology": "old_only",
+   "variant": "two_level_not_memory_efficient"
+  }
+ ],
+ "expected_groups": {
+  "decimal512_single": 25,
+  "int512_single": 30,
+  "nullable_i64_x4": 190,
+  "nullable_u256_single": 51,
+  "u256_u128_48b": 120,
+  "u256_u64_40b": 520,
+  "u64_nullable_d76": 156
+ },
+ "gated_topologies": [
+  "new_only",
+  "mixed_init_new",
+  "mixed_init_old"
+ ],
+ "lock_sha256": "9944ba11010d46780162056d83f2b3fa25c0d373d2af468b91d0ee14e45db93b",
+ "rows": 200000,
+ "shapes": {
+  "decimal512_single": [
+   "k_d512"
+  ],
+  "int512_single": [
+   "k_i512"
+  ],
+  "nullable_i64_x4": [
+   "k_ni64_1",
+   "k_ni64_2",
+   "k_ni64_3",
+   "k_ni64_4"
+  ],
+  "nullable_u256_single": [
+   "k_nu256"
+  ],
+  "u256_u128_48b": [
+   "k_u256",
+   "k_u128"
+  ],
+  "u256_u64_40b": [
+   "k_u256",
+   "k_u64"
+  ],
+  "u64_nullable_d76": [
+   "k_u64",
+   "k_nd76"
+  ]
+ },
+ "topologies": {
+  "mixed_init_new": [
+   "new",
+   [
+    "old",
+    "new"
+   ]
+  ],
+  "mixed_init_old": [
+   "old",
+   [
+    "old",
+    "new"
+   ]
+  ],
+  "new_only": [
+   "new",
+   [
+    "new",
+    "new"
+   ]
+  ],
+  "old_only": [
+   "old",
+   [
+    "old",
+    "old"
+   ]
+  ]
+ },
+ "variants": [
+  "default",
+  "two_level",
+  "two_level_memory_efficient",
+  "two_level_not_memory_efficient"
+ ]
+}

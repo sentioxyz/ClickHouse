@@ -41,6 +41,11 @@ import check_gate as C  # noqa: E402
 
 SRC = "1234567890abcdef1234567890abcdef12345678"
 FAILS = []
+# the expected text of every key shape of the mixed GROUP BY check, from its independent oracle (next to the lock)
+_spec = __import__("importlib.util").util.spec_from_file_location("groupby_oracle", os.path.join(os.path.dirname(C.GROUPBY_LOCK), "groupby_oracle.py"))
+GO = __import__("importlib.util").util.module_from_spec(_spec)
+_spec.loader.exec_module(GO)
+GROUPBY_EXPECTED = {s: GO.expected(s) for s in GO.SHAPES}
 
 
 def sha(p):
@@ -184,6 +189,20 @@ def build(d):
         "queries": [{"id": q[0], "category": q[1], "sql": "SELECT 1"} for q in PERF_Q],
         "results": [{"query": "q_changed", "verdict": "OK"}, {"query": "q_control", "verdict": "OK"}, {"query": "q_new", "verdict": "NEW (candidate only)"}]})
     suites["performance"] = {"name": "performance", "kind": "perf", "summary": "perf/perf_summary.json", "raw": "perf/perf_raw.tsv"}
+    # mixed-version distributed GROUP BY, shaped like tools/replication/mixed_distributed_groupby.sh output
+    os.makedirs(os.path.join(d, "groupby/results"), exist_ok=True)
+    shutil.copyfile(C.GROUPBY_LOCK, os.path.join(d, "groupby/groupby_cases.lock.json"))
+    open(os.path.join(d, "groupby/identities.tsv"), "w").write(
+        f"role\tpath\tsha256\tbuild_id\nbaseline\t{base}\t{bs_}\t{bb}\ncandidate\t{cand}\t{cs}\t{cb}\n")
+    with open(os.path.join(d, "groupby/results/cases.tsv"), "w") as f:
+        f.write("case\ttopology\tshape\tvariant\tgated\tstatus\tgroups\tduplicate_keys\tresult_sha256\texpected_sha256\n")
+        for c in json.load(open(C.GROUPBY_LOCK))["cases"]:
+            text = GROUPBY_EXPECTED[c["shape"]]
+            open(os.path.join(d, "groupby/results", c["id"].replace(":", ".") + ".tsv"), "w").write(text)
+            h = hashlib.sha256(text.encode()).hexdigest()
+            f.write(f"{c['id']}\t{c['topology']}\t{c['shape']}\t{c['variant']}\t{c['gated']}\tPASS\t{text.count(chr(10))}\t0\t{h}\t{c['expected_sha256']}\n")
+    suites["mixed-groupby"] = {"name": "mixed-groupby", "kind": "groupby", "cases": "groupby/results/cases.tsv", "results_dir": "groupby/results",
+                               "identities": "groupby/identities.tsv", "lock": "groupby/groupby_cases.lock.json"}
     jdump(os.path.join(d, "results/image_inspect.json"), [{"Id": "sha256:" + "a" * 64}])
     open(os.path.join(d, "results/image_binary_sha256.txt"), "w").write(f"{cs}  /usr/bin/clickhouse\n")
     reg = {"defects": [
@@ -252,6 +271,29 @@ def swap_roles(d):
         raise AssertionError("identities not swapped")
     with open(path, "w") as fh:
         fh.write(swapped)
+
+
+def edit_tsv_drop(path, case_id):
+    rows = open(path).read().splitlines(keepends=True)
+    kept = [r for r in rows if not r.startswith(case_id + "\t")]
+    if len(kept) == len(rows):
+        raise AssertionError(f"{case_id} not in {path}")
+    open(path, "w").write("".join(kept))
+
+
+def groupby_fail(d, case_id, rel):
+    """a wrong result recorded consistently as FAIL (status and sha256 agree with the file)"""
+    p = os.path.join(d, rel)
+    open(p, "a").write("0\t1\t2\n")
+    h = sha(p)
+    path = os.path.join(d, "groupby/results/cases.tsv")
+    out = []
+    for r in open(path).read().splitlines():
+        c = r.split("\t")
+        if c[0] == case_id:
+            c[5], c[8] = "FAIL", h
+        out.append("\t".join(c))
+    open(path, "w").write("\n".join(out) + "\n")
 
 
 def reattest(d, summary, result):
@@ -377,6 +419,21 @@ def main():
                              f"CANDIDATE\t{os.path.join(base, 'bin/cand.bin')}\t{sha(os.path.join(base, 'bin/base.bin'))}"))
         mutate("replication Keeper is not the declared production build", "not the declared production Keeper binary",
                lambda d: edit_json(os.path.join(d, "release.json"), lambda m: [s.update(keeper_expected_sha256="0" * 64) for s in m["suites"] if s["name"] == "keeper-replication"]))
+        GC, GI = "groupby/results/cases.tsv", "groupby/identities.tsv"
+        first_case = json.load(open(C.GROUPBY_LOCK))["cases"][0]["id"]
+        mixed = next(c for c in json.load(open(C.GROUPBY_LOCK))["cases"] if c["topology"] == "mixed_init_new")
+        mf = "groupby/results/" + mixed["id"].replace(":", ".") + ".tsv"
+        mutate("mixed-groupby locked case missing", f"locked case {first_case} has 0 result rows",
+               lambda d: edit_tsv_drop(os.path.join(d, GC), first_case))
+        mutate("mixed-groupby result differs from the oracle but is recorded as PASS", "disagree with the recomputation",
+               lambda d: open(os.path.join(d, mf), "a").write("0\t1\t2\n"))
+        mutate("mixed-groupby run used an edited case lock", "differs from",
+               lambda d: edit_json(os.path.join(d, "groupby/groupby_cases.lock.json"), lambda l: l["cases"][0].update(expected_sha256="0" * 64)))
+        mutate("mixed-groupby candidate is another binary", "CANDIDATE ran sha256",
+               lambda d: sub(d, GI, f"candidate\t{os.path.join(base, 'bin/cand.bin')}\t{sha(os.path.join(base, 'bin/cand.bin'))}",
+                             f"candidate\t{os.path.join(base, 'bin/cand.bin')}\t{sha(os.path.join(base, 'bin/base.bin'))}"))
+        mutate("mixed-groupby mixed-version failure without an open defect is unexpected", "mixed-groupby: 1 unexpected failure",
+               lambda d: groupby_fail(d, mixed["id"], mf))
         mutate("performance thresholds loosened", "thresholds", lambda d: edit_json(os.path.join(d, PS), lambda s: s["thresholds"].update(ratio_max=1.5)))
         mutate("performance thresholds presented as an SLO", "engineering judgment",
                lambda d: edit_json(os.path.join(d, PS), lambda s: s["thresholds"].update(basis="approved SLO")))

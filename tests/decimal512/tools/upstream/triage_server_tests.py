@@ -13,9 +13,10 @@ stage: for every `needs-server` test of the local triage (<triage.tsv> from tria
   its reference from the 26.3 backport PR (refs/pull/<backport>/head; the upstream PR as a fallback), plus the data files
   of the PR the test names, into a private copy of the fork's tests/queries (<stage-dir>/tree/tests/queries). Tests that
   hard-code default ports of other servers are recorded as `refused-port` and not run (isolated_ch.sh would refuse the run).
-run: runs the staged tests on each binary (first = the build under triage, second = a build with the fix) and classifies
-  like the local triage: reproduced (first fails, second passes), not-reproduced (both pass), inconclusive (second fails),
-  skipped (clickhouse-test skipped it on either).
+run: runs the staged tests one at a time on each binary (first = the build under triage, second = a build with the fix);
+  when a test kills the server it is recorded as CRASH and the server is restarted for the remaining tests. Classes as in
+  the local triage: reproduced / reproduced-crash (first fails, second passes), not-reproduced (both pass), inconclusive
+  (second fails), skipped (clickhouse-test skipped it, or no result on either).
 """
 from __future__ import annotations
 
@@ -124,13 +125,17 @@ def stage(tsv, cache, fork, out, keeper, pyarrow):
         res.flush()
 
 
-def parse_log(log: str) -> dict[str, str]:
-    st = {}
+def parse_log(log: str) -> tuple[dict[str, str], str | None]:
+    """Per-test status of a clickhouse-test log, and the test during which the server died (if it did)."""
+    st, last, died = {}, None, None
     for line in open(log, encoding="utf-8", errors="replace"):
         m = re.match(r"^(\S+):\s+\[ (OK|FAIL|SKIPPED|UNKNOWN) \]", line)
         if m:
             st[m.group(1)] = m.group(2)
-    return st
+            last = m.group(1)
+        elif line.startswith("Reason: server died") and last:
+            died = last
+    return st, died
 
 
 def run(out_dir, out_tsv, labels, keeper, python_bin):
@@ -147,21 +152,34 @@ def run(out_dir, out_tsv, labels, keeper, python_bin):
     for label, binary in labels:
         bid = subprocess.run(["readelf", "-n", binary], capture_output=True, text=True).stdout
         bid = re.search(r"Build ID: ([0-9a-f]+)", bid).group(1)[:12]
-        r = subprocess.run(["bash", ISO, "start", "d", binary, tree], capture_output=True, text=True, env=env)
-        if r.returncode:
-            raise SystemExit(f"start {label}: {r.stdout}{r.stderr}")
-        try:
-            sel = [f"^{t}\\." for t in tests]
-            r = subprocess.run(["bash", ISO, "test", "d", tree, f"triage_{label}", bid, "--no-random-settings",
-                                "--no-random-merge-tree-settings", "--no-stateful", "-j", "4", *sel],
-                               capture_output=True, text=True, env=env)
-            log = r.stdout.strip().splitlines()[0] if r.stdout.strip() else ""
-            results[label] = parse_log(log) if os.path.isfile(log) else {}
-            print(f"{label}: rc={r.returncode} log={log} {r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ''}")
-        finally:
-            subprocess.run(["bash", ISO, "stop", "d"], capture_output=True, text=True, env=env)
-            for f in os.listdir(os.path.join(out_dir, "iso", "bin")):
-                os.unlink(os.path.join(out_dir, "iso", "bin", f))
+        # One test at a time, so that a test that kills the server is identified exactly; the server is restarted
+        # and the tests without a result yet run again (clickhouse-test stops at "server died").
+        res, remaining = {}, list(tests)
+        for attempt in range(1, 30):
+            r = subprocess.run(["bash", ISO, "start", "d", binary, tree], capture_output=True, text=True, env=env)
+            if r.returncode:
+                raise SystemExit(f"start {label}: {r.stdout}{r.stderr}")
+            died = None
+            try:
+                sel = [f"^{t}\\." for t in remaining]
+                r = subprocess.run(["bash", ISO, "test", "d", tree, f"triage_{label}_{attempt}", bid, "--no-random-settings",
+                                    "--no-random-merge-tree-settings", "--no-stateful", "-j", "1", *sel],
+                                   capture_output=True, text=True, env=env)
+                log = r.stdout.strip().splitlines()[0] if r.stdout.strip() else ""
+                got, died = parse_log(log) if os.path.isfile(log) else ({}, None)
+                res.update({t: s for t, s in got.items() if t in remaining})
+                if died:
+                    res[died] = "CRASH"
+                print(f"{label} #{attempt}: rc={r.returncode} log={log} results={len(got)} server_died_in={died}")
+            finally:
+                subprocess.run(["bash", ISO, "stop", "d"], capture_output=True, text=True, env=env)
+                for f in os.listdir(os.path.join(out_dir, "iso", "bin")):
+                    os.unlink(os.path.join(out_dir, "iso", "bin", f))
+            left = [t for t in remaining if t not in res]
+            if not died or not left or left == remaining:
+                break
+            remaining = left
+        results[label] = res
     (l1, _), (l2, _) = labels
     with open(out_tsv, "w") as f:
         f.write(f"pr\tbackport\ttest\t{l1}\t{l2}\tclass\n")
@@ -174,7 +192,7 @@ def run(out_dir, out_tsv, labels, keeper, python_bin):
             elif a == "OK":
                 cls = "not-reproduced"
             else:
-                cls = "reproduced"
+                cls = "reproduced-crash" if a == "CRASH" else "reproduced"
             f.write(f"{pr}\t{bp}\t{t}\t{a}\t{b}\t{cls}\n")
 
 

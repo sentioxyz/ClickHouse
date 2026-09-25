@@ -6,7 +6,8 @@
 #
 # Checks (each prints PASS or FAIL; exit 1 if any fails, 0 otherwise):
 #   1. the vendored tools are byte-identical to the recorded skill copies (tools/VENDORED.sha256)
-#   2. the pinned matrix cases match their generators (tools/matrix/lock_cases.py --check)
+#   2. the pinned matrix cases match their generators (tools/matrix/lock_cases.py --check), and the mixed-version
+#      GROUP BY cases match their independent oracle (tools/replication/groupby_oracle.py check)
 #   3. the stateless references 10310-10316 are exactly what their independent oracle writes
 #      (tools/gen_stateless_references.py)
 #   4. every fail-closed rule of the gate fires on synthetic evidence (tools/gate_mutation_test.py)
@@ -36,6 +37,7 @@ done < "$T/VENDORED.sha256"
 
 # 2. case lock
 run "matrix cases match the pinned lock (lock_cases.py --check)" python3 "$T/matrix/lock_cases.py" --check "$T/matrix/cases.lock.json"
+run "mixed GROUP BY cases match their oracle (groupby_oracle.py check)" python3 "$T/replication/groupby_oracle.py" check "$T/replication/groupby_cases.lock.json"
 
 # 3. stateless references from the independent oracle
 mkdir -p "$TMP/refs"

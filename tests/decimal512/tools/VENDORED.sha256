@@ -7,7 +7,7 @@ bd05f47783710f46c79bad892a1a789a99802911ef97f1844c29816b3c2dd4e2  matrix/run_mat
 c3a895333c827a94fdb7d4bc55435c3aea91a14e5e59d75ea780e456f2d90159  matrix/lock_cases.py  <- tests/matrix/lock_cases.py
 f60db21fd46eb1a0cc633802df1c67f7e0f7b79526f7f93d6a2a01e8f7919de9  matrix/cases.lock.json  <- tests/matrix/cases.lock.json
 5c1e0a681f10cab3cc2b911763a717799e7b2e319c112b4effed8da7e01bfe53  regression_proof.py  <- scripts/regression_proof.py
-7d42240d4a170c73de0f2f731585e99fa8275e78964ceb343c95466058d37ba5  check_gate.py  <- scripts/check_gate.py
+c5a569324083e8998daf6fda73fcf0bf7597f2e49bf333ae1e8d67668b354ebc  check_gate.py  <- scripts/check_gate.py
 b45af979aa15cad7c12a4fc376da7485f649f07652a3518aa0de4cf98251d9a7  scan_wide_dispatch.py  <- scripts/scan_wide_dispatch.py
 019cd4290d47e8b138ffa98f69285cef79beb8dace550910663f54f4d858b923  isolated_ch.sh  <- scripts/isolated_ch.sh
 70ccfbdbfcf6dbce250e04f43d4d93f986a293660141183a54480580a825f4a6  compat/run_compat2.sh  <- tests/compat/run_compat2.sh
@@ -17,7 +17,7 @@ af2186c51903e8ac1893e4feca5d0dbad4059e5aa25be4e652f27cf77d788065  compat/mixed_a
 0e546a27022d6242a2f9f834b3a65313a0698a6c8618f79ee2fb373f16370d99  compat/native_compat.sh  <- tests/compat/native_compat.sh
 aace3363df0c98657f6f32797833729127d997f8d93b31b751c9b992fc4536da  replication/mixed_replication.sh  <- tests/replication/mixed_replication.sh
 faadcf4ed93667ca123aec3b1c72d2be710b352c94e3229a3313bd88c8f6137e  perf/perf_compare.py  <- tests/perf/perf_compare.py
-a042473a93f62dcd783b325369f9b92ec4c8d0b8b6411b8f069d9fd37b083748  gate_mutation_test.py  <- tests/gate_mutation_test.py
+90e8c12cf184ae5829dfd3fc82b19731b8b5d5092aa921cf26a77f224b24a5bc  gate_mutation_test.py  <- tests/gate_mutation_test.py
 3bb1627e782d34135b9b4161bbca2a4eb119c8c0ee2c3c4b34cbc7bfd0fbc356  matrix/gen_random_decimal512.py  <- tests/matrix/gen_random_decimal512.py
 25c0077d7436d1f9feef6f73c18709c2d5385de08b0feb96c7214f30f173f2ca  scale154/probe_scale154.py  <- tests/probes/probe_scale154.py
 174a6e4cecdad782f822d61e6c2dc5b30dfdf52c427f9eecff26adc43a84c0e8  upstream/triage_upstream_tests.py  <- scripts/triage_upstream_tests.py
@@ -27,5 +27,7 @@ f6f509cf02c87777c895ddb9b14398841452c10739720e00c6367abe934b40b0  historical/gen
 7c9cd53bc41220ccaf4362c723b7f25e2f834676103b0ca9dfd1972b5ab8b3d7  historical/compare_part_bytes.py  <- tests/historical/compare_part_bytes.py
 ae46edff4c20b945407ad27ad62d1bf3ef0c5387e302146969d9ff49d5219928  historical/hist_backup.sh  <- tests/historical/hist_backup.sh
 37454cfefc24e4830410a1ceb8460da86c59f0ea9162cb204bf7246ac31f5519  parquet/parquet_decimal_writer.py  <- tests/parquet/parquet_decimal_writer.py
-2c07f41dc7ae707ff8d19ff475fbe691a4fde6ea619a373d877b644935128676  replication/mixed_distributed_groupby.sh  <- tests/replication/mixed_distributed_groupby.sh
-7353524b21d4e12373cb4d2b8cf4b138be5f880787e3b4356cc228f8af3574fc  upstream/triage_server_tests.py  <- scripts/triage_server_tests.py
+bbe3582bff93f47429eb1da7057bb6508fa51cd62bfbecc0d88aa5f78b00bb49  replication/mixed_distributed_groupby.sh  <- tests/replication/mixed_distributed_groupby.sh
+cc3d0f6171ff605876b18406c819bac1e9be3d99bc2f610afd87d6b22d7f4809  upstream/triage_server_tests.py  <- scripts/triage_server_tests.py
+b810b5992dbb05adbaed3161a4e32167ce0b7f8e53fc209b328e5ba5451553ec  replication/groupby_oracle.py  <- tests/replication/groupby_oracle.py
+d5d54550bf4258bddf6e9fdaa0cf8107da3c2c0ebfc63b6fe5aa967698e30b60  replication/groupby_cases.lock.json  <- tests/replication/groupby_cases.lock.json

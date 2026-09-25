@@ -244,6 +244,16 @@ if [ "$TIER" = release ]; then
     NOT_RUN+=('{"name": "keeper-replication", "reason": "needs --buggy-binary (baseline) and --keeper-binary (the production Keeper build)"}')
   fi
   if [ -n "$BUGGY" ]; then
+    # distributed GROUP BY over shards of the baseline and the candidate (rolling upgrade, both coordinator directions,
+    # single- and two-level aggregation): four isolated instances, expectations from tools/replication/groupby_oracle.py
+    bash "$T/replication/mixed_distributed_groupby.sh" "$OUT/mixed_groupby" --baseline "$BUGGY" --candidate "$BIN" --tree "$TREE" \
+      > "$OUT/logs/mixed_groupby.log" 2>&1
+    log "mixed-version distributed GROUP BY: rc=$?"
+    suite '{"name": "mixed-groupby", "kind": "groupby", "cases": "mixed_groupby/results/cases.tsv", "results_dir": "mixed_groupby/results", "identities": "mixed_groupby/identities.tsv", "lock": "mixed_groupby/groupby_cases.lock.json"}'
+  else
+    NOT_RUN+=('{"name": "mixed-groupby", "reason": "needs --buggy-binary (baseline)"}')
+  fi
+  if [ -n "$BUGGY" ]; then
     python3 "$T/perf/perf_compare.py" --baseline "$BUGGY" --candidate "$BIN" --out "$OUT/perf" --rounds "$PERF_ROUNDS" \
       > "$OUT/logs/perf.log" 2>&1
     log "performance comparison: rc=$? $(head -1 "$OUT/logs/perf.log" 2>/dev/null | cut -c1-200)"

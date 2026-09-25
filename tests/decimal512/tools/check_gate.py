@@ -42,6 +42,9 @@ Rules (each violation is printed as a PROBLEM and fails the gate):
   * performance (tools/perf/perf_compare.py): identities as above; the thresholds must be the fixed ones below and are
     reported as engineering judgment, not an SLO; medians, ratios and verdicts are recomputed from perf_raw.tsv (at
     least 5 rounds per build and query); a SLOWER query, a NOISY control or a failed query fails the gate.
+  * mixed-groupby (tools/replication/mixed_distributed_groupby.sh): identities as above; the case lock must be the tree's
+    groupby_cases.lock.json (expectations from groupby_oracle.py); every locked case once; PASS/FAIL recomputed from
+    each case's result file; gated cases (new_only, mixed_init_new, mixed_init_old) are registry rows.
   * missing evidence, zero cases, `not_run` entries (release), unreviewed dispatch-scan sites fail.
   * known defects (registry): a recomputed failure that matches an OPEN defect is known-open, any other failure is
     unexpected. An open defect whose checks ran and all passed is stale; a selector that matches no row of a suite
@@ -69,8 +72,12 @@ REQUIRED = {
                 "random-nightly-matrix", "fork-stateless", "dispatch-scan"],
     "release": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "random-matrix",
                 "random-nightly-matrix", "fork-stateless", "dispatch-scan",
-                "regression-proof", "compat-disk", "compat-protocol", "keeper-replication", "performance"],
+                "regression-proof", "compat-disk", "compat-protocol", "keeper-replication", "performance", "mixed-groupby"],
 }
+# the fork keeps it next to this script (tools/replication/), the skill under tests/replication/
+GROUPBY_LOCK = next((p for p in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "replication", "groupby_cases.lock.json"),
+                                 os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "replication", "groupby_cases.lock.json"))
+                     if os.path.isfile(p)), os.path.join(os.path.dirname(os.path.abspath(__file__)), "replication", "groupby_cases.lock.json"))
 HEX40, HEX64 = re.compile(r"^[0-9a-f]{40}$"), re.compile(r"^[0-9a-f]{64}$")
 SUMMARY_ATTESTATION = ("sql_sha256", "oracle_sha256", "ids_sha256", "cases", "result_sha256")
 REPLICATION_REQUIRED_STEPS = ("keeper.start", "r1.start.baseline", "r2.start.baseline", "create", "fetch.baseline_to_baseline",
@@ -615,6 +622,64 @@ def suite_replication(g: Gate, s: dict, binary: dict) -> None:
                    f"informational: {info if info else 'none'}")
 
 
+def suite_groupby(g: Gate, s: dict, binary: dict) -> None:
+    """tools/replication/mixed_distributed_groupby.sh: identities.tsv, results/cases.tsv, the per-case result files and
+    the case lock the run used. The lock must be the tree's groupby_cases.lock.json (ci_harness checks it against
+    groupby_oracle.py) with an intact lock_sha256; every locked case has exactly one row; PASS/FAIL is recomputed from the
+    sha256 of each case's result file against the locked expectation (a query error is a FAIL). Gated topologies
+    (new_only, mixed_init_new, mixed_init_old) feed the registry as {category: topology, op: shape}; old_only rows
+    (the baseline's own behaviour) are reported only."""
+    name = s.get("name")
+    ids = {}
+    for line in open(g.path(s["identities"]), encoding="utf-8").read().splitlines()[1:]:
+        parts = line.split("\t")
+        if len(parts) >= 4:
+            ids[parts[0].upper()] = {"path": parts[1], "sha256": parts[2], "build_id": parts[3]}
+    bind_roles(g, name, ids, binary)
+    lock = json.load(open(g.path(s["lock"]), encoding="utf-8"))
+    tree_lock = json.load(open(GROUPBY_LOCK, encoding="utf-8"))
+    if lock != tree_lock:
+        g.problems.append(f"{name}: the run used a case lock that differs from {GROUPBY_LOCK}")
+        return
+    body = {k: v for k, v in lock.items() if k != "lock_sha256"}
+    if hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest() != lock.get("lock_sha256"):
+        g.problems.append(f"{name}: case lock content does not match its lock_sha256")
+        return
+    cases = {c["id"]: c for c in lock["cases"]}
+    rows = collections.defaultdict(list)
+    for line in open(g.path(s["cases"]), encoding="utf-8").read().splitlines()[1:]:
+        r = line.split("\t")
+        if len(r) >= 10:
+            rows[r[0]].append(r)
+    extra = sorted(set(rows) - set(cases))
+    if extra:
+        g.problems.append(f"{name}: {len(extra)} row(s) are not locked cases, e.g. {extra[:3]}")
+    counts = collections.Counter()
+    for cid, c in cases.items():
+        got = rows.get(cid, [])
+        if len(got) != 1:
+            g.problems.append(f"{name}: locked case {cid} has {len(got)} result rows")
+            continue
+        r = got[0]
+        f = g.path(os.path.join(s["results_dir"], cid.replace(":", ".") + ".tsv"))
+        err = f[:-4] + ".err"
+        actual = hashlib.sha256(open(f, "rb").read()).hexdigest() if os.path.isfile(f) else None
+        errored = os.path.isfile(err) and os.path.getsize(err) > 0
+        ok = actual is not None and not errored and actual == c["expected_sha256"]
+        if actual is None:
+            g.problems.append(f"{name}: result file of {cid} missing")
+        if r[5] != ("PASS" if ok else ("ERROR" if errored else "FAIL")) or (actual and r[8] != actual):
+            g.problems.append(f"{name}: recorded status/sha256 of {cid} ({r[5]}, {r[8][:12]}) disagree with the recomputation")
+        counts[(c["topology"], "PASS" if ok else "FAIL")] += 1
+        if c["gated"]:
+            rec = {"suite": name, "id": cid, "category": c["topology"], "op": c["shape"], "status": "PASS" if ok else "FAIL"}
+            g.rows_seen.append(rec)
+            if not ok:
+                g.failures.append(rec)
+    summary = ", ".join(f"{t} {counts[(t, 'PASS')]}/{counts[(t, 'PASS')] + counts[(t, 'FAIL')]}" for t in lock["topologies"])
+    g.notes.append(f"{name}: {summary} match the oracle (recomputed from the result files; old_only is not gated)")
+
+
 def suite_perf(g: Gate, s: dict, binary: dict) -> None:
     """tools/perf/perf_compare.py: verdicts recomputed from perf_raw.tsv with the fixed thresholds."""
     name = s.get("name")
@@ -666,7 +731,8 @@ def suite_perf(g: Gate, s: dict, binary: dict) -> None:
 
 
 KINDS = {"matrix": suite_matrix, "clickhouse-test": suite_clickhouse_test, "proof": suite_proof, "compat": suite_compat,
-         "protocol": suite_protocol, "scan": suite_scan, "replication": suite_replication, "perf": suite_perf}
+         "protocol": suite_protocol, "scan": suite_scan, "replication": suite_replication, "perf": suite_perf,
+         "groupby": suite_groupby}
 
 
 def matches(sel: dict, rec: dict) -> bool:

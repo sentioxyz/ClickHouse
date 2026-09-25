@@ -1663,6 +1663,49 @@
       ],
       "fixed_by": "4b05c97a6b0 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107562)",
       "evidence": "syntax check of every file changed by the backports (MutateTask.cpp: no member tryGetColumnSubstreams); evidence/fix_ci_20260925/upstream_repro"
+    },
+    {
+      "id": "KD-D512-MIXED-GROUPBY-NULLABLE",
+      "status": "open",
+      "title": "rolling upgrade: a distributed GROUP BY over nullable fixed keys of 29..64 bytes (e.g. one Nullable(UInt256), four Nullable(Int64), UInt64 + Nullable(Decimal256)) returns wrong results with duplicate groups while shards run the production build and the candidate, in both coordinator directions (two-level aggregation; with an old coordinator also single-level for some shapes); distributed_aggregation_memory_efficient = 0 does not avoid it",
+      "effect": "wrong result during a mixed-version window (a key appears twice); homogeneous candidate clusters are correct",
+      "affects": [
+        "mixed clusters of 26.3 prod a394e92fb5d and any candidate with the KeysNullMap fix bae5ba481f3"
+      ],
+      "decision": "open (Codex 2026-09-25 11:02Z: correctness blocker, mandatory release check). Cause: the old build packs these keys without a null bitmap (zero-sized KeysNullMap), the fix reserves 8 bytes, so the packed key, its hash and its two-level bucket differ between the builds; the old build's own partial aggregation of these keys is also wrong (KD-KEYSNULLMAP-512). Candidate resolutions under investigation: a compatible fix, or an upgrade topology that never lets one distributed query span both builds (validated in isolation). Old grouping is not restored",
+      "match": [
+        {
+          "suite": "mixed-groupby",
+          "category": "mixed_init_new",
+          "op": "nullable_u256_single"
+        },
+        {
+          "suite": "mixed-groupby",
+          "category": "mixed_init_new",
+          "op": "nullable_i64_x4"
+        },
+        {
+          "suite": "mixed-groupby",
+          "category": "mixed_init_new",
+          "op": "u64_nullable_d76"
+        },
+        {
+          "suite": "mixed-groupby",
+          "category": "mixed_init_old",
+          "op": "nullable_u256_single"
+        },
+        {
+          "suite": "mixed-groupby",
+          "category": "mixed_init_old",
+          "op": "nullable_i64_x4"
+        },
+        {
+          "suite": "mixed-groupby",
+          "category": "mixed_init_old",
+          "op": "u64_nullable_d76"
+        }
+      ],
+      "evidence": "evidence/fix_ci_20260925/mixed_groupby_cand2* (runs 1-3 against cluster references), release runs (oracle cases)"
     }
   ]
 }
