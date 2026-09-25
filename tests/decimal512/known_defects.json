@@ -1672,7 +1672,7 @@
       "affects": [
         "mixed clusters of 26.3 prod a394e92fb5d and any candidate with the KeysNullMap fix bae5ba481f3"
       ],
-      "decision": "open (Codex 2026-09-25 11:02Z: correctness blocker, mandatory release check). Cause: the old build packs these keys without a null bitmap (zero-sized KeysNullMap), the fix reserves 8 bytes, so the packed key, its hash and its two-level bucket differ between the builds; the old build's own partial aggregation of these keys is also wrong (KD-KEYSNULLMAP-512). Candidate resolutions under investigation: a compatible fix, or an upgrade topology that never lets one distributed query span both builds (validated in isolation). Old grouping is not restored",
+      "decision": "open (Codex 2026-09-25 11:02Z: correctness blocker, mandatory release check; a release stays BLOCKED while it is open). Cause: the old build packs these keys without a null bitmap (zero-sized KeysNullMap), the fix reserves 8 bytes, so the packed key, its hash and its two-level bucket differ between the builds; the old build's own partial aggregation of these keys is also wrong (KD-KEYSNULLMAP-512), so no candidate-side change can make a mixed query correct: old shards and an old coordinator stay wrong whatever the candidate does, and restoring the old packing would restore the old wrong grouping. Resolution candidate, validated in isolation only (tools/replication/upgrade_topology_check.sh, 2026-09-25, CAND3pre e2d571fd15c8 vs production a394e92fb5d): upgrade by replica group so that no distributed query spans both builds - group B (one replica per shard) is upgraded while group A serves every query; then the application's coordinator endpoint and the shard lists switch to group B together; then group A is upgraded. Group-B-only queries equal the oracle (14/14 with either group-B coordinator); a cross-group replica list with a failover to the old group, and an old coordinator over new shards, both reproduce the wrong nullable-key results (6/6 each); a group-only shard list with a replica down fails closed (14/14 errors, no result). Rules it needs: coordinator and all shards in one version group, no cross-group failover while the groups differ, endpoint and shard lists switched together. This is not a rollout approval: the production topology (replica groups, load balancing, failover, Distributed/remote definitions, application endpoints) has not been mapped against these rules, and the production build's own wrong results for these keys (phase A) persist until the upgrade completes",
       "match": [
         {
           "suite": "mixed-groupby",
@@ -1705,7 +1705,1292 @@
           "op": "u64_nullable_d76"
         }
       ],
-      "evidence": "evidence/fix_ci_20260925/mixed_groupby_cand2* (runs 1-3 against cluster references), release runs (oracle cases)"
+      "evidence": "evidence/fix_ci_20260925/mixed_groupby_cand2* (runs 1-3 against cluster references), evidence/fix_ci_20260925/upgrade_topology_cand3 (topology validation, verdict PASS), release runs (suite mixed-groupby, oracle cases)"
+    },
+    {
+      "id": "KD-UP-101403",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: ALTER assignment of a DateTime with timezone",
+      "effect": "wrong (tz lost)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#103373 of #101403 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04056_mutation_session_timezone_datetime_literals"
+        }
+      ],
+      "fixed_by": "501ad17e199 (26.3-lts-decimal512, 2026-09-25; backport of upstream #101403)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-103035",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: CAST to Nullable(DateTime) ignores cast_string_to_date_time_mode",
+      "effect": "wrong/exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105673 of #103035 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04103_cast_string_to_date_time_mode_nullable"
+        }
+      ],
+      "fixed_by": "1debf74491d (26.3-lts-decimal512, 2026-09-25; backport of upstream #103035)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-101292",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: compact-part writer cancelled after a failed stream allocation",
+      "effect": "crash (UB)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105786 of #101292 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04113_compact_part_writer_cancel_on_exception"
+        }
+      ],
+      "fixed_by": "868162c98d3 (26.3-lts-decimal512, 2026-09-25; backport of upstream #101292)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-105686",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: query condition cache (on by default): `PREWHERE pk=X WHERE non_pk IN (...)` with a bloom_filter index",
+      "effect": "wrong (silent under-count)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105810 of #105686 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04275_104781_qcc_prewhere_skip_index_attribution"
+        }
+      ],
+      "fixed_by": "be56e1ea138 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105686)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-105461",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: dictGetOrDefault with a Nullable default and short-circuit evaluation",
+      "effect": "exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105880 of #105461 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04259_dictgetordefault_nullable_default_short_circuit"
+        }
+      ],
+      "fixed_by": "b4b7d7ce8b9 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105461)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-105535",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: singleValueOrNull state deserialization with JSON",
+      "effect": "crash; the production server process died in 04262_singleValueOrNull_json_deserialize",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105969 of #105535 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04262_singleValueOrNull_json_deserialize"
+        }
+      ],
+      "fixed_by": "b8c745711f2 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105535)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-105894",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: distributed query with an `IN Array(...)` filter, analyzer on",
+      "effect": "exc Cannot find column",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106061 of #105894 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04277_distr_in_negative_array"
+        }
+      ],
+      "fixed_by": "3af73094dbf (26.3-lts-decimal512, 2026-09-25; backport of upstream #105894)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-106105",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: partial SHOW DICTIONARIES revoke",
+      "effect": "wrong (0 rows)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106130 of #106105 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04268_system_dictionaries_partial_revoke"
+        }
+      ],
+      "fixed_by": "4e5532a042c (26.3-lts-decimal512, 2026-09-25; backport of upstream #106105)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-106476",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: corrupted Avro enum",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106510 of #106476 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04036_avro_invalid_enum_value"
+        }
+      ],
+      "fixed_by": "0ac1d27a77c (26.3-lts-decimal512, 2026-09-25; backport of upstream #106476)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-105666",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: flattened Dynamic column in Native input",
+      "effect": "crash (OOB read)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106756 of #105666 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04267_dynamic_flattened_underfilled_type_data"
+        }
+      ],
+      "fixed_by": "113132b9097 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105666)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-105847",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: apply_mutations_on_fly=1 with UPDATE/DELETE queued before MODIFY COLUMN to LowCardinality",
+      "effect": "exc (Bad cast)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106992 of #105847 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04267_on_fly_mutation_lc_passthrough_conversion"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04268_on_fly_mutation_delete_modify_chain"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04308_on_fly_mutation_filtered_update_chain"
+        }
+      ],
+      "fixed_by": "a125185ddcc (26.3-lts-decimal512, 2026-09-25; backport of upstream #105847)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-104250",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: out-of-range integer partition ID for a Date key in ALTER",
+      "effect": "wrong (silent overflow) / exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107002 of #104250 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "01073_bad_alter_partition"
+        }
+      ],
+      "fixed_by": "b339831f6fe (26.3-lts-decimal512, 2026-09-25; backport of upstream #104250)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-105246",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: OSIOWaitMicroseconds counted per thread lifetime",
+      "effect": "wrong metric",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107044 of #105246 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04249_taskstats_reset_throwpoint"
+        }
+      ],
+      "fixed_by": "5b08dd24f77 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105246)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-106395",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: malformed Arrow IPC input",
+      "effect": "crash (OOB)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107322 of #106395 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04307_arrow_oob_reads"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04308_arrow_oob_reads_value"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04309_arrow_oob_reads_offsets"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04310_arrow_oob_reads_arithmetic"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04327_arrow_oob_list_offsets"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04328_arrow_oob_nested_child_length"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04329_arrow_oob_struct_fields"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04330_arrow_oob_declared_length"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04331_arrow_oob_validity_bitmap"
+        }
+      ],
+      "fixed_by": "00b78f4d9bd (26.3-lts-decimal512, 2026-09-25; backport of upstream #106395)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/",
+      "not_in_gate": {
+        "04307_arrow_oob_reads": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04308_arrow_oob_reads_value": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04309_arrow_oob_reads_offsets": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04310_arrow_oob_reads_arithmetic": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04327_arrow_oob_list_offsets": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04328_arrow_oob_nested_child_length": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04329_arrow_oob_struct_fields": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04330_arrow_oob_declared_length": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04331_arrow_oob_validity_bitmap": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv"
+      }
+    },
+    {
+      "id": "KD-UP-105544",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: JSON type ignores input_format_try_infer_datetimes for shared data",
+      "effect": "wrong (type inference)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107326 of #105544 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04264_json_shared_data_respect_try_infer_datetimes"
+        }
+      ],
+      "fixed_by": "d843ca09796 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105544)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-100538",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: EXECUTE AS with FORMAT / INTO OUTFILE",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107594 of #100538 (adapted, see the commit), with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04056_execute_as_format"
+        }
+      ],
+      "fixed_by": "3de1733068a (26.3-lts-decimal512, 2026-09-25; backport of upstream #100538)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-106739",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: malformed Parquet DataPageV2 / deep schema; GeoParquet/Avro huge allocations",
+      "effect": "crash/OOM",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107840 of #106739 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04324_parquet_v3_datapage_v2_oob"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04325_parquet_v3_deep_schema_recursion"
+        },
+        {
+          "suite": "offgate-pyarrow",
+          "test": "04326_parquet_v3_geoparquet_wkb_alloc"
+        }
+      ],
+      "fixed_by": "aa0feb52d65 (26.3-lts-decimal512, 2026-09-25; backport of upstream #106739)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/",
+      "not_in_gate": {
+        "04324_parquet_v3_datapage_v2_oob": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04325_parquet_v3_deep_schema_recursion": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv",
+        "04326_parquet_v3_geoparquet_wkb_alloc": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv"
+      }
+    },
+    {
+      "id": "KD-UP-107580",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: malformed ORC",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107876 of #107580 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04340_orc_fast_decoder_char_overflow"
+        }
+      ],
+      "fixed_by": "51b1bb89329 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107580)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-107341",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: deeply nested MsgPack/BSON/ORC/Parquet/JSON/data-lake input",
+      "effect": "crash (stack overflow)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#108279 of #107341 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04335_msgpack_schema_inference_deep_recursion"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04336_bson_schema_inference_deep_recursion"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04338_parquet_schema_inference_deep_recursion"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04339_json_schema_inference_deep_recursion"
+        }
+      ],
+      "fixed_by": "0a3510847e3 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107341)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/",
+      "not_in_gate": {
+        "04337_orc_schema_inference_deep_recursion": "needs pyarrow (not on the gate host); run outside the gate with a pyarrow venv"
+      }
+    },
+    {
+      "id": "KD-UP-108607",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: direct read from several partially materialized text indexes",
+      "effect": "wrong/exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#108663 of #108607 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04411_text_index_multiple_partially_materialized"
+        }
+      ],
+      "fixed_by": "a6ab68509bc (26.3-lts-decimal512, 2026-09-25; backport of upstream #108607)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-108493",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: deeply nested literal with a large max_parser_depth",
+      "effect": "crash; the production server process died in 04411_deep_nested_field_to_type",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#108897 of #108493 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04411_deep_nested_field_to_type"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04412_deep_nested_literal_format"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04413_set_param_deep_collection"
+        }
+      ],
+      "fixed_by": "ee5ed6f3fd2 (26.3-lts-decimal512, 2026-09-25; backport of upstream #108493)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-108488",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: SAMPLE with the query condition cache",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109274 of #108488 (adapted, see the commit), with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03229_query_condition_cache_sample"
+        }
+      ],
+      "fixed_by": "c515d9b3344 (26.3-lts-decimal512, 2026-09-25; backport of upstream #108488)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-104822",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: RENAME COLUMN racing OPTIMIZE FINAL / background merge (StorageMergeTree)",
+      "effect": "data (column replaced by defaults)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109336 of #104822 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04296_alter_rename_column_in_memory_rollback"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04308_alter_rename_column_prepared_mutation_cleanup"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04309_alter_rename_column_post_registration_rollback"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04310_alter_rename_column_settings_rollback"
+        }
+      ],
+      "fixed_by": "773fbfeb786 (26.3-lts-decimal512, 2026-09-25; backport of upstream #104822)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-106250",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: Distributed read through Merge/merge() with optimize_skip_unused_shards",
+      "effect": "perf / false exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109525 of #106250 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04303_optimize_skip_unused_shards_in_merge"
+        }
+      ],
+      "fixed_by": "8f374fccef2 (26.3-lts-decimal512, 2026-09-25; backport of upstream #106250)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-109229",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: async insert with dedup when optimize_on_insert empties the block",
+      "effect": "crash; the production server process died in 04493_async_insert_dedup_optimize_on_insert_replicated_merge_tree",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109561 of #109229 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04493_async_insert_dedup_optimize_on_insert_replicated_merge_tree"
+        }
+      ],
+      "fixed_by": "ffdbf66e73d (26.3-lts-decimal512, 2026-09-25; backport of upstream #109229)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-107675",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: distributed query selecting ALIAS columns that share a subexpression",
+      "effect": "wrong (values under the wrong column)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109788 of #107675 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04305_distributed_alias_column_order"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04357_distributed_alias_query_clauses"
+        }
+      ],
+      "fixed_by": "cd54f6df6d7 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107675)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-109485",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: broken groupArrayLast state",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109805 of #109485 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "02520_group_array_last"
+        }
+      ],
+      "fixed_by": "11662414eeb (26.3-lts-decimal512, 2026-09-25; backport of upstream #109485)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-109492",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: broken largestTriangleThreeBuckets state",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109815 of #109492 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03096_largest_triangle_3b_crash"
+        }
+      ],
+      "fixed_by": "8f90896d632 (26.3-lts-decimal512, 2026-09-25; backport of upstream #109492)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-109723",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: system.tables (name/database only) with per-database grants",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109826 of #109723 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04410_system_tables_restricted_user_database_skip"
+        }
+      ],
+      "fixed_by": "96efb2428b5 (26.3-lts-decimal512, 2026-09-25; backport of upstream #109723)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-108569",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: `SELECT *` answered by a projection, column added with DEFAULT later",
+      "effect": "wrong (type default instead of DEFAULT)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#110096 of #108569 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04412_projection_added_column_default"
+        }
+      ],
+      "fixed_by": "ebf2b596944 (26.3-lts-decimal512, 2026-09-25; backport of upstream #108569)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-102628",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: Parquet V3 reader, Nullable columns with WHERE",
+      "effect": "exc LOGICAL_ERROR",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#110423 of #102628 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04099_parquet_nullable_null_check_fix"
+        }
+      ],
+      "fixed_by": "6ade55214e7 (26.3-lts-decimal512, 2026-09-25; backport of upstream #102628)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-110263",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: quantileTDigest state as a GROUP BY key, multi-threaded",
+      "effect": "crash; the production server process died in 04516_quantile_tdigest_serialize_shared_state",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#110473 of #110263 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04516_quantile_tdigest_serialize_shared_state"
+        }
+      ],
+      "fixed_by": "3f46a142a38 (26.3-lts-decimal512, 2026-09-25; backport of upstream #110263)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-107145",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: query condition cache with apply_mutations_on_fly, patch parts or a row policy before PREWHERE",
+      "effect": "wrong (too few rows)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#110656 of #107145 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03229_query_condition_cache_on_fly_mutations"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "03229_query_condition_cache_row_policy"
+        }
+      ],
+      "fixed_by": "10d17ef77af (26.3-lts-decimal512, 2026-09-25; backport of upstream #107145)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-108034",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: read-only table part refresh after a transient error",
+      "effect": "stale data",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#110808 of #108034 (adapted, see the commit), with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04421_merge_tree_refresh_parts_reschedule_after_error"
+        }
+      ],
+      "fixed_by": "1d0bcb7fa02 (26.3-lts-decimal512, 2026-09-25; backport of upstream #108034)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-101767",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: arrayLevenshteinDistanceWeighted / arraySimilarity",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111037 of #101767 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03369_function_arrayLevenshtein"
+        }
+      ],
+      "fixed_by": "1227024977e (26.3-lts-decimal512, 2026-09-25; backport of upstream #101767)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-110710",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: same text-index predicate in PREWHERE and WHERE, Merge over Distributed",
+      "effect": "exc LOGICAL_ERROR",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111094 of #110710 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04549_text_index_prewhere_where_dup_over_merge_distributed"
+        }
+      ],
+      "fixed_by": "41e86591233 (26.3-lts-decimal512, 2026-09-25; backport of upstream #110710)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-110393",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: deeply nested literal copy/destroy",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111110 of #110393 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04538_deep_nested_literal_clone_no_crash"
+        }
+      ],
+      "fixed_by": "f9d30253bad (26.3-lts-decimal512, 2026-09-25; backport of upstream #110393)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-111049",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: async_insert_deduplicate with tokens, flush across partitions",
+      "effect": "data (later insert silently deduplicated)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111358 of #111049 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03662_async_insert_dedup_token_partition_bleed"
+        }
+      ],
+      "fixed_by": "a6881298e19 (26.3-lts-decimal512, 2026-09-25; backport of upstream #111049)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-110460",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: read-only object-storage replica not refreshing parts",
+      "effect": "stale data",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111710 of #110460 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04545_read_only_disk_refresh_parts"
+        }
+      ],
+      "fixed_by": "adc44fc8019 (26.3-lts-decimal512, 2026-09-25; backport of upstream #110460)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-107739",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: Protobuf with allow_errors, a valid message then a bad one",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111911 of #107739 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04409_protobuf_skip_bad_row_after_valid"
+        }
+      ],
+      "fixed_by": "50b185420bf (26.3-lts-decimal512, 2026-09-25; backport of upstream #107739)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-111606",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: malformed aggregate state containing a String",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#112282 of #111606 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "02477_invalid_reads"
+        }
+      ],
+      "fixed_by": "5b5e2e5d22b (26.3-lts-decimal512, 2026-09-25; backport of upstream #111606)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-102516",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area JOIN: join reorder with LEFT/RIGHT JOIN, join_use_nulls, more than 2 tables",
+      "effect": "exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#112814 of #102516 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04097_join_reorder_type_changes"
+        }
+      ],
+      "fixed_by": "0c519c9b991 (26.3-lts-decimal512, 2026-09-25; backport of upstream #102516)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-112839",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: File/file() append in a non-appendable format (fd or partitioned path)",
+      "effect": "crash plus corruption",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#113000 of #112839 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04668_file_sink_no_append_format"
+        }
+      ],
+      "fixed_by": "f6e2ebc1607 (26.3-lts-decimal512, 2026-09-25; backport of upstream #112839)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-113563",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: row policy with a scalar subquery, read through Merge",
+      "effect": "wrong (stale) plus race",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114308 of #113563 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04812_merge_row_policy_shared_ast"
+        }
+      ],
+      "fixed_by": "6e1ec4b5d98 (26.3-lts-decimal512, 2026-09-25; backport of upstream #113563)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-114073",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: ORDER BY…LIMIT where a row policy is the only filter and the sort column has a minmax index",
+      "effect": "wrong (fewer or no rows)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114717 of #114073 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04812_row_policy_top_k_optimization"
+        }
+      ],
+      "fixed_by": "9e2722df601 (26.3-lts-decimal512, 2026-09-25; backport of upstream #114073)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-112498",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: Parquet with inconsistent bloom-filter metadata",
+      "effect": "crash / fewer rows",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114736 of #112498 (adapted, see the commit), with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04654_parquet_bloom_filter_bitset_out_of_bounds"
+        }
+      ],
+      "fixed_by": "8ae16d3e45e (26.3-lts-decimal512, 2026-09-25; backport of upstream #112498)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-112327",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area JOIN: join_algorithm='direct' onto a dictionary with a sparse-serialized key",
+      "effect": "wrong (release) / crash (debug); UAF",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114797 of #112327 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04652_direct_join_dictionary_sparse_key"
+        }
+      ],
+      "fixed_by": "2eb76f8a0fc (26.3-lts-decimal512, 2026-09-25; backport of upstream #112327)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-113742",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: Merge with a Distributed child under custom-key parallel replicas",
+      "effect": "exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114808 of #113742 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04815_parallel_replicas_custom_key_merge_distributed_child"
+        }
+      ],
+      "fixed_by": "6c49292a4ee (26.3-lts-decimal512, 2026-09-25; backport of upstream #113742)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-114668",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: Parquet through a format that owns its buffer (e.g. a FILE dictionary)",
+      "effect": "crash; the production server process died in 04895_parquet_dictionary_source_prefetch_lifetime",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114875 of #114668 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04895_parquet_dictionary_source_prefetch_lifetime"
+        }
+      ],
+      "fixed_by": "4b3c24128d5 (26.3-lts-decimal512, 2026-09-25; backport of upstream #114668)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-114620",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: access entity with a Map-valued setting",
+      "effect": "entity unloadable after restart",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114892 of #114620 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04902_access_entity_map_setting_round_trip"
+        }
+      ],
+      "fixed_by": "2197d28641b (26.3-lts-decimal512, 2026-09-25; backport of upstream #114620)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-113188",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: DROP TABLE / STOP VIEW while a refreshable MV is planning",
+      "effect": "hang",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115208 of #113188 (adapted, see the commit), with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04661_refreshable_mv_cancel_during_planning"
+        }
+      ],
+      "fixed_by": "88a80eff707 (26.3-lts-decimal512, 2026-09-25; backport of upstream #113188)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-115132",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: distributed index analysis with projections",
+      "effect": "wrong (feature now disabled)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115367 of #115132 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04891_distributed_index_analysis_projections"
+        }
+      ],
+      "fixed_by": "76a62957337 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115132)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-108728",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: CREATE OR REPLACE TABLE ... AS SELECT over an existing table (upstream also CREATE OR REPLACE MATERIALIZED VIEW ... POPULATE, which 26.3 does not have)",
+      "effect": "the internal DROP of the replaced table resolves the temporary name through a stale storage-cache entry and shuts down the new, live table: its merges stay cancelled (every OPTIMIZE fails with ABORTED, no background merges) until a restart, so parts pile up and rows that merges would collapse (ReplacingMergeTree and similar) stay visible",
+      "affects": [
+        "26.3 prod a394e92fb5d (the backport's test fails there and passes on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/corrected3/)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115449 of #108728 unchanged, with the backport's test",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04492_create_or_replace_table_as_select_keeps_merges"
+        }
+      ],
+      "fixed_by": "ac224fc01c2 (26.3-lts-decimal512, 2026-09-25; backport of upstream #108728)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/corrected3/corrected3_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/corrected3/test_triage_*.log",
+      "not_in_gate": {
+        "04492_create_or_replace_materialized_view_populate_keeps_subscription": "upstream test of #108728; 26.3 has no CREATE OR REPLACE MATERIALIZED VIEW, so it fails on the production build with a syntax error and is no evidence (the 26.3 backport carries its own test)",
+        "04493_create_or_replace_materialized_view_populate_keeps_subscription_concurrent": "upstream test of #108728; 26.3 has no CREATE OR REPLACE MATERIALIZED VIEW, so it fails on the production build with a syntax error and is no evidence (the 26.3 backport carries its own test)"
+      }
+    },
+    {
+      "id": "KD-UP-115227",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: `count(arrayJoin(arr))` with optimize_trivial_count_query=1",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115469 of #115227 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04743_trivial_count_array_join_argument"
+        }
+      ],
+      "fixed_by": "d55ef698a21 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115227)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-115669",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: formatRowNoNewline producing an empty result",
+      "effect": "wrong/exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115728 of #115669 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04512_format_row_no_newline_empty_row_underflow"
+        }
+      ],
+      "fixed_by": "736bbdfc6ca (26.3-lts-decimal512, 2026-09-25; backport of upstream #115669)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-115708",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: PostgreSQL wire startup message before auth",
+      "effect": "DoS",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116526 of #115708 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05037_postgresql_startup_message_size"
+        }
+      ],
+      "fixed_by": "2c9e6bf0a4a (26.3-lts-decimal512, 2026-09-25; backport of upstream #115708)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-116315",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: window PARTITION BY a Float/JSON/Dynamic key with threads > 1 (-0. vs 0.)",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116708 of #116315 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05043_window_partition_by_float_scatter"
+        }
+      ],
+      "fixed_by": "d3fccc3d89a (26.3-lts-decimal512, 2026-09-25; backport of upstream #116315)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-117011",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: client reading Native blocks with large declared sizes",
+      "effect": "DoS",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117149 of #117011 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05052_client_untrusted_server_allocations"
+        }
+      ],
+      "fixed_by": "76738390732 (26.3-lts-decimal512, 2026-09-25; backport of upstream #117011)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-109170",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: parallel_view_processing=0 ignored",
+      "effect": "behaviour",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117458 of #109170 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04490_parallel_view_processing_values"
+        }
+      ],
+      "fixed_by": "ee04b5e5bb2 (26.3-lts-decimal512, 2026-09-25; backport of upstream #109170)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-110590",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: a Dynamic or JSON/Object structure read from a stream (Native input, the format() table function, a corrupted part) with an invalid count",
+      "effect": "a shared-data bucket count of 0 aborts the server (SIGABRT in collectSharedDataFromBuckets, from one SELECT over format('Native', ...)); type or path counts near SIZE_MAX escape as std::length_error; large counts reserve gigabytes before anything is read",
+      "affects": [
+        "26.3 prod a394e92fb5d (05059 kills it, 04307 and 04350 fail on it; all pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/corrected3/, evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117748 (the bucket guard, with its test 05059) and backport the other count guards of #110590 that neither the 26.3 nor the 26.6 backport carries, with the upstream tests 04307 and 04350 and their Native fixtures",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05059_json_native_invalid_shared_data_buckets"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04307_dynamic_flattened_too_many_types"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04350_json_native_too_many_paths"
+        }
+      ],
+      "fixed_by": "28f58fcddea and 98a17d1901f (26.3-lts-decimal512, 2026-09-25; backport of upstream #110590)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/corrected3/corrected3_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/corrected3/PROD263_05059_abort_excerpt.log, evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv",
+      "not_in_gate": {
+        "03057_private_attach_disk_web": "reads a public S3 web disk (external); its failure on the production build was a table UUID left by an earlier attempt on the same server, so it is no evidence"
+      }
+    },
+    {
+      "id": "KD-UP-115276",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: malformed uniq state (skip_degree)",
+      "effect": "wrong/UB",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117750 of #115276 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "02477_invalid_reads"
+        }
+      ],
+      "fixed_by": "616aedba630 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115276)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-107991",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: malformed Native Variant discriminators",
+      "effect": "crash (OOB write)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117912 of #107991 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04305_variant_corrupted_discriminators_native"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04306_variant_corrupted_compact_discriminator_native"
+        }
+      ],
+      "fixed_by": "d4525771a28 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107991)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-116992",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: malformed LZ4 block",
+      "effect": "wrong (uninitialized memory)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test(s) fail there and pass on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#118295 of #116992 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05055_lz4_literal_past_end_of_compressed_block"
+        }
+      ],
+      "fixed_by": "95bb61cfad5 (26.3-lts-decimal512, 2026-09-25; backport of upstream #116992)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/server_triage_PROD263_vs_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/server_triage_logs/"
+    },
+    {
+      "id": "KD-UP-117536",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: aggregate-function states that declare huge sizes",
+      "effect": "the deserializers allocate for the declared size before reading any data (1-32 GiB requests from a few bytes: OOM/DoS); 15 of 18 crafted states hit MEMORY_LIMIT_EXCEEDED under a 100 MB limit on the production build",
+      "affects": [
+        "26.3 prod a394e92fb5d (10319 fails there and passes on official 26.8.8.8; per-state matrix: evidence/fix_ci_20260925/upstream_repro/corrected3/aggbomb_matrix_PROD263_UP2688.tsv)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#118529 of #117536 unchanged, with its test 05055 (which passes on the production build as well); the old-fail/new-pass test is the fork test 10319",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05055_aggregate_state_refill_staging"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "10319_aggregate_state_declared_size_no_allocation"
+        }
+      ],
+      "fixed_by": "6b217cc8e11 and b6b74893ce1 (26.3-lts-decimal512, 2026-09-25; backport of upstream #117536)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/corrected3/aggbomb_matrix_PROD263_UP2688.tsv, evidence/fix_ci_20260925/upstream_repro/corrected3/corrected3_PROD263_vs_UP2688.tsv",
+      "not_in_gate": {
+        "04401_aggregate_function_deserialize_allocation_bomb": "upstream test; it also expects the per-function size caps of #108465, which was never backported to 26.3; 10319 carries its #117536 states with the read errors and the cap error accepted alike"
+      }
     }
   ]
 }

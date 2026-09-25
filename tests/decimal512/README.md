@@ -37,9 +37,9 @@ host's `/var/lib/clickhouse`.
 | tier | when | what runs | typical time |
 |---|---|---|---|
 | quick | every commit that touches 512-bit code | `midpoint`/`avg2` matrix (1192), operations matrix (7114), key matrix (400) | minutes |
-| full | periodically, and before a release | quick + vector form (1192) + fixed-seed random differential matrix (`random`, 3000, seed 20260925) + 256-bit dispatch scan against `dispatch_scan_baseline.json` + the stateless tests in `stateless_tests.txt` (97: the fork's tests, 10310-10316, and the upstream tests of the cherry-picked fixes) | about 20 minutes |
+| full | periodically, and before a release | quick + vector form (1192) + fixed-seed random differential matrix (`random`, 3000, seed 20260925) + 256-bit dispatch scan against `dispatch_scan_baseline.json` + the stateless tests in `stateless_tests.txt` (229: the fork's tests, 10310-10319, and the tests of the cherry-picked fixes; tests that need pyarrow run outside the gate) | about 20 minutes |
 | nightly | scheduled | full + a second fixed-seed random matrix (`random_nightly`, 9000, seed 20260926) | about 30 minutes |
-| release | before an image is built or deployed | nightly + regression proofs against `--buggy-binary` (the baseline) for the keys, midpoint and operations matrices + on-disk and aggregate-state compatibility with the baseline in both directions + mixed-version Keeper/ReplicatedMergeTree replication with rollback (`tools/replication/mixed_replication.sh`, the production Keeper build) + a synthetic performance comparison with the baseline (`tools/perf/perf_compare.py`) + image identity | about an hour |
+| release | before an image is built or deployed | nightly + regression proofs against `--buggy-binary` (the baseline) for the keys, midpoint and operations matrices + on-disk and aggregate-state compatibility with the baseline in both directions + mixed-version Keeper/ReplicatedMergeTree replication with rollback (`tools/replication/mixed_replication.sh`, the production Keeper build) + mixed-version distributed GROUP BY over shards of both builds, both coordinator directions, against locked oracle cases (`tools/replication/mixed_distributed_groupby.sh`) + a synthetic performance comparison with the baseline (`tools/perf/perf_compare.py`) + image identity | about an hour |
 
 Exit status (from `tools/check_gate.py`):
 
@@ -72,6 +72,11 @@ Rules the gate enforces:
   production build. Every required step (part fetches both ways, mutations initiated on either build, a merge by the
   candidate downloaded by the baseline, reads after the upgrade and after the rollback, replication after the rollback)
   must be present once with rc 0 and SAME/OK, and BASELINE/CANDIDATE must be the gated binaries.
+- **Mixed-version GROUP BY**: four loopback instances, two shards with a baseline and a candidate replica each; every
+  case of `tools/replication/groupby_cases.lock.json` (key shapes including nullable 29..64-byte keys, single- and
+  two-level aggregation, candidate-only and both mixed coordinator directions) must be there once. PASS/FAIL is
+  recomputed from the sha256 of each result file against the expectation that `groupby_oracle.py` computes from the
+  data formulas, never from a cluster's output. `old_only` rows (the baseline's own behaviour) are reported, not gated.
 - **Performance**: the gate recomputes medians, ratios and verdicts from the raw timings (at least 5 rounds, build
   order alternating). A compared query is SLOWER when it takes more than 1.10x the baseline and more than 10 ms longer;
   the run is NOISY when a non-decimal control differs by more than 10% and 10 ms. These thresholds are an initial
@@ -124,10 +129,16 @@ The entries also record the visible behaviour changes of the fixes (`visible_cha
     regression tests on the fork build and on a build that contains the fix.
   - `tools/upstream/triage_server_tests.py`: the same for tests that need a server (shell tests, clusters,
     ZooKeeper via the embedded loopback Keeper, pyarrow fixtures with `--python-bin`), on one isolated instance.
+    Rows whose test came from the upstream PR instead of the 26.3 backport are marked `-upstream-test`: leads to
+    review, not evidence.
   - `tools/replication/mixed_replication.sh`: the mixed-version Keeper/ReplicatedMergeTree check.
   - `tools/replication/mixed_distributed_groupby.sh`: distributed GROUP BY over shards of both builds (rolling
-    upgrade), compared with baseline-only and candidate-only clusters; not part of the gate (its finding for
-    nullable 29..64-byte keys is a decision about the upgrade procedure, see the release report).
+    upgrade) in both coordinator directions, against the locked oracle cases (`groupby_oracle.py`,
+    `groupby_cases.lock.json`); a mandatory release check (suite `mixed-groupby`). Its finding for nullable
+    29..64-byte keys is the open defect KD-D512-MIXED-GROUPBY-NULLABLE.
+  - `tools/replication/upgrade_topology_check.sh`: isolated validation of the replica-group upgrade topology that
+    keeps every distributed query on one build, and of the ways it breaks (cross-group failover, an old
+    coordinator). It validates a procedure; it changes no deployment and approves no rollout.
   - `tools/parquet/parquet_decimal_writer.py`: dependency-free Parquet writer and oracle for Decimal fixtures of any
     physical layout (used by 10317 and 10318).
   - `tools/perf/perf_compare.py`: the performance comparison.

@@ -16,7 +16,10 @@ stage: for every `needs-server` test of the local triage (<triage.tsv> from tria
 run: runs the staged tests one at a time on each binary (first = the build under triage, second = a build with the fix);
   when a test kills the server it is recorded as CRASH and the server is restarted for the remaining tests. Classes as in
   the local triage: reproduced / reproduced-crash (first fails, second passes), not-reproduced (both pass), inconclusive
-  (second fails), skipped (clickhouse-test skipped it, or no result on either).
+  (second fails), skipped (clickhouse-test skipped it, or no result on either). A test fetched from the upstream PR because
+  the backport PR does not carry it gets the suffix `-upstream-test` (e.g. reproduced-upstream-test): the backport may
+  carry a different test, cover only part of the upstream change, or the test may need a feature the fork lacks, so such
+  a row is a lead to review, never evidence that the backport fixes it.
 """
 from __future__ import annotations
 
@@ -36,7 +39,7 @@ ISO = os.environ.get("CH_ISO_SCRIPT") or next((p for p in (os.path.join(HERE, "i
                                               if os.path.isfile(p)), os.path.join(HERE, "..", "isolated_ch.sh"))
 NEED = [("keeper", re.compile(r"Replicated|zookeeper|keeper|\{replica\}|\{shard\}|ON CLUSTER|DatabaseReplicated|generateSerialID", re.I)),
         ("external", re.compile(r"\bs3(Cluster)?\(|S3Queue|AzureQueue|azureBlobStorage|hdfs\(|Kafka|RabbitMQ|NATS|\bmysql\(|"
-                                r"postgresql\(|mongodb|iceberg|deltaLake|hudi|minio|http://(?!localhost|127)|psql\b|mysql -", re.I)),
+                                r"postgresql\(|mongodb|iceberg|deltaLake|hudi|minio|https?://(?!localhost|127\.)|type\s*=\s*web\b|psql\b|mysql -", re.I)),
         ("pyarrow", re.compile(r"import pyarrow|pyarrow\.", re.I))]
 DEFAULT_PORT = re.compile(r"(:|port[ =]*)(9000|9004|9005|9009|8123|9181|2181)\b")
 
@@ -182,8 +185,8 @@ def run(out_dir, out_tsv, labels, keeper, python_bin):
         results[label] = res
     (l1, _), (l2, _) = labels
     with open(out_tsv, "w") as f:
-        f.write(f"pr\tbackport\ttest\t{l1}\t{l2}\tclass\n")
-        for pr, bp, t, *_ in staged:
+        f.write(f"pr\tbackport\ttest\t{l1}\t{l2}\tclass\tsource\n")
+        for pr, bp, t, _status, source, *_ in staged:
             a, b = results[l1].get(t, "NONE"), results[l2].get(t, "NONE")
             if "SKIPPED" in (a, b) or "NONE" in (a, b):
                 cls = "skipped"
@@ -193,7 +196,9 @@ def run(out_dir, out_tsv, labels, keeper, python_bin):
                 cls = "not-reproduced"
             else:
                 cls = "reproduced-crash" if a == "CRASH" else "reproduced"
-            f.write(f"{pr}\t{bp}\t{t}\t{a}\t{b}\t{cls}\n")
+            if source == "pr" and cls.startswith("reproduced"):
+                cls += "-upstream-test"
+            f.write(f"{pr}\t{bp}\t{t}\t{a}\t{b}\t{cls}\t{source}\n")
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ f6f509cf02c87777c895ddb9b14398841452c10739720e00c6367abe934b40b0  historical/gen
 ae46edff4c20b945407ad27ad62d1bf3ef0c5387e302146969d9ff49d5219928  historical/hist_backup.sh  <- tests/historical/hist_backup.sh
 37454cfefc24e4830410a1ceb8460da86c59f0ea9162cb204bf7246ac31f5519  parquet/parquet_decimal_writer.py  <- tests/parquet/parquet_decimal_writer.py
 bbe3582bff93f47429eb1da7057bb6508fa51cd62bfbecc0d88aa5f78b00bb49  replication/mixed_distributed_groupby.sh  <- tests/replication/mixed_distributed_groupby.sh
-cc3d0f6171ff605876b18406c819bac1e9be3d99bc2f610afd87d6b22d7f4809  upstream/triage_server_tests.py  <- scripts/triage_server_tests.py
+f04c741ad1c3802966a953ee2f4aed43345d0cb93294d14018b22dc318cce14c  upstream/triage_server_tests.py  <- scripts/triage_server_tests.py
 b810b5992dbb05adbaed3161a4e32167ce0b7f8e53fc209b328e5ba5451553ec  replication/groupby_oracle.py  <- tests/replication/groupby_oracle.py
 d5d54550bf4258bddf6e9fdaa0cf8107da3c2c0ebfc63b6fe5aa967698e30b60  replication/groupby_cases.lock.json  <- tests/replication/groupby_cases.lock.json
+7ae7c5ae934a29e068c735eca20a10116a71e4ee29425362fa5a5086e9ade165  replication/upgrade_topology_check.sh  <- tests/replication/upgrade_topology_check.sh
