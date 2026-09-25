@@ -122,7 +122,7 @@ start)
     <default_profile>default</default_profile><default_database>default</default_database>
     <max_server_memory_usage_to_ram_ratio>0.25</max_server_memory_usage_to_ram_ratio>
     <memory_worker_use_cgroup>0</memory_worker_use_cgroup><memory_worker_dynamic_hard_limit>0</memory_worker_dynamic_hard_limit>
-    <custom_settings_prefixes>custom_</custom_settings_prefixes>
+    <custom_settings_prefixes>SQL_,custom_</custom_settings_prefixes>
     <database_atomic_delay_before_drop_table_sec>0</database_atomic_delay_before_drop_table_sec>
     <remote_servers>
         <test_shard_localhost><shard><replica><host>127.0.0.1</host><port>$BASE</port></replica></shard></test_shard_localhost>

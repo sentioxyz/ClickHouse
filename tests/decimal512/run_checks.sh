@@ -156,7 +156,7 @@ if [ "$TIER" != quick ]; then
   # generateSerialID, ...) run as in upstream CI instead of failing on "no Zookeeper configuration"
   if CH_ISO_KEEPER=1 bash "$T/isolated_ch.sh" start "$INST" "$BIN" "$TREE" > "$OUT/logs/server_start.log" 2>&1; then
     bash "$T/isolated_ch.sh" test "$INST" "$TREE" fork-stateless "${BBID:0:12}" --no-random-settings --no-random-merge-tree-settings \
-      --no-shard --no-stateful -j 4 "${SEL[@]}" > "$OUT/logs/stateless_driver.log" 2>&1
+      --no-stateful -j 4 "${SEL[@]}" > "$OUT/logs/stateless_driver.log" 2>&1
     log "fork stateless tests: rc=$? (${#SEL[@]} selected, ${#EXCLUDED[@]} excluded)"
   else
     log "ERROR: isolated server did not start (see logs/server_start.log)"
