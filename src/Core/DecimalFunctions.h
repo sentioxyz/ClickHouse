@@ -88,6 +88,16 @@ inline bool isSaturatedScaleMultiplier(const T & multiplier)
 template <typename T>
 inline bool mulOverflowByScale(T x, T multiplier, T & res)
 {
+    if constexpr (std::is_same_v<T, Int512>)
+    {
+        /// The common case, small enough to inline into per-value loops: both factors are in the Int256 range (a
+        /// saturated multiplier is not), so the product is exact.
+        if (likely(common::detail::fitsInt256(x) && common::detail::fitsInt256(multiplier)))
+        {
+            res = x * multiplier;
+            return false;
+        }
+    }
     if (isSaturatedScaleMultiplier(multiplier))
     {
         res = 0;
