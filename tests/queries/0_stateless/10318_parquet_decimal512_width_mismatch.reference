@@ -10,10 +10,10 @@
 300	-87851.5	Decimal(9, 2)
 -- FIXED_LEN_BYTE_ARRAY 64_p9, dict
 300	-87851.5	Decimal(9, 2)
--- a value beyond the declared precision is an error, not a corrupted read
+-- a value beyond the range of the column type is an error, not a corrupted read
 DECIMAL_OVERFLOW
 -- ... and reads losslessly with a wide enough type hint
-300	9999912148.5	Decimal(154, 2)
+300	9999999999999912148.5	Decimal(154, 2)
 -- BYTE_ARRAY DECIMAL(100, 2), DELTA_BYTE_ARRAY, under PREWHERE
 100	112149.5
 300	-87851.5	Decimal(100, 2)
