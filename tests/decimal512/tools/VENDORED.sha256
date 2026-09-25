@@ -3,7 +3,7 @@
 b76555e63da7c1682d6d6f246f05f5f06a527448ac779187a47ad6f488266398  matrix/gen_midpoint_vector.py  <- tests/matrix/gen_midpoint_vector.py
 5e75196b7a3c3b64f36a5292332af10058a6a87eb32f5273b848aacae7ca210d  matrix/gen_decimal512_ops_matrix.py  <- tests/matrix/gen_decimal512_ops_matrix.py
 0caee132af34e875b91653424be3fb461e7816c789051e94c647c6e9f9e5a570  matrix/gen_composite_keys.py  <- tests/matrix/gen_composite_keys.py
-6e6837118d52736a1fa7f158c2f79f49cdd2e65fc92ec554bfcb803f5cdba067  matrix/run_matrix.py  <- tests/matrix/run_matrix.py
+6ddb380fed8652dbbe1707d338736c0cd2f387ec69077b51eed47fc7e1ad8477  matrix/run_matrix.py  <- tests/matrix/run_matrix.py
 004b59f60fe67bfa8d0a11765eaabd37014e5358ab4718cbdded2abc459aff9f  matrix/matrix_cache.py  <- tests/matrix/matrix_cache.py
 c3a895333c827a94fdb7d4bc55435c3aea91a14e5e59d75ea780e456f2d90159  matrix/lock_cases.py  <- tests/matrix/lock_cases.py
 f60db21fd46eb1a0cc633802df1c67f7e0f7b79526f7f93d6a2a01e8f7919de9  matrix/cases.lock.json  <- tests/matrix/cases.lock.json
@@ -16,7 +16,7 @@ e6f588a71595b9eefda307f139a2641cc61d882d87e4da5e0dcc8235273b2eef  hostname_shim.
 1b82858fb4bcc2a7d1d93c3a33f98e703c8cdee95207a201f19fc32bb138177b  compat/write_dyn_json.sql  <- tests/compat/write_dyn_json.sql
 17cc8975a21720a9defcedf536cb900e6cc7c3315f7db149c9ba503d92c6fd09  compat/read_dyn_json.sql  <- tests/compat/read_dyn_json.sql
 af2186c51903e8ac1893e4feca5d0dbad4059e5aa25be4e652f27cf77d788065  compat/mixed_agg.sql  <- tests/compat/mixed_agg.sql
-0e546a27022d6242a2f9f834b3a65313a0698a6c8618f79ee2fb373f16370d99  compat/native_compat.sh  <- tests/compat/native_compat.sh
+c664fc08b23c09e2e44a1b0342ef4b6088e8ea7aae50e9af8fe391cbe2e69da7  compat/native_compat.sh  <- tests/compat/native_compat.sh
 aace3363df0c98657f6f32797833729127d997f8d93b31b751c9b992fc4536da  replication/mixed_replication.sh  <- tests/replication/mixed_replication.sh
 faadcf4ed93667ca123aec3b1c72d2be710b352c94e3229a3313bd88c8f6137e  perf/perf_compare.py  <- tests/perf/perf_compare.py
 1c7cc491f99b6ddcb992d3c4a9a14250b0d6b159f485fb5624843fe2ace96cd5  gate_mutation_test.py  <- tests/gate_mutation_test.py

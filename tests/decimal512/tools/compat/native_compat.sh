@@ -20,6 +20,11 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ISO=${CH_ISO_SCRIPT:-$HERE/../../scripts/isolated_ch.sh}   # vendored copies set CH_ISO_SCRIPT to their isolated_ch.sh
 OUT=$1; shift; mkdir -p "$OUT"
 export CH_ISO_ROOT=${CH_ISO_ROOT:-${CLAUDE_JOB_DIR:-$HOME/.cache}/ch-isolated}
+# every run needs fresh instances: servers started on an earlier run's data dirs failed the setup ("table already
+# exists", 0 SAME rows; twice on 2026-09-25), so refuse a root that already has instance data
+for s in a b c; do
+  [ -e "$CH_ISO_ROOT/inst-$s/data" ] && { echo "REFUSE: $CH_ISO_ROOT/inst-$s already holds data of an earlier run: use a new CH_ISO_ROOT" >&2; exit 2; }
+done
 TREE=${CH_TREE:-$PWD}
 declare -A EXE PORT INST BID
 i=0; ROLES=()
@@ -53,7 +58,9 @@ verify_server() {
   b=$(cl "$s" "$s" "SELECT lower(buildId())") || return 1
   [[ $b == ${BID[$s]}* ]]
 }
-cleanup() { for s in "${ROLES[@]}"; do "$ISO" stop "${INST[$s]}" >> "$OUT/stop.txt" 2>&1; done; }
+# stop the servers, then drop the servers' private binary copies (GBs each; the originals are the given paths, whose
+# identities are in identities.tsv); logs and data stay
+cleanup() { for s in "${ROLES[@]}"; do "$ISO" stop "${INST[$s]}" >> "$OUT/stop.txt" 2>&1; done; rm -f "$CH_ISO_ROOT"/bin/clickhouse-*; }
 trap cleanup EXIT
 
 for s in "${ROLES[@]}"; do

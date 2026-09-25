@@ -14,6 +14,11 @@ engine was killed by a signal (e.g. a libc++ hardening assertion), so a batch ab
 engine process in its own temporary directory (no listening ports), with the same per-process timeout. Every line of a
 matrix is one self-contained case, so the per-case result does not depend on the split; the result file is written in
 oracle order either way. The summary records the worker count.
+Engine configuration: every engine process gets `background_schedule_pool_size=4` (ENGINE_CONFIG below). clickhouse local
+otherwise starts all 512 threads of that pool (521 threads per process; with 8 workers the task hit a 4096 pids limit
+and processes queued on the CPU quota); the pool runs background table tasks and no matrix query uses it. With it, a
+process has 13 threads and needs 0.13 s instead of 0.35 s of CPU to start (measured 2026-09-25); results are unchanged
+(serial/parallel and before/after comparison of all matrices). The summary records it.
 
 Expectations per oracle row: {"type", "value"} | {"error": CODE} | {"error_any": [CODES]} (the error family is the
 requirement, e.g. overflow must be rejected, not a specific code). Rows may carry a "category"; the summary counts
@@ -41,14 +46,19 @@ import sys
 import tempfile
 
 
+# server configuration overrides for every engine process (passed after `--`); no query setting is changed
+ENGINE_CONFIG = ["--background_schedule_pool_size=4"]
+
+
 def run(args, sql_text, ignore_error):
     extra = ["--ignore-error"] if ignore_error else []
     if args.image:
-        cmd = ["docker", "run", "--rm", "--network", "none", "-i", "--entrypoint", "/usr/bin/clickhouse", args.image, "local", "--multiquery"] + extra
+        cmd = ["docker", "run", "--rm", "--network", "none", "-i", "--entrypoint", "/usr/bin/clickhouse", args.image, "local", "--multiquery"] + extra + ["--"] + ENGINE_CONFIG
         p = subprocess.run(cmd, input=sql_text, capture_output=True, text=True, timeout=3600)
     else:
         with tempfile.TemporaryDirectory(prefix="ch-matrix-") as wd:
-            p = subprocess.run([args.binary, "local", "--multiquery"] + extra, input=sql_text, capture_output=True, text=True, timeout=3600, cwd=wd)
+            p = subprocess.run([args.binary, "local", "--multiquery"] + extra + ["--"] + ENGINE_CONFIG, input=sql_text, capture_output=True,
+                               text=True, timeout=3600, cwd=wd)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -98,7 +108,7 @@ def main():
               "ids_sha256": hashlib.sha256("\n".join(sorted(ids)).encode()).hexdigest(), "cases": len(ids),
               "attested_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
               "runner_sha256": sha256_file(os.path.abspath(__file__)), "python": platform.python_version(),
-              "tz": os.environ.get("TZ") or os.path.realpath("/etc/localtime")}
+              "tz": os.environ.get("TZ") or os.path.realpath("/etc/localtime"), "engine_config": ENGINE_CONFIG}
     attest.update(engine_identity(args))
     workers = max(1, args.workers)
     # the batch: one process, or `workers` processes over contiguous parts of the statement list
