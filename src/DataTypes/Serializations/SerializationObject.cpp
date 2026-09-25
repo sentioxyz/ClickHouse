@@ -7,7 +7,10 @@
 #include <DataTypes/Serializations/SerializationDynamicHelpers.h>
 
 
+#include <algorithm>
+
 #include <Columns/ColumnObject.h>
+#include <Core/Defines.h>
 #include <Core/MergeTreeSerializationEnums.h>
 #include <DataTypes/DataTypeObject.h>
 #include <DataTypes/DataTypeArray.h>
@@ -30,6 +33,27 @@ namespace ErrorCodes
 
 namespace
 {
+
+/// The number of paths in a `JSON` / `Object` column is read from a possibly-untrusted stream
+/// (e.g. `Native` input, or the statistics of a corrupted on-disk part) and used only as a sizing
+/// hint before the actual paths are read one by one. It must not be handed to a container's
+/// `resize` / `reserve` directly:
+///   * A count the container cannot hold (`> max_size()`, e.g. close to `SIZE_MAX`) escapes as an
+///     uncaught non-`DB::Exception` (`std::length_error`, `std::bad_array_new_length` or, for a
+///     hash table, `std::bad_alloc`), so reject it as corruption up front.
+///   * A large-but-representable count (e.g. `100000000`) is far below `max_size()` for a
+///     `std::vector<String>`, yet handing it to `resize` / `reserve` would allocate gigabytes
+///     before a single path byte is read and fail as `std::bad_alloc` / OOM.
+/// So cap the hint at `DEFAULT_NATIVE_BINARY_MAX_NUM_COLUMNS`: the caller's read loop appends each
+/// path as it is decoded (growing the container on demand for a legitimately large count), while a
+/// corrupted over-count trips a normal read error at end of stream instead of a huge allocation.
+template <typename Container>
+void reserveOrThrowTooManyPaths(Container & container, size_t num_paths)
+{
+    if (num_paths > container.max_size())
+        throw Exception(ErrorCodes::INCORRECT_DATA, "JSON/Object column has too many paths: {}", num_paths);
+    container.reserve(std::min(num_paths, DEFAULT_NATIVE_BINARY_MAX_NUM_COLUMNS));
+}
 
 void throwIfInvalidNumberOfBuckets(size_t num_buckets)
 {
@@ -672,12 +696,18 @@ ISerialization::DeserializeBinaryBulkStatePtr SerializationObject::deserializeOb
         auto structure_state = std::make_shared<DeserializeBinaryBulkStateObjectStructure>(serialization_version);
         if (structure_state->serialization_version.value == SerializationVersion::FLATTENED)
         {
-            /// Read the list of flattened paths.
+            /// Read the list of flattened paths. Append one path at a time (with a capped `reserve`
+            /// hint) rather than pre-sizing to the untrusted `paths_size`, so a corrupted count
+            /// cannot drive a huge allocation before any path is read (see `reserveOrThrowTooManyPaths`).
             size_t paths_size;
             readVarUInt(paths_size, *structure_stream);
-            structure_state->flattened_paths.resize(paths_size);
+            reserveOrThrowTooManyPaths(structure_state->flattened_paths, paths_size);
             for (size_t i = 0; i != paths_size; ++i)
-                readStringBinary(structure_state->flattened_paths[i], *structure_stream);
+            {
+                String path;
+                readStringBinary(path, *structure_stream);
+                structure_state->flattened_paths.push_back(std::move(path));
+            }
         }
         else if (structure_state->serialization_version.value == SerializationVersion::STRING)
         {
@@ -692,13 +722,17 @@ ISerialization::DeserializeBinaryBulkStatePtr SerializationObject::deserializeOb
                 readVarUInt(max_dynamic_paths, *structure_stream);
             }
 
-            /// Read the sorted list of dynamic paths.
+            /// Read the sorted list of dynamic paths (same append-on-demand handling as flattened paths).
             size_t dynamic_paths_size;
             readVarUInt(dynamic_paths_size, *structure_stream);
             structure_state->sorted_dynamic_paths = std::make_shared<std::vector<String>>();
-            structure_state->sorted_dynamic_paths->resize(dynamic_paths_size);
+            reserveOrThrowTooManyPaths(*structure_state->sorted_dynamic_paths, dynamic_paths_size);
             for (size_t i = 0; i != dynamic_paths_size; ++i)
-                readStringBinary((*structure_state->sorted_dynamic_paths)[i], *structure_stream);
+            {
+                String path;
+                readStringBinary(path, *structure_stream);
+                structure_state->sorted_dynamic_paths->push_back(std::move(path));
+            }
             structure_state->dynamic_paths.insert(structure_state->sorted_dynamic_paths->begin(), structure_state->sorted_dynamic_paths->end());
 
             /// If we have V3 Object serialization, read shared data serialization version.
