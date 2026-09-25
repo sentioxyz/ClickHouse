@@ -3025,6 +3025,24 @@
         }
       ],
       "evidence": "evidence/fix_ci_20260925/release_cand4/04881_hostname_substitution_check.txt; tests/clickhouse-test replace_in_file(stdout, socket.gethostname(), 'localhost')"
+    },
+    {
+      "id": "KD-UP-100849",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: Protobuf schema files in one directory sharing a message name, or one file used as Protobuf and as ProtobufList",
+      "effect": "the importer cache (one per directory, message looked up by name in the whole descriptor pool) hands a query another file's message: errors ('Could not find a message named Envelope', 'Not found matches between the names of the columns ... and the fields') or input parsed with the wrong message definition",
+      "affects": [
+        "26.3 prod a394e92fb5d (04061 fails there and passes on official 26.8.8.8 on isolated servers: evidence/fix_ci_20260925/upstream_repro/pr100849/); upstream backported the fix to 26.4 (#110754), not to 26.3"
+      ],
+      "decision": "cherry-pick the master PR ClickHouse/ClickHouse#100849 unchanged (it applies cleanly), with its test 04061 and schemas; found by the CAND5 gtest run (3 unit tests of the #106905 backport)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04061_protobuf_cache_with_envelope"
+        }
+      ],
+      "fixed_by": "428e79a8f76 (26.3-lts-decimal512, 2026-09-25; backport of upstream #100849)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/pr100849/ (04061 PROD263 FAIL / 26.8.8.8 OK; the CAND5 gtest output before the fix)"
     }
   ]
 }

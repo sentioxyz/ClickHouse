@@ -240,3 +240,5 @@ blockchain_decimal512_type_conversion
 05055_lz4_literal_past_end_of_compressed_block
 05055_aggregate_state_refill_staging
 10319_aggregate_state_declared_size_no_allocation
+# found by the CAND5 gtest run (2026-09-25): upstream #100849, Protobuf schema cache (not backported to 26.3 upstream):
+04061_protobuf_cache_with_envelope
