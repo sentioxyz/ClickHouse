@@ -348,6 +348,8 @@ DataTypePtr getMostSubtype(const DataTypes & types, bool throw_if_result_is_noth
                     return std::make_shared<DataTypeUInt128>();
                 if (min_bits_of_unsigned_integer <= 256)
                     return std::make_shared<DataTypeUInt256>();
+                if (min_bits_of_unsigned_integer <= 512) /// only when every integer type is 512-bit
+                    return std::make_shared<DataTypeUInt512>();
                 throw Exception(
                     ErrorCodes::NO_COMMON_TYPE,
                     "Logical error: {} but as all data types are integers, "
@@ -369,6 +371,8 @@ DataTypePtr getMostSubtype(const DataTypes & types, bool throw_if_result_is_noth
                     return std::make_shared<DataTypeInt128>();
                 if (min_bits_of_signed_integer <= 256)
                     return std::make_shared<DataTypeInt256>();
+                if (min_bits_of_signed_integer <= 512) /// only when every integer type is 512-bit
+                    return std::make_shared<DataTypeInt512>();
                 throw Exception(
                     ErrorCodes::NO_COMMON_TYPE,
                     "Logical error: {} but as all data types are integers, "

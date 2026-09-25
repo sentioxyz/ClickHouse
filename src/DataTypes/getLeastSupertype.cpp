@@ -184,6 +184,10 @@ DataTypePtr getNumericType(const TypeIndexSet & types)
                 return std::make_shared<DataTypeInt128>();
             if (min_bit_width_of_integer <= 256)
                 return std::make_shared<DataTypeInt256>();
+            /// The 512-bit rung is used only when a 512-bit type takes part, so that mixes of narrower types
+            /// (e.g. Int256 and UInt256) keep their upstream result.
+            if (min_bit_width_of_integer <= 512 && (max_bits_of_signed_integer > 256 || max_bits_of_unsigned_integer > 256))
+                return std::make_shared<DataTypeInt512>();
             return throwOrReturn<on_error>(
                 types,
                 " because some of them are signed integers and some are unsigned integers,"
@@ -205,6 +209,8 @@ DataTypePtr getNumericType(const TypeIndexSet & types)
                 return std::make_shared<DataTypeUInt128>();
             if (min_bit_width_of_integer <= 256)
                 return std::make_shared<DataTypeUInt256>();
+            if (min_bit_width_of_integer <= 512) /// all unsigned: only reachable when a UInt512 takes part
+                return std::make_shared<DataTypeUInt512>();
             return throwOrReturn<on_error>(
                 types,
                 " but as all data types are unsigned integers, we must have found maximum unsigned integer type",
