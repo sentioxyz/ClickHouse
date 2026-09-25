@@ -848,12 +848,12 @@ AggregatedDataVariants::Type Aggregator::chooseAggregationMethod(const Block & h
         {
             /// Pack if possible all the keys along with information about which key values are nulls
             /// into a fixed 16- or 32-byte blob.
+            /// Not into a 64-byte one (nullable_keys512): with its 8-byte null bitmap that method was slower than the
+            /// serialized methods below, which upstream uses for these keys (keys of 29..64 bytes with nulls).
             if (std::tuple_size_v<KeysNullMap<UInt128>> + keys_bytes <= 16)
                 return AggregatedDataVariants::Type::nullable_keys128;
             if (std::tuple_size_v<KeysNullMap<UInt256>> + keys_bytes <= 32)
                 return AggregatedDataVariants::Type::nullable_keys256;
-            if (std::tuple_size_v<KeysNullMap<UInt512>> + keys_bytes <= 64)
-                return AggregatedDataVariants::Type::nullable_keys512;
         }
 
         if (has_low_cardinality && params.keys_size == 1)
