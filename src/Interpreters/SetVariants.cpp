@@ -144,7 +144,9 @@ typename SetVariantsTemplate<Variant>::Type SetVariantsTemplate<Variant>::choose
             return Type::keys128;
         if (size_of_field == 32)
             return Type::keys256;
-        throw Exception(ErrorCodes::LOGICAL_ERROR, "Numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32.");
+        if (size_of_field == 64) /// a single (U)Int512 key
+            return Type::keys512;
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32, 64.");
     }
 
     /// If the keys fit in N bits, we will use a hash table for N-bit-packed keys

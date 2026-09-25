@@ -344,7 +344,9 @@ static HashJoin::Type chooseMethod(JoinKind kind, const ColumnRawPtrs & key_colu
             return Type::keys128;
         if (size_of_field == 32)
             return Type::keys256;
-        throw Exception(ErrorCodes::LOGICAL_ERROR, "Numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32.");
+        if (size_of_field == 64) /// a single (U)Int512 key: there is no 512-bit fixed-key join map, hash the key like a Decimal512 one
+            return Type::hashed;
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32, 64.");
     }
 
     /// If the keys fit in N bits, we will use a hash table for N-bit-packed keys
