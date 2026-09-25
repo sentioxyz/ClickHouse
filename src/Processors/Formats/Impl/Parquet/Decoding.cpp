@@ -1599,6 +1599,11 @@ T BigEndianHelper<T>::convertPaddedValue(const char * data) const
 {
     /// We take advantage of input padding and do fixed-size memcpy of size sizeof(T) instead
     /// of variable-size memcpy of size input_size. Variable-size memcpy is slow.
+    /// The copy starts value_offset = sizeof(T) - input_size bytes before the value (all of sizeof(T) for an empty
+    /// BYTE_ARRAY value: 64 bytes for Decimal512). Every caller passes values that start at or after the beginning of a
+    /// PaddedPODArray (prefetcher and decompression buffers, decoder temporaries, ColumnString chars), whose left padding
+    /// covers that.
+    static_assert(sizeof(T) <= PaddedPODArray<char>::pad_left, "convertPaddedValue reads before the value");
     T x;
     memcpy(&x, data - value_offset, sizeof(T));
     fixupValue(x);
