@@ -254,18 +254,99 @@ namespace common
                 return v.items[7 - i];
         }
 
-        /// v is in the Int256 range: its upper 257 bits all equal the sign bit. A product of two such values has at most
-        /// 511 significant bits, so it cannot overflow Int512. These checks run for every value of a Decimal512
-        /// multiplication or scale-up, so they compare limbs instead of making a round trip through Int256.
-        inline bool fitsInt256(const Int512 & v)
+        template <typename T>
+        inline void setLimb512(T & v, size_t i, UInt64 value)
         {
-            const UInt64 sign = static_cast<UInt64>(static_cast<Int64>(limb512(v, 3)) >> 63);
-            return limb512(v, 4) == sign && limb512(v, 5) == sign && limb512(v, 6) == sign && limb512(v, 7) == sign;
+            static_assert(sizeof(T) == 64);
+            if constexpr (std::endian::native == std::endian::little)
+                v.items[i] = value;
+            else
+                v.items[7 - i] = value;
         }
 
-        inline bool fitsUInt256(const UInt512 & v)
+        /// Both values are in the Int256 range: their upper 257 bits all equal their sign bit. A product of two such values
+        /// has at most 511 significant bits, so it cannot overflow Int512. Branch-free: this runs for every value of a
+        /// Decimal512 multiplication or scale-up.
+        ALWAYS_INLINE inline bool bothFitInt256(const Int512 & x, const Int512 & y)
         {
-            return (limb512(v, 4) | limb512(v, 5) | limb512(v, 6) | limb512(v, 7)) == 0;
+            const UInt64 sx = static_cast<UInt64>(static_cast<Int64>(limb512(x, 3)) >> 63);
+            const UInt64 sy = static_cast<UInt64>(static_cast<Int64>(limb512(y, 3)) >> 63);
+            return ((limb512(x, 4) ^ sx) | (limb512(x, 5) ^ sx) | (limb512(x, 6) ^ sx) | (limb512(x, 7) ^ sx)
+                  | (limb512(y, 4) ^ sy) | (limb512(y, 5) ^ sy) | (limb512(y, 6) ^ sy) | (limb512(y, 7) ^ sy)) == 0;
+        }
+
+        ALWAYS_INLINE inline bool bothFitUInt256(const UInt512 & x, const UInt512 & y)
+        {
+            return (limb512(x, 4) | limb512(x, 5) | limb512(x, 6) | limb512(x, 7)
+                  | limb512(y, 4) | limb512(y, 5) | limb512(y, 6) | limb512(y, 7)) == 0;
+        }
+
+        /// Exact product of the low 256 bits of a and b (4 limbs each, unsigned): 16 limb multiplications, where the
+        /// generic truncated 512-bit multiplication needs about twice as many. out: 8 limbs, least significant first.
+        ALWAYS_INLINE inline void mulLimbs256(const UInt64 (&a)[4], const UInt64 (&b)[4], UInt64 (&out)[8])
+        {
+            for (auto & l : out)
+                l = 0;
+            for (size_t i = 0; i < 4; ++i)
+            {
+                unsigned __int128 carry = 0;
+                for (size_t j = 0; j < 4; ++j)
+                {
+                    const unsigned __int128 t = static_cast<unsigned __int128>(a[i]) * b[j] + out[i + j] + carry;
+                    out[i + j] = static_cast<UInt64>(t);
+                    carry = t >> 64;
+                }
+                out[i + 4] = static_cast<UInt64>(carry);
+            }
+        }
+
+        /// x * y for x and y in the Int256 range (the product is exact in Int512): magnitudes, product, sign.
+        ALWAYS_INLINE inline Int512 mulInt256Range(const Int512 & x, const Int512 & y)
+        {
+            UInt64 a[4];
+            UInt64 b[4];
+            const bool neg_a = static_cast<Int64>(limb512(x, 3)) < 0;
+            const bool neg_b = static_cast<Int64>(limb512(y, 3)) < 0;
+            UInt64 carry_a = neg_a;
+            UInt64 carry_b = neg_b;
+            for (size_t i = 0; i < 4; ++i)
+            {
+                /// |v| = two's complement negation of a negative v: ~v + 1
+                const unsigned __int128 ta = static_cast<unsigned __int128>(neg_a ? ~limb512(x, i) : limb512(x, i)) + carry_a;
+                const unsigned __int128 tb = static_cast<unsigned __int128>(neg_b ? ~limb512(y, i) : limb512(y, i)) + carry_b;
+                a[i] = static_cast<UInt64>(ta);
+                b[i] = static_cast<UInt64>(tb);
+                carry_a = static_cast<UInt64>(ta >> 64);
+                carry_b = static_cast<UInt64>(tb >> 64);
+            }
+            UInt64 p[8];
+            mulLimbs256(a, b, p);
+            Int512 res;
+            UInt64 carry = neg_a != neg_b;
+            for (size_t i = 0; i < 8; ++i)
+            {
+                const unsigned __int128 t = static_cast<unsigned __int128>(neg_a != neg_b ? ~p[i] : p[i]) + carry;
+                setLimb512(res, i, static_cast<UInt64>(t));
+                carry = static_cast<UInt64>(t >> 64);
+            }
+            return res;
+        }
+
+        ALWAYS_INLINE inline UInt512 mulUInt256Range(const UInt512 & x, const UInt512 & y)
+        {
+            UInt64 a[4];
+            UInt64 b[4];
+            for (size_t i = 0; i < 4; ++i)
+            {
+                a[i] = limb512(x, i);
+                b[i] = limb512(y, i);
+            }
+            UInt64 p[8];
+            mulLimbs256(a, b, p);
+            UInt512 res;
+            for (size_t i = 0; i < 8; ++i)
+                setLimb512(res, i, p[i]);
+            return res;
         }
 
         /// Whether res = x * y (computed with wrap-around) overflowed, for factors that do not both fit 256 bits.
@@ -288,22 +369,29 @@ namespace common
     }
 
     template <>
-    inline bool mulOverflow(Int512 x, Int512 y, Int512 & res)
+    ALWAYS_INLINE inline bool mulOverflow(Int512 x, Int512 y, Int512 & res)
     {
-        res = mulIgnoreOverflow(x, y);
-        /// Factors in the Int256 range cannot overflow (|x * y| <= 2^510): the common case, checked without a division.
-        if (likely(detail::fitsInt256(x) && detail::fitsInt256(y)))
+        /// Factors in the Int256 range (the common case) cannot overflow (|x * y| <= 2^510), and their product is computed
+        /// with a 256x256-bit multiplication, cheaper than the generic 512-bit one.
+        if (likely(detail::bothFitInt256(x, y)))
+        {
+            res = detail::mulInt256Range(x, y);
             return false;
+        }
+        res = mulIgnoreOverflow(x, y);
         return detail::mulOverflowInt512Slow(x, y, res);
     }
 
     template <>
-    inline bool mulOverflow(UInt512 x, UInt512 y, UInt512 & res)
+    ALWAYS_INLINE inline bool mulOverflow(UInt512 x, UInt512 y, UInt512 & res)
     {
-        res = mulIgnoreOverflow(x, y);
         /// Factors below 2^256 cannot overflow.
-        if (likely(detail::fitsUInt256(x) && detail::fitsUInt256(y)))
+        if (likely(detail::bothFitUInt256(x, y)))
+        {
+            res = detail::mulUInt256Range(x, y);
             return false;
+        }
+        res = mulIgnoreOverflow(x, y);
         return detail::mulOverflowUInt512Slow(x, y, res);
     }
 }
