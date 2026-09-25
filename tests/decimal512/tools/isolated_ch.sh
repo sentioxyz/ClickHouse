@@ -23,6 +23,18 @@
 # Port bases per instance name: a=39000 b=49000 c=59000 d=29000 (tcp=base, http=base-876, mysql=+4, pg=+5,
 # interserver=+9, keeper=+81, raft=+82).
 # The production boundary is unchanged with CH_ISO_KEEPER: the Keeper is a private, empty ensemble of this instance.
+# Host name (CH_ISO_HOST_ISOLATION at `start`): clickhouse-test replaces the runner's host name in every test output
+# with "localhost" as a plain substring. On a host called "build" that also rewrote words of correct outputs (04881:
+# "a build that" -> "a localhost that"); upstream CI does not see this because its containers have random host names.
+#   real (default)  server on the host, real host name on both sides (the behaviour before 2026-09-25).
+#   container       the server runs in a container with its own UTS namespace and the host name "localhost"
+#                   (docker, local image $CH_ISO_DOCKER_IMAGE (default ubuntu:22.04, never pulled), host network and PID
+#                   namespace, this user's uid, only $CH_ISO_ROOT and <tree> mounted, memory/pids capped by
+#                   $CH_ISO_DOCKER_MEM (12g) / $CH_ISO_DOCKER_PIDS (8192)), and `test` runs clickhouse-test and its
+#                   shells with the LD_PRELOAD library of hostname_shim.c, so the runner's host name is "localhost" too
+#                   and its substitution changes nothing. (ClickHouse itself ignores LD_PRELOAD: it clears the variable
+#                   and re-executes itself, see checkHarmfulEnvironmentVariables, hence the container for the server.)
+# `test` refuses when the server's hostName() differs from the runner's host name, in either mode.
 # Lessons baked in (2026-09-24): clickhouse local inherits the caller's stdin and can block on a socket ->
 # always </dev/null; 26.8 MemoryWorker reads the session cgroup and a concurrent build makes the server
 # refuse queries -> memory_worker_use_cgroup=0 and memory_worker_dynamic_hard_limit=0 in the test config;
@@ -53,6 +65,25 @@ prove_isolated() {  # $1 name, $2 expected build id prefix
   local bid; bid=$(timeout 10 "${exe% (deleted)}" client --host 127.0.0.1 --port "$BASE" --query "SELECT buildId()" < /dev/null 2>/dev/null)
   [[ "${bid,,}" == ${2,,}* ]] || { echo "REFUSE: buildId '$bid' != expected '$2' (stale or wrong binary)"; return 92; }
   echo "$exe"
+}
+
+# The LD_PRELOAD library of hostname_shim.c, built once per source version under $ROOT/lib and checked to take
+# effect (socket.gethostname() and os.uname() in python3); prints its path, or REFUSE on stderr and returns 95.
+hostname_shim_lib() {
+  local src lib got
+  src=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/hostname_shim.c
+  [ -f "$src" ] || { echo "REFUSE: $src missing" >&2; return 95; }
+  lib=$ROOT/lib/hostname_shim-$(sha256sum "$src" | cut -c1-12).so
+  if [ ! -f "$lib" ]; then
+    mkdir -p "$ROOT/lib"
+    if ! cc -shared -fPIC -O2 -Wall -Werror -o "$lib.tmp.$$" "$src" -ldl; then
+      rm -f "$lib.tmp.$$"; echo "REFUSE: cannot build $lib" >&2; return 95
+    fi
+    mv "$lib.tmp.$$" "$lib"
+  fi
+  got=$(LD_PRELOAD=$lib CH_ISO_HOSTNAME=localhost python3 -c 'import os, socket; print(socket.gethostname(), os.uname().nodename)' 2>&1)
+  [ "$got" = "localhost localhost" ] || { echo "REFUSE: $lib does not set the host name (got '$got')" >&2; return 95; }
+  echo "$lib"
 }
 
 # Run <tree>/tests/clickhouse-test with <exe>, append all output to <log>, and return the runner's exact exit
@@ -148,18 +179,60 @@ XML
 </clickhouse>
 XML
   printf '<config><host>127.0.0.1</host><port>%s</port></config>\n' "$BASE" > "$D/conf/client.xml"
-  # `exec` so that no shell stays behind holding the caller's stdout/stderr (a pipe would never see EOF)
-  (cd "$D" && exec nohup "$COPY" server --config-file="$D/conf/config.xml" --pid-file="$D/server.pid" > "$D/log/stdout.log" 2>&1 < /dev/null) > /dev/null 2>&1 &
+  rm -f "$D/hostname_shim" "$D/container" "$D/server.pid"
+  case ${CH_ISO_HOST_ISOLATION:-real} in
+  real)
+    # `exec` so that no shell stays behind holding the caller's stdout/stderr (a pipe would never see EOF)
+    (cd "$D" && exec nohup "$COPY" server --config-file="$D/conf/config.xml" --pid-file="$D/server.pid" > "$D/log/stdout.log" 2>&1 < /dev/null) > /dev/null 2>&1 &
+    ;;
+  container)
+    SHIM=$(hostname_shim_lib) || exit 95
+    IMG=${CH_ISO_DOCKER_IMAGE:-ubuntu:22.04}; CNAME=ch-iso-$NAME-$BASE
+    docker image inspect "$IMG" > /dev/null 2>&1 || { echo "REFUSE: docker image $IMG is not available locally (it is never pulled)"; exit 95; }
+    if docker container inspect "$CNAME" > /dev/null 2>&1; then echo "REFUSE: container $CNAME already exists"; exit 95; fi
+    docker run -d --rm --pull never --name "$CNAME" --hostname localhost --network host --pid host --user "$(id -u):$(id -g)" \
+      --memory="${CH_ISO_DOCKER_MEM:-12g}" --memory-swap="${CH_ISO_DOCKER_MEM:-12g}" --pids-limit="${CH_ISO_DOCKER_PIDS:-8192}" \
+      --cpus="$(nproc)" -v "$ROOT:$ROOT" -v "$TREE:$TREE" -w "$D" "$IMG" \
+      sh -c 'exec "$0" server --config-file="$1" --pid-file="$2" > "$3" 2>&1 < /dev/null' \
+      "$COPY" "$D/conf/config.xml" "$D/server.pid" "$D/log/stdout.log" > "$D/log/docker_run.log" 2>&1 \
+      || { echo "REFUSE: docker run failed (see $D/log/docker_run.log)"; exit 95; }
+    echo "$CNAME" > "$D/container"
+    ;;
+  *) echo "CH_ISO_HOST_ISOLATION must be real or container" >&2; exit 2;;
+  esac
   ready=0
   for _ in $(seq 1 90); do timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query "SELECT 1" < /dev/null > /dev/null 2>&1 && { ready=1; break; }; sleep 1; done
-  [ "$ready" = 1 ] || { echo "REFUSE: instance $NAME did not become ready (see $D/log/)"; exit 94; }
-  echo "started $NAME pid=$(cat "$D/server.pid") build_id=$(timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query 'SELECT buildId()' < /dev/null) ports=${ALL_PORTS// /,}"
+  if [ "$ready" != 1 ]; then
+    echo "REFUSE: instance $NAME did not become ready (see $D/log/)"
+    [ -f "$D/container" ] && docker stop -t 30 "$(cat "$D/container")" > /dev/null 2>&1
+    exit 94
+  fi
+  if [ -f "$D/container" ]; then
+    # the pid file holds a host PID (host PID namespace): the server, which is the container's main process or, with
+    # ClickHouse's watchdog, its direct child
+    spid=$(cat "$D/server.pid"); cpid=$(docker container inspect -f '{{.State.Pid}}' "$(cat "$D/container")" 2>/dev/null)
+    sppid=$(awk '/^PPid:/{print $2}' "/proc/$spid/status" 2>/dev/null)
+    hn=$(timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query 'SELECT hostName()' < /dev/null)
+    if [ -z "$cpid" ] || { [ "$cpid" != "$spid" ] && [ "$cpid" != "$sppid" ]; } || [ "$hn" != localhost ]; then
+      echo "REFUSE: container $(cat "$D/container"): main pid '$cpid', server.pid '$spid' (parent '$sppid'), host name '$hn' (expected localhost); stopping it"
+      kill "$spid"; docker stop -t 30 "$(cat "$D/container")" > /dev/null 2>&1; exit 95
+    fi
+    echo "$SHIM" > "$D/hostname_shim"
+  fi
+  echo "started $NAME pid=$(cat "$D/server.pid") build_id=$(timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query 'SELECT buildId()' < /dev/null) ports=${ALL_PORTS// /,} host_isolation=${CH_ISO_HOST_ISOLATION:-real}$([ -f "$D/container" ] && echo " container=$(cat "$D/container")")"
   ;;
 stop)
   ports "$2"; pid=$(cat "$D/server.pid" 2>/dev/null) || { echo "not running"; exit 0; }
   exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || { echo "not running (stale pid file)"; rm -f "$D/server.pid"; exit 0; }
   case "$exe" in "$ROOT"/bin/*) kill "$pid"; for _ in $(seq 1 60); do kill -0 "$pid" 2>/dev/null || break; sleep 1; done; echo "stopped $2";;
                  *) echo "REFUSE: pid $pid ($exe) is not ours"; exit 4;; esac
+  # container mode: the container (--rm) ends with its main process; stop it by name if it is still there
+  if [ -f "$D/container" ]; then
+    c=$(cat "$D/container")
+    for _ in $(seq 1 30); do docker container inspect "$c" > /dev/null 2>&1 || break; sleep 1; done
+    docker container inspect "$c" > /dev/null 2>&1 && { docker stop -t 30 "$c" > /dev/null; echo "stopped container $c"; }
+    rm -f "$D/container"
+  fi
   ;;
 status)
   ports "$2"; pid=$(cat "$D/server.pid" 2>/dev/null); echo "$2 pid=${pid:-none} exe=$(readlink "/proc/${pid:-0}/exe" 2>/dev/null)"
@@ -182,9 +255,14 @@ test)
   export CLICKHOUSE_USER_FILES=$TREE/tests/queries/0_stateless CLICKHOUSE_TMP=$ROOT/tests-tmp-$NAME
   export CLICKHOUSE_SCHEMA_FILES=$D/format_schemas
   [ -f "$D/keeper.enabled" ] && export CLICKHOUSE_PORT_KEEPER=$KEEPER
+  [ -f "$D/hostname_shim" ] && export LD_PRELOAD="$(cat "$D/hostname_shim")" CH_ISO_HOSTNAME=localhost
+  # the runner normalizes its own host name in outputs; the server's host names are normalized only if they match
+  SRV_HN=$(timeout 10 "${EXE% (deleted)}" client --host 127.0.0.1 --port "$BASE" --query 'SELECT hostName()' < /dev/null 2>/dev/null)
+  RUN_HN=$(python3 -c 'import socket; print(socket.gethostname())')
+  [ -n "$SRV_HN" ] && [ "$SRV_HN" = "$RUN_HN" ] || { echo "REFUSE: server host name '$SRV_HN' != runner host name '$RUN_HN'"; exit 95; }
   mkdir -p "$CLICKHOUSE_TMP"
   TS=$(date -u +%Y%m%dT%H%M%SZ); LOG=$LOGS/test_${LABEL}_${TS}.log
-  echo "# instance=$NAME label=$LABEL ts=$TS exe=$EXE tree=$TREE" > "$LOG"
+  echo "# instance=$NAME label=$LABEL ts=$TS exe=$EXE tree=$TREE host_name=$RUN_HN shim=${LD_PRELOAD:-none}" > "$LOG"
   run_clickhouse_test "$LOG" "$TREE" "$EXE" "$CLICKHOUSE_TMP" "$@"
   finish_test_run "$LOG" "$?"
   ;;

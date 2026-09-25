@@ -31,6 +31,11 @@
 #       [--perf-rounds <n>]                release: rounds of tools/perf/perf_compare.py (default 7, at least 5)
 #       [--instance a|b|c]                 isolated server slot for the stateless tests (default c: ports 59000..)
 #
+# Host name of the stateless server (full/nightly/release): CH_ISO_HOST_ISOLATION=container (the default here) runs it
+# in a local docker container whose host name is "localhost", and clickhouse-test sees the same name, so the runner's
+# substitution of its host name by "localhost" cannot rewrite words of test outputs (on a host called "build" it turned
+# "a build that" into "a localhost that" and failed 04881). CH_ISO_HOST_ISOLATION=real keeps the server on the host;
+# a test output that contains the host name as a word then fails. See tools/isolated_ch.sh.
 # Exit status is the gate's (tools/check_gate.py): 0 PASS, 3 PASS WITH OPEN KNOWN DEFECTS (not releasable),
 # 1 FAIL or BLOCKED, 2 usage error. Skipped, empty or unproven checks never pass. Evidence: <out>/evidence.json.
 set -u
@@ -154,7 +159,9 @@ if [ "$TIER" != quick ]; then
   touch "$OUT/logs/.stateless_start"   # every file of the tree written after this marker is a side effect of the run
   # CH_ISO_KEEPER=1: the server has a private loopback Keeper, so tests that need ZooKeeper (Replicated tables,
   # generateSerialID, ...) run as in upstream CI instead of failing on "no Zookeeper configuration"
-  if CH_ISO_KEEPER=1 bash "$T/isolated_ch.sh" start "$INST" "$BIN" "$TREE" > "$OUT/logs/server_start.log" 2>&1; then
+  HOST_ISOLATION=${CH_ISO_HOST_ISOLATION:-container}
+  log "stateless server host name isolation: $HOST_ISOLATION"
+  if CH_ISO_KEEPER=1 CH_ISO_HOST_ISOLATION=$HOST_ISOLATION bash "$T/isolated_ch.sh" start "$INST" "$BIN" "$TREE" > "$OUT/logs/server_start.log" 2>&1; then
     bash "$T/isolated_ch.sh" test "$INST" "$TREE" fork-stateless "${BBID:0:12}" --no-random-settings --no-random-merge-tree-settings \
       --no-stateful -j 4 "${SEL[@]}" > "$OUT/logs/stateless_driver.log" 2>&1
     log "fork stateless tests: rc=$? (${#SEL[@]} selected, ${#EXCLUDED[@]} excluded)"
