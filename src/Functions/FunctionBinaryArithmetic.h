@@ -754,6 +754,72 @@ private:
             return Op::template apply<NativeResultType>(a, b);
     }
 
+    /// Decimal512 with decimal_check_overflow: the operand scale-up can leave Int512 although the result does not (e.g.
+    /// 0.7 at scale 1 minus 0.3 at scale 154; 10^154 does not even fit Int512). Such rows are computed exactly in 1024
+    /// bits (|operand| <= 2^511, multiplier <= 10^154 < 2^512), and only a result outside Int512 is DECIMAL_OVERFLOW.
+    using WideInt = wide::integer<1024, signed>;
+
+    static WideInt wideScaleMultiplier(NativeResultType scale)
+    {
+        if (!DecimalUtils::isSaturatedScaleMultiplier(scale))
+            return WideInt(scale);
+        WideInt res = 1; /// 10^154
+        for (size_t i = 0; i < DecimalUtils::max_precision<Decimal512>; ++i)
+            res *= 10;
+        return res;
+    }
+
+    static NativeResultType narrowWide(const WideInt & res)
+    {
+        if (res < WideInt(std::numeric_limits<NativeResultType>::min()) || res > WideInt(std::numeric_limits<NativeResultType>::max()))
+            throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "Decimal math overflow");
+        return static_cast<NativeResultType>(res);
+    }
+
+    template <bool scale_left>
+    static NO_INLINE NativeResultType applyScaledWide(NativeResultType a, NativeResultType b, NativeResultType scale)
+    {
+        static_assert(is_plus_minus_compare);
+        WideInt x = a;
+        WideInt y = b;
+        if constexpr (scale_left)
+            x *= wideScaleMultiplier(scale);
+        else
+            y *= wideScaleMultiplier(scale);
+
+        if constexpr (IsOperation<Operation>::plus)
+            return narrowWide(x + y);
+        else if constexpr (IsOperation<Operation>::minus)
+            return narrowWide(x - y);
+        else if constexpr (IsOperation<Operation>::least)
+            return narrowWide(x < y ? x : y);
+        else
+            return narrowWide(x > y ? x : y);
+    }
+
+    template <bool is_decimal_a>
+    static NO_INLINE NativeResultType applyScaledDivWide(NativeResultType a, NativeResultType b, NativeResultType scale)
+    {
+        if (b == 0)
+            return Op::template apply<NativeResultType>(a, b); /// the operation's own division by zero behaviour
+        if (a == 0)
+            return 0;
+        WideInt multiplier = wideScaleMultiplier(scale);
+        const WideInt wide_max = std::numeric_limits<WideInt>::max();
+        if constexpr (!is_decimal_a)
+        {
+            /// a non-decimal dividend is scaled twice; if that does not fit 1024 bits, the quotient (|b| <= 2^511) exceeds Int512
+            if (multiplier > wide_max / multiplier)
+                throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "Decimal math overflow");
+            multiplier *= multiplier;
+        }
+        WideInt x = a;
+        if (multiplier > wide_max / (x < 0 ? -x : x)) /// same argument as above
+            throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "Decimal math overflow");
+        x *= multiplier;
+        return narrowWide(x / WideInt(b));
+    }
+
     template <bool scale_left, bool may_check_overflow = true>
     static NO_SANITIZE_UNDEFINED NativeResultType applyScaled(NativeResultType a, NativeResultType b, NativeResultType scale)
     {
@@ -763,11 +829,19 @@ private:
         if constexpr (check_overflow && may_check_overflow)
         {
             bool overflow = false;
+            [[maybe_unused]] const NativeResultType a0 = a;
+            [[maybe_unused]] const NativeResultType b0 = b;
 
             if constexpr (scale_left)
-                overflow |= common::mulOverflow(a, scale, a);
+                overflow |= DecimalUtils::mulOverflowByScale(a, scale, a);
             else
-                overflow |= common::mulOverflow(b, scale, b);
+                overflow |= DecimalUtils::mulOverflowByScale(b, scale, b);
+
+            if constexpr (std::is_same_v<NativeResultType, Int512> && is_plus_minus_compare)
+            {
+                if (unlikely(overflow))
+                    return applyScaledWide<scale_left>(a0, b0, scale);
+            }
 
             if constexpr (can_overflow)
                 overflow |= Op::template apply<NativeResultType>(a, b, res);
@@ -797,9 +871,16 @@ private:
             if constexpr (check_overflow)
             {
                 bool overflow = false;
+                [[maybe_unused]] const NativeResultType a0 = a;
+                [[maybe_unused]] const NativeResultType scale0 = scale;
                 if constexpr (!is_decimal_a)
-                    overflow |= common::mulOverflow(scale, scale, scale);
-                overflow |= common::mulOverflow(a, scale, a);
+                    overflow |= DecimalUtils::mulOverflowByScale(scale, scale, scale);
+                overflow |= DecimalUtils::mulOverflowByScale(a, scale, a);
+                if constexpr (std::is_same_v<NativeResultType, Int512>)
+                {
+                    if (unlikely(overflow))
+                        return applyScaledDivWide<is_decimal_a>(a0, b, scale0);
+                }
                 if (overflow)
                     throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "Decimal math overflow");
             }

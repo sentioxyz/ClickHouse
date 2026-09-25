@@ -236,6 +236,26 @@ private:
         else
             y = static_cast<CompareInt>(b);
 
+        if constexpr (std::is_same_v<CompareInt, Int512>)
+        {
+            /// Decimal512: the scaled operand can leave Int512 (10^154 does not fit it at all), and a UInt512 operand
+            /// can be above it. The order is then decided exactly in 1024 bits, in both overflow modes: the comparison
+            /// has an exact answer, so neither DECIMAL_OVERFLOW nor a comparison of wrapped values.
+            bool out_of_range = false;
+            if constexpr (is_unsigned_v<A>)
+                out_of_range |= (x < 0);
+            if constexpr (is_unsigned_v<B>)
+                out_of_range |= (y < 0);
+            if constexpr (scale_left)
+                out_of_range |= DecimalUtils::mulOverflowByScale(x, scale, x);
+            if constexpr (scale_right)
+                out_of_range |= DecimalUtils::mulOverflowByScale(y, scale, y);
+
+            if (unlikely(out_of_range))
+                return applyWide<scale_left, scale_right>(a, b, scale);
+            return Op::apply(x, y);
+        }
+
         if constexpr (check_overflow)
         {
             bool overflow = false;
@@ -266,6 +286,37 @@ private:
         }
 
         return Op::apply(x, y);
+    }
+
+    template <bool scale_left, bool scale_right>
+    static NO_INLINE UInt8 applyWide(A a, B b, CompareInt scale [[maybe_unused]])
+    {
+        /// |operand| <= 2^512 and the multiplier is at most 10^154 < 2^512: the scaled operand fits 1024 bits
+        using Wide = wide::integer<1024, signed>;
+        auto to_wide = []<typename V>(const V & v) -> Wide
+        {
+            if constexpr (is_decimal<V>)
+                return Wide(v.value);
+            else
+                return Wide(v);
+        };
+        Wide x = to_wide(a);
+        Wide y = to_wide(b);
+        if constexpr (scale_left || scale_right)
+        {
+            Wide multiplier = scale;
+            if (DecimalUtils::isSaturatedScaleMultiplier(scale))
+            {
+                multiplier = 1;
+                for (size_t i = 0; i < DecimalUtils::max_precision<Decimal512>; ++i)
+                    multiplier *= 10;
+            }
+            if constexpr (scale_left)
+                x *= multiplier;
+            if constexpr (scale_right)
+                y *= multiplier;
+        }
+        return Op::apply(CompareInt(x > y) - CompareInt(x < y), CompareInt(0));
     }
 
     template <bool check_overflow, bool scale_left, bool scale_right>

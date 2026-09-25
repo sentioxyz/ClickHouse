@@ -57,7 +57,7 @@ T DataTypeDecimal<T>::parseFromString(const String & str) const
     UInt32 unread_scale = this->scale;
     readDecimalText(buf, x, this->precision, unread_scale, true);
 
-    if (common::mulOverflow(x.value, DecimalUtils::scaleMultiplier<T>(unread_scale), x.value))
+    if (DecimalUtils::mulOverflowByScale(x.value, DecimalUtils::scaleMultiplier<typename T::NativeType>(unread_scale), x.value))
         throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "Decimal math overflow");
 
     return x;
@@ -130,12 +130,12 @@ ReturnType convertDecimalsImpl(const typename FromDataType::FieldType & value, U
     MaxNativeType converted_value;
     if (scale_to > scale_from)
     {
-        converted_value = DecimalUtils::scaleMultiplier<MaxNativeType>(scale_to - scale_from);
-        if (common::mulOverflow(static_cast<MaxNativeType>(value.value), converted_value, converted_value))
+        const MaxNativeType multiplier = DecimalUtils::scaleMultiplier<MaxNativeType>(scale_to - scale_from);
+        if (DecimalUtils::mulOverflowByScale(static_cast<MaxNativeType>(value.value), multiplier, converted_value))
         {
             if constexpr (throw_exception)
-                throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "{} convert overflow while multiplying {} by scale {}",
-                                std::string(ToDataType::family_name), toString(value.value), toString(converted_value));
+                throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "{} convert overflow while multiplying {} by 10^{}",
+                                std::string(ToDataType::family_name), toString(value.value), scale_to - scale_from);
             else
                 return ReturnType(false);
         }
@@ -146,7 +146,10 @@ ReturnType convertDecimalsImpl(const typename FromDataType::FieldType & value, U
     }
     else
     {
-        converted_value = value.value / DecimalUtils::scaleMultiplier<MaxNativeType>(scale_from - scale_to);
+        /// 10^154 does not fit Int512; every Int512 value divided by it is 0
+        converted_value = DecimalUtils::scaleMultiplierFits<MaxNativeType>(scale_from - scale_to)
+            ? MaxNativeType(value.value / DecimalUtils::scaleMultiplier<MaxNativeType>(scale_from - scale_to))
+            : MaxNativeType(0);
     }
 
     if constexpr (sizeof(FromFieldType) > sizeof(ToFieldType))
@@ -194,7 +197,7 @@ NO_SANITIZE_UNDEFINED void convertDecimalsBatch(
         for (size_t i = 0; i < size; ++i)
         {
             MaxNativeType converted_value;
-            bool mul_overflow = common::mulOverflow(static_cast<MaxNativeType>(from[i].value), multiplier, converted_value);
+            bool mul_overflow = DecimalUtils::mulOverflowByScale(static_cast<MaxNativeType>(from[i].value), multiplier, converted_value);
 
             bool range_overflow = false;
             if constexpr (check_overflow)
@@ -259,9 +262,10 @@ NO_SANITIZE_UNDEFINED void convertDecimalsBatch(
     else
     {
         const MaxNativeType divisor = DecimalUtils::scaleMultiplier<MaxNativeType>(scale_from - scale_to);
+        const bool divisor_fits = DecimalUtils::scaleMultiplierFits<MaxNativeType>(scale_from - scale_to); /// false only for 10^154
         for (size_t i = 0; i < size; ++i)
         {
-            MaxNativeType converted_value = static_cast<MaxNativeType>(from[i].value) / divisor;
+            MaxNativeType converted_value = divisor_fits ? MaxNativeType(static_cast<MaxNativeType>(from[i].value) / divisor) : MaxNativeType(0);
 
             if constexpr (check_overflow)
             {
@@ -418,7 +422,7 @@ ReturnType convertToDecimalImpl(const typename FromDataType::FieldType & value, 
                 return ReturnType(false);
         }
 
-        auto out = value * static_cast<FromFieldType>(DecimalUtils::scaleMultiplier<ToNativeType>(scale));
+        auto out = value * DecimalUtils::floatScaleMultiplier<FromFieldType, ToNativeType>(scale);
 
         if (out <= static_cast<FromFieldType>(std::numeric_limits<ToNativeType>::min()) ||
             out >= static_cast<FromFieldType>(std::numeric_limits<ToNativeType>::max()))
@@ -480,7 +484,7 @@ NO_SANITIZE_UNDEFINED void convertToDecimalBatch(
     }
     else if constexpr (is_floating_point<FromFieldType>)
     {
-        const auto multiplier = static_cast<FromFieldType>(DecimalUtils::scaleMultiplier<ToNativeType>(scale));
+        const auto multiplier = DecimalUtils::floatScaleMultiplier<FromFieldType, ToNativeType>(scale);
         for (size_t i = 0; i < size; ++i)
         {
             bool overflow = !isFinite(from[i]);
@@ -563,7 +567,7 @@ NO_SANITIZE_UNDEFINED void convertToDecimalBatch(
             for (size_t i = 0; i < size; ++i)
             {
                 WideType converted_value;
-                bool overflow = common::mulOverflow(static_cast<WideType>(from[i]), multiplier, converted_value);
+                bool overflow = DecimalUtils::mulOverflowByScale(static_cast<WideType>(from[i]), multiplier, converted_value);
 
                 overflow |= source_out_of_range(from[i])
                          || converted_value < std::numeric_limits<ToNativeType>::min()

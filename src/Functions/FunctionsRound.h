@@ -38,6 +38,7 @@ namespace ErrorCodes
     extern const int ILLEGAL_COLUMN;
     extern const int BAD_ARGUMENTS;
     extern const int CANNOT_SET_ROUNDING_MODE;
+    extern const int DECIMAL_OVERFLOW;
 }
 
 
@@ -474,12 +475,57 @@ private:
     using Op = IntegerRoundingComputation<NativeType, rounding_mode, ScaleMode::Negative, tie_breaking_mode>;
     using Container = typename ColumnDecimal<T>::Container;
 
+    /// Decimal512: precision 154 admits values up to 2^511 - 1 (about 6.7e153), so a rounded result can leave the Int512
+    /// range (round(6.7e153, -153) is 7e153), and 10^154 does not fit Int512 at all. Values that cannot overflow take the
+    /// normal Int512 path; the others are rounded exactly in 1024 bits, and a result outside Int512 is DECIMAL_OVERFLOW.
+    static NativeType roundInt512Wide(NativeType x, Scale scale_arg)
+    {
+        using Wide = wide::integer<1024, signed>;
+        using WideOp = IntegerRoundingComputation<Wide, rounding_mode, ScaleMode::Negative, tie_breaking_mode>;
+        Wide res = 0;
+        if (scale_arg < 308) /// 10^308 does not fit Wide either
+        {
+            Wide multiple = 1;
+            for (Scale i = 0; i < scale_arg; ++i)
+                multiple *= 10;
+            res = WideOp::computeImpl(Wide(x), multiple);
+        }
+        else if ((rounding_mode == RoundingMode::Floor && x < 0) || (rounding_mode == RoundingMode::Ceil && x > 0))
+            res = x < 0 ? Wide(std::numeric_limits<Int512>::min()) - 1 : Wide(std::numeric_limits<Int512>::max()) + 1;
+        /// else: |x| is far below half of 10^scale_arg, the result is 0
+
+        if (res < Wide(std::numeric_limits<Int512>::min()) || res > Wide(std::numeric_limits<Int512>::max()))
+            throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "Decimal512 rounding overflow: the result does not fit Int512");
+        return static_cast<Int512>(res);
+    }
+
+    static void roundInt512(const NativeType * in, NativeType * out, size_t size, Scale scale_arg)
+    {
+        const bool scale_fits = scale_arg < static_cast<Scale>(DecimalUtils::max_precision<Decimal512>);
+        const NativeType scale = scale_fits ? intExp10OfSize<NativeType>(scale_arg) : NativeType(0);
+        /// for |x| <= limit, x +- scale stays inside Int512 and the normal computation is exact
+        const NativeType limit = scale_fits ? NativeType(std::numeric_limits<NativeType>::max() - scale) : NativeType(0);
+        for (size_t i = 0; i < size; ++i)
+        {
+            if (scale_fits && in[i] <= limit && in[i] >= -limit)
+                Op::compute(&in[i], scale, &out[i]);
+            else
+                out[i] = roundInt512Wide(in[i], scale_arg);
+        }
+    }
+
 public:
     static NO_INLINE void apply(const Container & in, UInt32 in_scale, Container & out, Scale scale_arg)
     {
         scale_arg = static_cast<Scale>(in_scale - scale_arg);
         if (scale_arg > 0)
         {
+            if constexpr (std::is_same_v<NativeType, Int512>)
+            {
+                roundInt512(reinterpret_cast<const NativeType *>(in.data()), reinterpret_cast<NativeType *>(out.data()), in.size(), scale_arg);
+                return;
+            }
+
             auto scale = intExp10OfSize<NativeType>(scale_arg);
 
             const NativeType * __restrict p_in = reinterpret_cast<const NativeType *>(in.data());
@@ -504,6 +550,12 @@ public:
         scale_arg = static_cast<Scale>(in_scale - scale_arg);
         if (scale_arg > 0)
         {
+            if constexpr (std::is_same_v<NativeType, Int512>)
+            {
+                roundInt512(&in, &out, 1, scale_arg);
+                return;
+            }
+
             auto scale = intExp10OfSize<NativeType>(scale_arg);
             Op::compute(&in, scale, &out);
         }

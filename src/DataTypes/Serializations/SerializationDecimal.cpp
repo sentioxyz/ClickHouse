@@ -30,7 +30,7 @@ bool SerializationDecimal<T>::tryReadText(T & x, ReadBuffer & istr, UInt32 preci
             return false;
     }
 
-    if (common::mulOverflow(x.value, DecimalUtils::scaleMultiplier<T>(unread_scale), x.value))
+    if (DecimalUtils::mulOverflowByScale(x.value, DecimalUtils::scaleMultiplier<T>(unread_scale), x.value))
         return false;
 
     return true;
@@ -45,7 +45,7 @@ void SerializationDecimal<T>::readText(T & x, ReadBuffer & istr, UInt32 precisio
     else
         readDecimalText(istr, x, precision, unread_scale);
 
-    if (common::mulOverflow(x.value, DecimalUtils::scaleMultiplier<T>(unread_scale), x.value))
+    if (DecimalUtils::mulOverflowByScale(x.value, DecimalUtils::scaleMultiplier<T>(unread_scale), x.value))
         throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "Decimal math overflow");
 }
 

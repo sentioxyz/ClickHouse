@@ -1301,6 +1301,17 @@ void writeText(Decimal<T> x, UInt32 scale, WriteBuffer & ostr, bool trailing_zer
         part = DecimalUtils::getFractionalPart(x, scale);
         if (part || trailing_zeros)
         {
+            if constexpr (std::is_same_v<T, Int512>)
+            {
+                /// At scale 154 the fractional part is the whole value (10^154 > 2^511), and the magnitude of -2^511
+                /// does not fit Int512: print it as UInt512.
+                if (part == std::numeric_limits<Int512>::min())
+                {
+                    writeDecimalFractional(static_cast<UInt512>(part), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+                    return;
+                }
+            }
+
             if (part < 0)
                 part *= T(-1);
 

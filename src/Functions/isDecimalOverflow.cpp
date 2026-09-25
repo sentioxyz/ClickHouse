@@ -142,6 +142,9 @@ private:
 
         if (precision > DecimalUtils::max_precision<T>)
             return false;
+        /// 10^154 does not fit Int512: every Int512 value has at most 154 digits
+        if (!DecimalUtils::scaleMultiplierFits<NativeT>(precision))
+            return false;
 
         NativeT pow10 = intExp10OfSize<NativeT>(precision);
 

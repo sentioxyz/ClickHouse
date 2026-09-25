@@ -4,6 +4,7 @@
 #include <Common/FieldVisitors.h>
 #include <Common/NaNUtils.h>
 #include <base/demangle.h>
+#include <base/preciseExp10.h>
 #include <type_traits>
 
 
@@ -93,6 +94,19 @@ public:
     template <typename U>
     T operator() (const DecimalField<U> & x) const
     {
+        if constexpr (std::is_same_v<U, Decimal512>)
+        {
+            /// 10^154 does not fit Int512: the scale multiplier of scale 154 saturates to the maximum
+            /// (DecimalUtils::isSaturatedScaleMultiplier), and such a value is all fraction.
+            if (x.getScaleMultiplier().value == std::numeric_limits<Int512>::max())
+            {
+                if constexpr (is_floating_point<T>)
+                    return static_cast<T>(x.getValue().template convertTo<Float64>() / preciseExp10(static_cast<double>(x.getScale())));
+                else
+                    return T(0);
+            }
+        }
+
         if constexpr (is_floating_point<T>)
             return x.getValue().template convertTo<T>() / x.getScaleMultiplier().template convertTo<T>();
         else

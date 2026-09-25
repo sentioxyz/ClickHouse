@@ -2,6 +2,7 @@
 
 #include <Core/Types.h>
 #include <base/arithmeticOverflow.h>
+#include <base/preciseExp10.h>
 #include <Common/Exception.h>
 #include <Common/intExp.h>
 
@@ -56,6 +57,52 @@ inline auto scaleMultiplier(UInt32 scale)
         return common::exp10_i256(scale);
     else if constexpr (std::is_same_v<T, Int512> || std::is_same_v<T, Decimal512>)
         return common::exp10_i512(scale);
+}
+
+/// Decimal512 allows precision and scale 154, but 10^154 does not fit Int512 (2^511 - 1 is about 6.7e153):
+/// scaleMultiplier<Int512>(154) saturates to the Int512 maximum (common::exp10_i512). Every other multiplier of a legal
+/// scale fits its type. Since |value| <= 2^511 < 10^154, a value divided by 10^154 is 0 (it is all fraction), and a value
+/// multiplied by 10^154 overflows unless it is 0; the helpers below give these exact answers instead of computing with
+/// the saturated number.
+template <typename T>
+inline bool scaleMultiplierFits(UInt32 scale)
+{
+    if constexpr (std::is_same_v<T, Int512> || std::is_same_v<T, Decimal512>)
+        return scale < max_precision<Decimal512>;
+    else
+        return true;
+}
+
+template <typename T>
+inline bool isSaturatedScaleMultiplier(const T & multiplier)
+{
+    if constexpr (std::is_same_v<T, Int512>)
+        return multiplier == std::numeric_limits<Int512>::max();
+    else if constexpr (std::is_same_v<T, Decimal512>)
+        return multiplier.value == std::numeric_limits<Int512>::max();
+    else
+        return false;
+}
+
+/// res = x * multiplier, where multiplier is a scale multiplier that may be saturated; returns true on overflow.
+template <typename T>
+inline bool mulOverflowByScale(T x, T multiplier, T & res)
+{
+    if (isSaturatedScaleMultiplier(multiplier))
+    {
+        res = 0;
+        return x != T(0);
+    }
+    return common::mulOverflow(x, multiplier, res);
+}
+
+/// 10^scale as a floating-point number, also for a scale whose integer multiplier does not fit T.
+template <typename F, typename T>
+inline F floatScaleMultiplier(UInt32 scale)
+{
+    if (scaleMultiplierFits<T>(scale))
+        return static_cast<F>(scaleMultiplier<T>(scale));
+    return static_cast<F>(preciseExp10(static_cast<double>(scale)));
 }
 
 
@@ -154,6 +201,18 @@ inline bool decimalFromComponentsWithMultiplierImpl(
     DecimalType & result)
 {
     using T = typename DecimalType::NativeType;
+    if (isSaturatedScaleMultiplier(scale_multiplier))
+    {
+        /// 10^scale does not fit T: only a zero whole part is representable
+        if (whole != T(0))
+        {
+            if constexpr (throw_on_error)
+                throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "Decimal math overflow");
+            return false;
+        }
+        result = DecimalType(fractional);
+        return true;
+    }
     const auto fractional_sign = whole < 0 ? -1 : 1;
     T value;
     if (!multiplyAdd<T, throw_on_error>(whole, scale_multiplier, fractional_sign * (fractional % scale_multiplier), value))
@@ -301,6 +360,8 @@ inline DecimalComponents<DecimalType>
 splitWithScaleMultiplier(const DecimalType & decimal, typename DecimalType::NativeType scale_multiplier)
 {
     using T = typename DecimalType::NativeType;
+    if (isSaturatedScaleMultiplier(scale_multiplier))
+        return {T(0), decimal.value};
     const auto whole = decimal.value / scale_multiplier;
     auto fractional = decimal.value % scale_multiplier;
     if (whole && fractional < T(0))
@@ -317,6 +378,8 @@ inline DecimalComponents<DecimalType> split(const DecimalType & decimal, UInt32 
     {
         return {decimal.value, 0};
     }
+    if (!scaleMultiplierFits<typename DecimalType::NativeType>(scale))
+        return {0, decimal.value};
     return splitWithScaleMultiplier(decimal, scaleMultiplier<typename DecimalType::NativeType>(scale));
 }
 
@@ -330,6 +393,8 @@ inline typename DecimalType::NativeType getWholePart(const DecimalType & decimal
 {
     if (scale == 0)
         return decimal.value;
+    if (!scaleMultiplierFits<typename DecimalType::NativeType>(scale))
+        return 0;
 
     return decimal.value / scaleMultiplier<typename DecimalType::NativeType>(scale);
 }
@@ -340,6 +405,8 @@ inline typename DecimalType::NativeType
 getFractionalPartWithScaleMultiplier(const DecimalType & decimal, typename DecimalType::NativeType scale_multiplier)
 {
     using T = typename DecimalType::NativeType;
+    if (isSaturatedScaleMultiplier(scale_multiplier))
+        return decimal.value;
 
     /// There's UB with min integer value here. But it does not matter for Decimals cause they use not full integer ranges.
     /// Anycase we make modulo before compare to make scale_multiplier > 1 unaffected.
@@ -361,6 +428,8 @@ inline typename DecimalType::NativeType getFractionalPart(const DecimalType & de
 {
     if (scale == 0)
         return 0;
+    if (!scaleMultiplierFits<typename DecimalType::NativeType>(scale))
+        return decimal.value;
 
     return getFractionalPartWithScaleMultiplier(decimal, scaleMultiplier<typename DecimalType::NativeType>(scale));
 }
@@ -376,7 +445,7 @@ ReturnType convertToImpl(const DecimalType & decimal, UInt32 scale, To & result)
     {
         /// Float64 is enough to accommodate the digits of the biggest decimal (with possible precision loss),
         /// while Float32 is not enough, and it can overflow to infinity.
-        result = static_cast<To>(static_cast<Float64>(decimal.value) / static_cast<Float64>(scaleMultiplier<DecimalNativeType>(scale)));
+        result = static_cast<To>(static_cast<Float64>(decimal.value) / floatScaleMultiplier<Float64, DecimalNativeType>(scale));
     }
     else if constexpr (is_integer<To> && (sizeof(To) >= sizeof(DecimalNativeType)))
     {

@@ -1,6 +1,7 @@
 #include <base/extended_types.h>
 #include <Common/intExp.h>
 
+#include <array>
 #include <cstdint>
 
 
@@ -154,14 +155,22 @@ Int512 exp10_i512(int x)
 {
     if (x < 0)
         return 0;
-    // Max precision for Decimal512 is 154
-    if (x > 154)
+    /// Decimal512 allows precision and scale 154, but 10^154 > 2^511 - 1 (about 6.7e153): like exp10_i256 beyond its
+    /// range, 10^154 and above saturate to the maximum. Callers that can see scale 154 treat the saturated value as
+    /// "10^scale does not fit" (DecimalUtils::isSaturatedScaleMultiplier); before, the loop wrapped 10^154 to a negative
+    /// number and every 10^154-based result was wrong.
+    if (x > 153)
         return std::numeric_limits<Int512>::max();
 
-    Int512 res = 1;
-    for (int i = 0; i < x; ++i)
-        res *= 10;
-    return res;
+    static const auto table = []
+    {
+        std::array<Int512, 154> t{};
+        t[0] = 1;
+        for (size_t i = 1; i < t.size(); ++i)
+            t[i] = t[i - 1] * 10;
+        return t;
+    }();
+    return table[x];
 }
 
 
