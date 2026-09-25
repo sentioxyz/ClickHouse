@@ -1,0 +1,16 @@
+d512_flba_none_v1_required: OK
+d512_bytearray_none_v1_required: OK
+d512_flba_none_v1_nullable: OK
+d512_bytearray_none_v1_nullable: OK
+d512_flba_none_v2_required: OK
+d512_bytearray_none_v2_required: OK
+d512_flba_none_v2_nullable: OK
+d512_bytearray_none_v2_nullable: OK
+d512_flba_gzip_v1_required: OK
+d512_bytearray_gzip_v1_required: OK
+d512_flba_gzip_v1_nullable: OK
+d512_bytearray_gzip_v1_nullable: OK
+d512_flba_gzip_v2_required: OK
+d512_bytearray_gzip_v2_required: OK
+d512_flba_gzip_v2_nullable: OK
+d512_bytearray_gzip_v2_nullable: OK
