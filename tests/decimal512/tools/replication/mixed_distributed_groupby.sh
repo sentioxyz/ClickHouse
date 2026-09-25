@@ -22,6 +22,9 @@
 #   old_only        old over old+old   (before the upgrade: recorded, not gated)
 # results/cases.tsv: case, topology, shape, variant, gated, status (PASS = result sha256 equals the oracle's), groups,
 # duplicate keys, sha256s. Exit 0 when every gated case passes; 1 otherwise; 2 usage, lock or isolation problems.
+# GROUPBY_EXTRA (optional, for checking query-level workarounds): text appended to every GROUP BY key list, e.g.
+# ', toLowCardinality(toString(v * 0))'. It must add only keys with a single value, so the groups and the selected
+# columns, and therefore the expectations, stay the same. Recorded in run.log.
 set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 # isolated_ch.sh: CH_ISO_SCRIPT, else the skill layout (scripts/), else the tests/decimal512/tools layout
@@ -74,6 +77,7 @@ fill() {  # <instance> <part>
     FROM numbers($2 * 100000, 100000)"
 }
 fill a 0 && fill b 1 && fill c 0 && fill d 1 || { log "ERROR: insert"; exit 1; }
+log "GROUPBY_EXTRA='${GROUPBY_EXTRA:-}'"
 
 declare -A KEYS=(
   [nullable_u256_single]="k_nu256"
@@ -102,7 +106,7 @@ while IFS=$'\t' read -r cid topo shape var gated want; do
   set -- ${SHARDS[$topo]}
   hosts="127.0.0.1:${PORT[$1]},127.0.0.1:${PORT[$2]}"
   f=$OUT/results/${cid//:/.}.tsv
-  q "${INIT[$topo]}" "SELECT $keys, count() AS c, sum(v) AS s FROM remote('$hosts', currentDatabase(), gb) GROUP BY $keys ORDER BY $keys, c, s ${SETS[$var]}" \
+  q "${INIT[$topo]}" "SELECT $keys, count() AS c, sum(v) AS s FROM remote('$hosts', currentDatabase(), gb) GROUP BY $keys${GROUPBY_EXTRA:-} ORDER BY $keys, c, s ${SETS[$var]}" \
     > "$f" 2> "${f%.tsv}.err"
   got=$(sha256sum < "$f" | cut -c1-64)
   nkeys=$(echo "$keys" | tr ',' '\n' | wc -l)

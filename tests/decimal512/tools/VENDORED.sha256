@@ -28,7 +28,7 @@ f6f509cf02c87777c895ddb9b14398841452c10739720e00c6367abe934b40b0  historical/gen
 7c9cd53bc41220ccaf4362c723b7f25e2f834676103b0ca9dfd1972b5ab8b3d7  historical/compare_part_bytes.py  <- tests/historical/compare_part_bytes.py
 ae46edff4c20b945407ad27ad62d1bf3ef0c5387e302146969d9ff49d5219928  historical/hist_backup.sh  <- tests/historical/hist_backup.sh
 37454cfefc24e4830410a1ceb8460da86c59f0ea9162cb204bf7246ac31f5519  parquet/parquet_decimal_writer.py  <- tests/parquet/parquet_decimal_writer.py
-bbe3582bff93f47429eb1da7057bb6508fa51cd62bfbecc0d88aa5f78b00bb49  replication/mixed_distributed_groupby.sh  <- tests/replication/mixed_distributed_groupby.sh
+ab0a46ff63c0360bf6d97893132e47d19a6c2483bb8039f7d5b5362b0ac2a264  replication/mixed_distributed_groupby.sh  <- tests/replication/mixed_distributed_groupby.sh
 f04c741ad1c3802966a953ee2f4aed43345d0cb93294d14018b22dc318cce14c  upstream/triage_server_tests.py  <- scripts/triage_server_tests.py
 b810b5992dbb05adbaed3161a4e32167ce0b7f8e53fc209b328e5ba5451553ec  replication/groupby_oracle.py  <- tests/replication/groupby_oracle.py
 d5d54550bf4258bddf6e9fdaa0cf8107da3c2c0ebfc63b6fe5aa967698e30b60  replication/groupby_cases.lock.json  <- tests/replication/groupby_cases.lock.json
