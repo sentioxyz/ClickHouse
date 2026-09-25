@@ -3,6 +3,7 @@
 #include <Common/FieldVisitorToString.h>
 #include <Common/intExp.h>
 #include <IO/ReadHelpers.h>
+#include <base/arithmeticOverflow.h>
 
 #include <limits>
 
@@ -105,11 +106,28 @@ inline bool readDigits(ReadBuffer & buf, T & x, uint32_t & digits, int32_t & exp
                 if (after_point)
                     exponent -= places;
 
-                // TODO: accurate shift10 for big integers
-                x *= intExp10OfSize<typename T::NativeType>(places);
+                if constexpr (std::is_same_v<typename T::NativeType, Int512>)
+                {
+                    /// Decimal512 allows 154 digits, but Int512 holds only |v| < 2^511 (about 6.7e153), so the digit
+                    /// count does not bound the value. Accumulate towards the final sign with overflow checks (which
+                    /// also admits exactly -2^511) instead of letting the value wrap.
+                    Int512 digit = byte - '0';
+                    bool overflow = common::mulOverflow(x.value, intExp10OfSize<Int512>(places), x.value);
+                    overflow |= sign < 0 ? common::subOverflow(x.value, digit, x.value) : common::addOverflow(x.value, digit, x.value);
+                    if (overflow)
+                    {
+                        if constexpr (_throw_on_error)
+                            throw Exception(ErrorCodes::ARGUMENT_OUT_OF_BOUND, "Decimal value is out of the range of Decimal512 (Int512)");
+                        return false;
+                    }
+                }
+                else
+                {
+                    // TODO: accurate shift10 for big integers
+                    x *= intExp10OfSize<typename T::NativeType>(places);
+                    x += (byte - '0');
+                }
                 places = 0;
-
-                x += (byte - '0');
                 break;
             }
             case 'e': [[fallthrough]];
@@ -142,7 +160,8 @@ inline bool readDigits(ReadBuffer & buf, T & x, uint32_t & digits, int32_t & exp
         ++buf.position();
     }
 
-    x *= sign;
+    if constexpr (!std::is_same_v<typename T::NativeType, Int512>)
+        x *= sign; /// the Int512 path above already accumulated the signed value
     return true;
 }
 

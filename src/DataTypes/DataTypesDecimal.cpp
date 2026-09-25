@@ -434,7 +434,24 @@ ReturnType convertToDecimalImpl(const typename FromDataType::FieldType & value, 
     }
     else
     {
-        if constexpr (is_big_int_v<FromFieldType>)
+        if constexpr (sizeof(FromFieldType) == 64 || (is_big_int_v<FromFieldType> && std::is_same_v<ToNativeType, Int512>))
+        {
+            /// A 512-bit source, or a wide source converted to Decimal512: go through an exact Int512 intermediate.
+            /// The Int256 intermediate below would truncate Int512 values and wrap UInt256/UInt512 ones silently.
+            if constexpr (std::is_same_v<FromFieldType, UInt512>)
+            {
+                if (value > static_cast<UInt512>(std::numeric_limits<Int512>::max()))
+                {
+                    if constexpr (throw_exception)
+                        throw Exception(ErrorCodes::DECIMAL_OVERFLOW, "{} convert overflow: {} is out of the Int512 range",
+                                        std::string(ToDataType::family_name), toString(value));
+                    else
+                        return ReturnType(false);
+                }
+            }
+            return ReturnType(convertDecimalsImpl<DataTypeDecimal<Decimal512>, ToDataType, ReturnType>(static_cast<Int512>(value), 0, scale, result));
+        }
+        else if constexpr (is_big_int_v<FromFieldType>)
             return ReturnType(convertDecimalsImpl<DataTypeDecimal<Decimal256>, ToDataType, ReturnType>(static_cast<Int256>(value), 0, scale, result));
         else if constexpr (std::is_same_v<FromFieldType, UInt64>)
             return ReturnType(convertDecimalsImpl<DataTypeDecimal<Decimal128>, ToDataType, ReturnType>(static_cast<Int128>(value), 0, scale, result));
@@ -501,10 +518,20 @@ NO_SANITIZE_UNDEFINED void convertToDecimalBatch(
         ///   1. The source intermediate: big ints → Int256, UInt64 → Int128, else → Int64
         ///   2. The target ToNativeType (e.g. Int128 for Decimal128)
         /// convertDecimalsImpl picks MaxNativeType = max(sizeof(From), sizeof(To)).
-        using FromIntermediate = std::conditional_t<is_big_int_v<FromFieldType>, Int256,
-                                 std::conditional_t<std::is_same_v<FromFieldType, UInt64>, Int128, Int64>>;
+        ///   3. 512-bit sources (and wide sources converted to Decimal512) use an exact Int512 intermediate, as in
+        ///      convertToDecimalImpl; a UInt512 value above the Int512 range is an overflow.
+        using FromIntermediate = std::conditional_t<(sizeof(FromFieldType) == 64) || (is_big_int_v<FromFieldType> && std::is_same_v<ToNativeType, Int512>), Int512,
+                                 std::conditional_t<is_big_int_v<FromFieldType>, Int256,
+                                 std::conditional_t<std::is_same_v<FromFieldType, UInt64>, Int128, Int64>>>;
         using WideType = std::conditional_t<(sizeof(FromIntermediate) > sizeof(ToNativeType)),
                                             FromIntermediate, ToNativeType>;
+        auto source_out_of_range = [](const FromFieldType & v)
+        {
+            if constexpr (std::is_same_v<FromFieldType, UInt512>)
+                return v > static_cast<UInt512>(std::numeric_limits<Int512>::max());
+            else
+                return false;
+        };
 
         if (scale == 0)
         {
@@ -513,7 +540,8 @@ NO_SANITIZE_UNDEFINED void convertToDecimalBatch(
             for (size_t i = 0; i < size; ++i)
             {
                 WideType converted_value = static_cast<WideType>(from[i]);
-                bool overflow = converted_value < std::numeric_limits<ToNativeType>::min()
+                bool overflow = source_out_of_range(from[i])
+                             || converted_value < std::numeric_limits<ToNativeType>::min()
                              || converted_value > std::numeric_limits<ToNativeType>::max();
 
                 if constexpr (has_nullmap)
@@ -537,7 +565,8 @@ NO_SANITIZE_UNDEFINED void convertToDecimalBatch(
                 WideType converted_value;
                 bool overflow = common::mulOverflow(static_cast<WideType>(from[i]), multiplier, converted_value);
 
-                overflow |= converted_value < std::numeric_limits<ToNativeType>::min()
+                overflow |= source_out_of_range(from[i])
+                         || converted_value < std::numeric_limits<ToNativeType>::min()
                          || converted_value > std::numeric_limits<ToNativeType>::max();
 
                 if constexpr (has_nullmap)
