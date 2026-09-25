@@ -818,15 +818,851 @@
       "affects": [
         "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
       ],
-      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109074 of #107663 unchanged, with its test",
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109074 of #107663 unchanged, with its test; its two-path JSON case also needs the 26.3 backport #114224 of #112601 (sorted path order in ColumnObject), which the 26.3 branch had merged first",
       "match": [
         {
           "suite": "fork-stateless",
           "test": "04327_join_runtime_filter_json"
         }
       ],
-      "fixed_by": "a33ab46c456 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107663)",
+      "fixed_by": "a33ab46c456 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107663); c92e5fe2197 (backport of upstream #112601, dependency)",
       "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-101932",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: materialize_skip_indexes_on_merge=0 with text indexes",
+      "effect": "perf",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105074 of #101932 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04082_materialize_skip_indexes_text_index"
+        }
+      ],
+      "fixed_by": "200051ee618 (26.3-lts-decimal512, 2026-09-25; backport of upstream #101932)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/101932.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-100939",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: `WHERE f(variant_col)` where no Variant alternative fits f",
+      "effect": "wrong (silently 0 rows), now throws",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105225 of #100939 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04202_variant_adaptor_all_incompatible"
+        }
+      ],
+      "fixed_by": "69f9a7fa4db (26.3-lts-decimal512, 2026-09-25; backport of upstream #100939)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/100939.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-105384",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: set(N) skip index with a non-integer WHERE atom (Float etc.)",
+      "effect": "exc BAD_ARGUMENTS `__bitWrapperFunc`",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105977 of #105384 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04258_set_skip_index_float_where_issue_105355"
+        }
+      ],
+      "fixed_by": "c8c006f750c (26.3-lts-decimal512, 2026-09-25; backport of upstream #105384)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/105384.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-105579",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: `CREATE TABLE … TO INNER UUID` without ENGINE",
+      "effect": "crash (any user with CREATE)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106555 of #105579 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04272_create_table_to_inner_uuid_without_engine"
+        }
+      ],
+      "fixed_by": "812a73cb503 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105579)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/105579.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-105582",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: VALUES tuples of different sizes into a String column",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106764 of #105582 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04267_values_template_tuple_size_mismatch"
+        }
+      ],
+      "fixed_by": "c662f1cd40d (26.3-lts-decimal512, 2026-09-25; backport of upstream #105582)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/105582.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-105573",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: PARTITION BY expression over subcolumns",
+      "effect": "exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106773 of #105573 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04266_partition_by_function_of_subcolumn"
+        }
+      ],
+      "fixed_by": "05c03bd312b (26.3-lts-decimal512, 2026-09-25; backport of upstream #105573)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/105573.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-106867",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: text index on an empty merged part",
+      "effect": "exc Too many marks",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#108259 of #106867 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04326_text_index_empty_part_marks_prewarm"
+        }
+      ],
+      "fixed_by": "6759f58f80b (26.3-lts-decimal512, 2026-09-25; backport of upstream #106867)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/106867.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-108777",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: LowCardinality(FixedString) key wrapped in a function",
+      "effect": "perf (pruning off)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#108823 of #108777 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04401_low_cardinality_fixed_string_partition_pruning"
+        }
+      ],
+      "fixed_by": "3981b127a34 (26.3-lts-decimal512, 2026-09-25; backport of upstream #108777)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/108777.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-109532",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: TTL GROUP BY with MATERIALIZED or persistent virtual columns",
+      "effect": "exc/wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111051 of #109532 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04501_group_by_ttl_block_number_offset"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04502_group_by_ttl_materialized_column"
+        }
+      ],
+      "fixed_by": "ea8991cc8e3 (26.3-lts-decimal512, 2026-09-25; backport of upstream #109532)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/109532.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-109410",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: TTL … GROUP BY (\"rollup\")",
+      "effect": "hang/perf (merge rescheduled forever)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111080 of #109410 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04501_group_by_ttl_infinite_rollup"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04502_group_by_ttl_merge_of_finished_parts"
+        }
+      ],
+      "fixed_by": "77cde1194ed (26.3-lts-decimal512, 2026-09-25; backport of upstream #109410)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/109410.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-111039",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: ALIAS column using IN, with DROP COLUMN / mutations / lightweight DELETE",
+      "effect": "exc LOGICAL_ERROR",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111336 of #111039 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04612_alter_drop_column_alias_in_set"
+        }
+      ],
+      "fixed_by": "159b3bcd9ea (26.3-lts-decimal512, 2026-09-25; backport of upstream #111039)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/111039.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-110246",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: has / mapContains* with an empty needle and a text index",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111539 of #110246 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "02346_text_index_bug110092"
+        }
+      ],
+      "fixed_by": "74ffe7e123e (26.3-lts-decimal512, 2026-09-25; backport of upstream #110246)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/110246.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-111142",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: CREATE OR REPLACE a dictionary over a different object kind",
+      "effect": "exc plus orphan table",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111633 of #111142 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04613_create_or_replace_view_over_dictionary"
+        }
+      ],
+      "fixed_by": "53268077d1f (26.3-lts-decimal512, 2026-09-25; backport of upstream #111142)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/111142.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-109374",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: DROP COLUMN when a DEFAULT/MATERIALIZED expression defines an inline alias",
+      "effect": "exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111639 of #109374 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04502_alter_drop_column_default_with_alias"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04514_mergetree_analyze_indexes_alias_predicate"
+        }
+      ],
+      "fixed_by": "ca9f2ebcd1e (26.3-lts-decimal512, 2026-09-25; backport of upstream #109374)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/109374.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-108218",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: JSON typed paths with the duplicate-key setting",
+      "effect": "exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#112790 of #108218 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04331_type_json_allow_duplicated_key_with_literal_and_nested_object_typed_paths"
+        }
+      ],
+      "fixed_by": "68b4c67e728 (26.3-lts-decimal512, 2026-09-25; backport of upstream #108218)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/108218.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-109178",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: bucketed Map serialization",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#113094 of #109178 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03999_map_change_serialization_version_and_merge"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04409_map_buckets_key_order_preservation"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04410_map_buckets_order_by_and_comparison"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04411_map_buckets_parts_splitter_row_drop"
+        }
+      ],
+      "fixed_by": "dc3e72549ba (26.3-lts-decimal512, 2026-09-25; backport of upstream #109178)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/109178.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-113046",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area DEC: Parquet DECIMAL stored wider than its precision implies (e.g. DECIMAL(9,2) as INT64)",
+      "effect": "crash / memory corruption",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#113254 of #113046 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "10318_parquet_decimal512_width_mismatch"
+        }
+      ],
+      "fixed_by": "d9582d46880 (26.3-lts-decimal512, 2026-09-25; backport of upstream #113046)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/applicability.zh-CN.md",
+      "not_in_gate": {
+        "04670_parquet_v3_decimal_physical_wider_than_destination": "needs pyarrow, which the gate host does not have; run separately with a pyarrow venv (evidence/fix_ci_20260925/parquet); the Decimal512 shapes are in 10318"
+      }
+    },
+    {
+      "id": "KD-UP-112784",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: view with a recursive CTE when enable_analyzer=0 is the server default",
+      "effect": "startup/ATTACH failure",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#113374 of #112784 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04660_recursive_cte_view_attach_old_analyzer"
+        }
+      ],
+      "fixed_by": "b64152c19a3 (26.3-lts-decimal512, 2026-09-25; backport of upstream #112784)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/112784.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-112601",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area JSON: ColumnObject iterates its path columns in hash-map order; JSON join keys with several paths",
+      "effect": "wrong JOIN result (with #107663)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114224 of #112601 unchanged, with its test(s); it is the 26.3 dependency of #107663 (its two-path JSON case needs it)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04327_join_runtime_filter_json"
+        }
+      ],
+      "fixed_by": "c92e5fe2197 (26.3-lts-decimal512, 2026-09-25; backport of upstream #112601)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/applicability.zh-CN.md"
+    },
+    {
+      "id": "KD-UP-109496",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: changing the `compatibility` setting (upgrade)",
+      "effect": "exc LOGICAL_ERROR Unexpected substream",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#114712 of #109496 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04409_variant_escape_filename_fallback"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04507_variant_escape_filename_rename_consistency"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04839_variant_escape_filename_compact_map_buckets"
+        }
+      ],
+      "fixed_by": "d56fb49e1e3 (26.3-lts-decimal512, 2026-09-25; backport of upstream #109496)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/109496.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-114233",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: mortonEncode/hilbertEncode inside a key expression",
+      "effect": "exc std::out_of_range",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115558 of #114233 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04860_space_filling_curve_not_a_key_column"
+        }
+      ],
+      "fixed_by": "ca3358e9c8a (26.3-lts-decimal512, 2026-09-25; backport of upstream #114233)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/114233.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-114624",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: has/indexOf/countEqual/mapContains*/Map[] with a constant LowCardinality needle equal to '' or 0",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115912 of #114624 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04881_low_cardinality_default_value_needle"
+        }
+      ],
+      "fixed_by": "abe8549e588 (26.3-lts-decimal512, 2026-09-25; backport of upstream #114624)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/114624.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-115704",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: binary literal whose length is not a multiple of 8; empty LZ4 block",
+      "effect": "wrong (uninitialized memory)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115927 of #115704 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05024_binary_string_literal_uninitialized_byte"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05028_lz4_empty_compressed_body"
+        }
+      ],
+      "fixed_by": "424fcc2ac64 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115704)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/115704.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-114953",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: DROP of a TimeSeries table whose name sorts below its inner tables",
+      "effect": "hang (deadlock)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116061 of #114953 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04920_timeseries_drop_low_sorting_name"
+        }
+      ],
+      "fixed_by": "d07546d43eb (26.3-lts-decimal512, 2026-09-25; backport of upstream #114953)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/114953.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-115334",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area ACCESS: SET <name> = DEFAULT",
+      "effect": "security: a settings constraint (e.g. readonly) is bypassed",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116264 of #115334 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05023_set_default_bypasses_settings_constraints"
+        }
+      ],
+      "fixed_by": "b062b7c1e1b (26.3-lts-decimal512, 2026-09-25; backport of upstream #115334)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/applicability.zh-CN.md"
+    },
+    {
+      "id": "KD-UP-115703",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area PROTO: malformed Parquet (DELTA_BYTE_ARRAY, incl. a Decimal column under a filter), Iceberg manifest enum, ORC allocation",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116650 of #115703 (00900 skip list adapted by hand), with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05035_parquet_delta_byte_array_malformed"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "10318_parquet_decimal512_width_mismatch"
+        }
+      ],
+      "fixed_by": "884139a42f4 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115703)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/applicability.zh-CN.md",
+      "not_in_gate": {
+        "00900_long_parquet_load_2": "long load test of every data_parquet file; only its skip list changed"
+      }
+    },
+    {
+      "id": "KD-UP-113759",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: old analyzer: ORDER BY ALL in WINDOW VIEW; INTERPOLATE/WINDOW/LIMIT BY over Merge/Distributed with a join",
+      "effect": "crash/exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116762 of #113759 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04817_order_by_all_merge_natural_join"
+        }
+      ],
+      "fixed_by": "a3fe3281995 (26.3-lts-decimal512, 2026-09-25; backport of upstream #113759)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/113759.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-115705",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: window function over a Tuple with a sparse element",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117073 of #115705 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04416_groupconcat_tuple_sparse_subcolumn"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05025_group_concat_window_sparse_tuple"
+        }
+      ],
+      "fixed_by": "17c925415f4 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115705)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/115705.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-107930",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area JOIN: old-analyzer predicate pushdown with a UNION subquery in JOIN ON",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117557 of #107930 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03891_predicate_pushdown_union_in_join_on"
+        }
+      ],
+      "fixed_by": "f31d1df1941 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107930)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/107930.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-116990",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: sumKahan/sumKahanIf/Nullable when a batch does not start at row 0 (window frames, parallel GROUP BY)",
+      "effect": "wrong (silent)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117656 of #116990 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05048_sum_kahan_conditional_row_offset"
+        }
+      ],
+      "fixed_by": "b0cf4b31f5e (26.3-lts-decimal512, 2026-09-25; backport of upstream #116990)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/116990.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-113926",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: abandoned nested aggregate states",
+      "effect": "leak",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117691 of #113926 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04812_foreach_combinator_nested_state_leak"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05055_map_combinator_duplicate_key_state"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05056_map_combinator_state_stranded_on_throw"
+        }
+      ],
+      "fixed_by": "9383d1aa746 (26.3-lts-decimal512, 2026-09-25; backport of upstream #113926)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/113926.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-117370",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: malformed Native block of aggregate states",
+      "effect": "crash (OOB write)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#117889 of #117370 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05055_aggregate_state_bulk_deserialization_overflow"
+        }
+      ],
+      "fixed_by": "a0af7ac5493 (26.3-lts-decimal512, 2026-09-25; backport of upstream #117370)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/117370.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-115329",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: async inserts into JSON ignore max_dynamic_subcolumns_in_json_type_parsing",
+      "effect": "wrong layout",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#118446 of #115329 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05019_async_insert_json_max_dynamic_subcolumns_control_on_parsing"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05020_json_max_dynamic_subcolumns_in_parsing_squashing"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05021_json_max_dynamic_subcolumns_in_parsing_nested_objects"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05022_json_max_dynamic_subcolumns_in_parsing_after_default_rows"
+        }
+      ],
+      "fixed_by": "1ad07470ed9 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115329)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/115329.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-113244",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: set index on an expression that the query repeats with a Nullable operand (e.g. a scalar subquery)",
+      "effect": "exc LOGICAL_ERROR",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual, evidence/fix_ci_20260925/parquet)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#118726 of #113244 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04700_set_index_nullable_operand_in_expression"
+        }
+      ],
+      "fixed_by": "3fb551ee85c (26.3-lts-decimal512, 2026-09-25; backport of upstream #113244)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/113244.PROD263.txt"
+    },
+    {
+      "id": "KD-UP-108790",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: groupConcat over a Tuple with a sparse String",
+      "effect": "exc Bad cast (abort on debug)",
+      "affects": [
+        "26.3 prod a394e92fb5d (reproduced: evidence/fix_ci_20260925/upstream_repro/residual/108790.PROD263.txt)"
+      ],
+      "decision": "no separate commit: the 26.3 backport #117073 of #115705 carries the identical Aggregator.cpp change and test 04416 of the 26.3 backport #117568 of #108790",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04416_groupconcat_tuple_sparse_subcolumn"
+        }
+      ],
+      "fixed_by": "17c925415f4 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115705 including #108790)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro/residual/108790.PROD263.txt"
+    },
+    {
+      "id": "KD-D512-PERF-OVERFLOW-CHECKS",
+      "status": "fixed",
+      "title": "the per-value 512-bit overflow checks (e919236606a, 47909d0560a) made Decimal512 work slower than the production build: integer to Decimal512 conversion x2.8, multiplication x1.3, scaled plus x1.5, scaled comparison x1.3, scaled cast x1.2 on materialized data; the perf suite's GROUP BY/sort/join queries only through the conversion that builds their data",
+      "effect": "performance regression (introduced by this change set, caught by the release gate before any release)",
+      "affects": [
+        "26.3 candidate 91efe1f244ce (CAND2)"
+      ],
+      "decision": "keep the checks (user decision in KD-D512-MUL-OVERFLOW) and take them off the hot paths: no per-value check where the source type's range rules out an overflow, a limb-based inline fast path, the exact check out of line",
+      "match": [
+        {
+          "suite": "performance",
+          "id": "multiply_d512"
+        },
+        {
+          "suite": "performance",
+          "id": "plus_d512_scaleup"
+        },
+        {
+          "suite": "performance",
+          "id": "compare_d512_scaleup"
+        },
+        {
+          "suite": "performance",
+          "id": "convert_uint64_d512"
+        },
+        {
+          "suite": "performance",
+          "id": "convert_int256_d512"
+        },
+        {
+          "suite": "performance",
+          "id": "cast_d512_scaleup"
+        },
+        {
+          "suite": "performance",
+          "id": "groupby_d512"
+        },
+        {
+          "suite": "performance",
+          "id": "groupby_nullable_composite_33_64b"
+        },
+        {
+          "suite": "performance",
+          "id": "join_d512_composite"
+        },
+        {
+          "suite": "performance",
+          "id": "sort_d512"
+        }
+      ],
+      "evidence": "evidence/fix_ci_20260925/release_cand2/perf (gate), evidence/fix_ci_20260925/perfprobe (timings per operation)",
+      "fixed_by": "e91167f5136 (26.3-lts-decimal512, 2026-09-25)"
+    },
+    {
+      "id": "KD-TEST-BLOCKCHAIN-TYPENAME",
+      "status": "fixed",
+      "title": "fork test blockchain_decimal512_arithmetic_operations: toTypeName(<overflowing Decimal512 product>) is constant-folded and raises DECIMAL_OVERFLOW since e919236606a (as for Decimal32/Decimal64); the query still expected the type name",
+      "effect": "test defect (missed by 2216daa16e7: the fork stateless tests had not run on a build with the check)",
+      "decision": "set decimal_check_overflow = 0 on that query; the default behaviour is covered by the query before it",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "blockchain_decimal512_arithmetic_operations"
+        }
+      ],
+      "evidence": "evidence/fix_ci_20260925/release_cand2/logs (fork-stateless)",
+      "fixed_by": "f006d0d5eb5 (26.3-lts-decimal512, 2026-09-25)"
+    },
+    {
+      "id": "KD-GATE-NO-KEEPER",
+      "status": "fixed",
+      "title": "the gate's isolated server had no ZooKeeper: 03212_variant_dynamic_cast_or_default (generateSerialID in a column default, from the #114912 backport) failed with 'no Zookeeper configuration', and 04627 was left out of the selection",
+      "effect": "gate environment defect (tests that need ZooKeeper could not pass)",
+      "decision": "isolated_ch.sh CH_ISO_KEEPER=1: a private single-node Keeper on loopback ports that are part of the isolation proof (raft bound to 127.0.0.1 via interserver_listen_host); the gate's stateless server uses it",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03212_variant_dynamic_cast_or_default"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04627_mutation_in_partition_query_parameter_replicated"
+        }
+      ],
+      "evidence": "evidence/fix_ci_20260925/release_cand2/logs (fork-stateless); keeper trial: both tests pass on 91efe1f244ce",
+      "fixed_by": "095b89c79a7 (26.3-lts-decimal512, 2026-09-25)"
+    },
+    {
+      "id": "KD-UP-99085",
+      "status": "fixed",
+      "title": "dependency of the #100939 backport: the setting variant_throw_on_type_mismatch (26.3 backport #106864; default true keeps the behaviour)",
+      "effect": "none by default (a new setting); without it the #100939 backport does not compile",
+      "affects": [
+        "26.3 prod a394e92fb5d (setting absent)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106864 of #99085 unchanged, with its test: a compile-time dependency of the #100939 backport; the 26.3 branch merged it first (2026-06-17)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04101_variant_dynamic_type_mismatch_settings"
+        }
+      ],
+      "fixed_by": "7fc98c97bff (26.3-lts-decimal512, 2026-09-25; backport of upstream #99085)",
+      "evidence": "build log of the candidate at 3fb551ee85c..f006d0d5eb5 (FunctionVariantAdaptor.cpp: undeclared Setting::variant_throw_on_type_mismatch)"
+    },
+    {
+      "id": "KD-UP-107562",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: a part produced by a mutation of a table with a Dynamic column can miss the variant_discr stream; also a compile-time dependency of the #109496 backport (ColumnsSubstreams::tryGetColumnSubstreams)",
+      "effect": "exc LOGICAL_ERROR when reading such a part",
+      "affects": [
+        "26.3 prod a394e92fb5d (upstream-known; the local triage did not reproduce 04341/04342, 04401/04412 need a server)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#112098 of #107562 unchanged, with its tests: required by the #109496 backport; the 26.3 branch merged it first (2026-07-27)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04341_dynamic_mutation_variant_discr_streams"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04342_dynamic_mutation_dummy_placeholder_stream"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04401_dynamic_mutation_old_part_no_substreams_file"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04412_mutation_old_part_basic_map_partial"
+        }
+      ],
+      "fixed_by": "4b05c97a6b0 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107562)",
+      "evidence": "syntax check of every file changed by the backports (MutateTask.cpp: no member tryGetColumnSubstreams); evidence/fix_ci_20260925/upstream_repro"
     }
   ]
 }
