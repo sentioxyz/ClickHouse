@@ -187,8 +187,12 @@ public:
     /// DateTime, but if both operands are Dates, their type must be the same (e.g. Date - DateTime is invalid).
     using ResultDataType = Switch<
         /// Result must be Integer
+        /// With a decimal operand the division itself runs on the decimal path (see executeImpl), so the pair must be one
+        /// that path supports: Decimal with (U)Int512 is not, and would otherwise pass here and fail at execution.
         Case<IsOperation<Operation>::int_div || IsOperation<Operation>::int_div_or_zero,
-            std::conditional_t<IsDataTypeDecimalOrNumber<LeftDataType> && IsDataTypeDecimalOrNumber<RightDataType>, DataTypeFromFieldType<typename Op::ResultType>, InvalidType>>,
+            std::conditional_t<IsDataTypeDecimalOrNumber<LeftDataType> && IsDataTypeDecimalOrNumber<RightDataType>
+                    && !((IsDataTypeDecimal<LeftDataType> || IsDataTypeDecimal<RightDataType>) && std::is_same_v<DecimalResultDataType, InvalidType>),
+                DataTypeFromFieldType<typename Op::ResultType>, InvalidType>>,
         /// Decimal cases
         Case<IsDataTypeDecimal<LeftDataType> || IsDataTypeDecimal<RightDataType>, DecimalResultDataType>,
         Case<
@@ -833,9 +837,11 @@ class FunctionBinaryArithmetic : public IFunction
 
     static bool castType(const IDataType * type, auto && f)
     {
+        /// (U)Int512 behave like (U)Int256: same result type rules (NumberTraits), wrap-around on overflow.
+        /// Decimal op (U)Int512 stays unsupported (IsExtended does not include them), intDiv included (see ResultDataType).
         using IntegerTypes = TypeList<
-            DataTypeUInt8, DataTypeUInt16, DataTypeUInt32, DataTypeUInt64, DataTypeUInt128, DataTypeUInt256,
-            DataTypeInt8, DataTypeInt16, DataTypeInt32, DataTypeInt64, DataTypeInt128, DataTypeInt256>;
+            DataTypeUInt8, DataTypeUInt16, DataTypeUInt32, DataTypeUInt64, DataTypeUInt128, DataTypeUInt256, DataTypeUInt512,
+            DataTypeInt8, DataTypeInt16, DataTypeInt32, DataTypeInt64, DataTypeInt128, DataTypeInt256, DataTypeInt512>;
 
         using DecimalTypes = TypeList<DataTypeDecimal32, DataTypeDecimal64, DataTypeDecimal128, DataTypeDecimal256, DataTypeDecimal512>;
 
