@@ -29,7 +29,10 @@
 #   real (default)  server on the host, real host name on both sides (the behaviour before 2026-09-25).
 #   container       the server runs in a container with its own UTS namespace and the host name "localhost"
 #                   (docker, local image $CH_ISO_DOCKER_IMAGE (default ubuntu:22.04, never pulled), host network and PID
-#                   namespace, this user's uid, only $CH_ISO_ROOT and <tree> mounted, memory/pids capped by
+#                   namespace, this user's uid, only $CH_ISO_ROOT and <tree> mounted, plus the host's
+#                   /usr/share/zoneinfo read-only and TZ set to the host's zone name, so time zone lookups and the
+#                   default time zone match a server on the host (without them 05059 failed: its fallback to the
+#                   system zoneinfo directory found nothing), memory/pids capped by
 #                   $CH_ISO_DOCKER_MEM (12g) / $CH_ISO_DOCKER_PIDS (8192)), and `test` runs clickhouse-test and its
 #                   shells with the LD_PRELOAD library of hostname_shim.c, so the runner's host name is "localhost" too
 #                   and its substitution changes nothing. (ClickHouse itself ignores LD_PRELOAD: it clears the variable
@@ -190,9 +193,15 @@ XML
     IMG=${CH_ISO_DOCKER_IMAGE:-ubuntu:22.04}; CNAME=ch-iso-$NAME-$BASE
     docker image inspect "$IMG" > /dev/null 2>&1 || { echo "REFUSE: docker image $IMG is not available locally (it is never pulled)"; exit 95; }
     if docker container inspect "$CNAME" > /dev/null 2>&1; then echo "REFUSE: container $CNAME already exists"; exit 95; fi
+    # the host's time zone data and default zone: the image has no tzdata, and ClickHouse names the default zone from
+    # the /etc/localtime symlink, which a bind mount would turn into a plain file
+    TZ_ARGS=()
+    [ -d /usr/share/zoneinfo ] && TZ_ARGS+=(-v /usr/share/zoneinfo:/usr/share/zoneinfo:ro)
+    HOST_TZ=${TZ:-$(readlink -f /etc/localtime 2>/dev/null | sed -n 's|^/usr/share/zoneinfo/||p')}
+    [ -n "$HOST_TZ" ] && TZ_ARGS+=(-e "TZ=$HOST_TZ")
     docker run -d --rm --pull never --name "$CNAME" --hostname localhost --network host --pid host --user "$(id -u):$(id -g)" \
       --memory="${CH_ISO_DOCKER_MEM:-12g}" --memory-swap="${CH_ISO_DOCKER_MEM:-12g}" --pids-limit="${CH_ISO_DOCKER_PIDS:-8192}" \
-      --cpus="$(nproc)" -v "$ROOT:$ROOT" -v "$TREE:$TREE" -w "$D" "$IMG" \
+      --cpus="$(nproc)" "${TZ_ARGS[@]}" -v "$ROOT:$ROOT" -v "$TREE:$TREE" -w "$D" "$IMG" \
       sh -c 'exec "$0" server --config-file="$1" --pid-file="$2" > "$3" 2>&1 < /dev/null' \
       "$COPY" "$D/conf/config.xml" "$D/server.pid" "$D/log/stdout.log" > "$D/log/docker_run.log" 2>&1 \
       || { echo "REFUSE: docker run failed (see $D/log/docker_run.log)"; exit 95; }

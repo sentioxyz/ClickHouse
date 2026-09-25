@@ -2322,5 +2322,9 @@
  "src/Core/DecimalFunctions.h|type-256-without-512|res = common::detail::mulInt256Range(x, multiplier);": {
   "decision": "reviewed: not a gap - the Int512 fast path of mulOverflowByScale (758106616eb): both factors fit Int256, so the product is computed exactly with a 256x256-bit multiplication; the 512-bit case is the enclosing branch",
   "evidence": "src/Core/DecimalFunctions.h mulOverflowByScale; base/base/arithmeticOverflow.h bothFitInt256/mulInt256Range; mulcheck 27554 cases and widemul 5e6 cases 0 differences (evidence/fix_ci_20260925/sanitizer_harness)"
+ },
+ "src/Interpreters/Aggregator.cpp|type-256-without-512|if (std::tuple_size_v<KeysNullMap<UInt256>> + keys_bytes <= 32)": {
+  "decision": "reviewed: not a gap - since 1086e1eb2c3 GROUP BY deliberately stops at nullable_keys256 for nullable fixed keys, as upstream does: nullable keys that do not fit 32 bytes with their null bitmap use nullable_prealloc_serialized/nullable_serialized, which measured faster than the 64-byte nullable_keys512 packing and give results equal to official 26.8.8.8 (evidence/fix_ci_20260925/perf_nullable_serialized/)",
+  "evidence": "1086e1eb2c3; CAND8 release gate 2026-09-25 (dispatch-scan listed this site as the only new candidate)"
  }
 }
