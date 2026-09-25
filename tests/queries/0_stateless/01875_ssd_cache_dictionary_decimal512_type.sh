@@ -24,7 +24,7 @@ $CLICKHOUSE_CLIENT --query="
     PRIMARY KEY id
     SOURCE(CLICKHOUSE(HOST 'localhost' PORT tcpPort() TABLE 'dictionary_decimal_source_table'))
     LIFETIME(MIN 1 MAX 1000)
-    LAYOUT(SSD_CACHE(BLOCK_SIZE 4096 FILE_SIZE 8192 PATH '/workspace/.clickhouse_runtime/user_files/0d'));
+    LAYOUT(SSD_CACHE(BLOCK_SIZE 4096 FILE_SIZE 8192 PATH '$USER_FILES_PATH/0d512'));
 
     SELECT 'SSDCache dictionary';
     SELECT dictGet('ssd_cache_dictionary', 'decimal_value', toUInt64(1));

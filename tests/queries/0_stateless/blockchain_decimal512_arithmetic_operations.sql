@@ -264,9 +264,10 @@ SELECT
 
 -- 7.4 指数函数 (exp)
 SELECT 
-    exp(toDecimal512('1', 0)) as exp_1,
-    exp(toDecimal512('2', 0)) as exp_2,
-    exp(toDecimal512('0', 0)) as exp_0;
+    -- exp() of a Float64 is not correctly rounded and differs by 1 ulp between builds: compare 10 decimals
+    round(exp(toDecimal512('1', 0)), 10) as exp_1,
+    round(exp(toDecimal512('2', 0)), 10) as exp_2,
+    round(exp(toDecimal512('0', 0)), 10) as exp_0;
 
 -- ==============================================
 -- 8. 基本位运算测试
@@ -334,9 +335,15 @@ SELECT '=== 溢出处理测试 ===' as test_section;
 -- 报错：Decimal Math Overflow
 
 -- 10.2 乘法溢出测试
+-- 默认 decimal_check_overflow = 1：Decimal512 乘法溢出报 DECIMAL_OVERFLOW，不再静默回绕
 SELECT 
     toDecimal512('999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999', 0) * 
-    toDecimal512(9, 0) as multiplication_overflow_test;
+    toDecimal512(9, 0) as multiplication_overflow_test; -- { serverError DECIMAL_OVERFLOW }
+-- 关闭溢出检查时仍按补码回绕（与修复前默认设置下的结果相同）
+SELECT 
+    toDecimal512('999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999', 0) * 
+    toDecimal512(9, 0) as multiplication_overflow_test
+SETTINGS decimal_check_overflow = 0;
 
 SELECT 
     toTypeName(toDecimal512('999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999', 0) * 
@@ -387,10 +394,15 @@ SELECT
 -- 减法溢出同样报错
 
 -- 10.6 除法溢出
+-- 被除数按除数的 scale 放大（乘以 10）后超出 Int512：默认报 DECIMAL_OVERFLOW
 SELECT
     toDecimal512('99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999', 1) / 
-    toDecimal512('0.1', 1);
--- 同样变负值
+    toDecimal512('0.1', 1); -- { serverError DECIMAL_OVERFLOW }
+-- 关闭溢出检查时同样变负值（与修复前默认设置下的结果相同）
+SELECT
+    toDecimal512('99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999', 1) / 
+    toDecimal512('0.1', 1)
+SETTINGS decimal_check_overflow = 0;
 
 SELECT
     toDecimal128('9999999999999999999999999999999999999', 1) / toDecimal128('0.1', 1);
