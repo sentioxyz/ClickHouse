@@ -2994,37 +2994,57 @@
     },
     {
       "id": "KD-UP-TEXTINDEX-DIRECTREAD-3IDX",
-      "status": "open",
+      "status": "fixed",
       "title": "26.3 backport of #108607 in the fork: a query that uses three partially materialized text indexes with direct read recurses in equals() (FunctionComparison executeString -> executeWithConstString -> executeImpl)",
       "effect": "that query fails with TOO_DEEP_RECURSION (306) instead of the FILE_DOESNT_EXIST (107) of the production build; queries over one or two such indexes, which the backport fixes, return correct results; no wrong result was seen in 9 query shapes (including a cross-column check); with query_plan_direct_read_from_text_index = 0 the result is correct",
       "affects": [
         "CAND4 e7432cac56f (with the #108607 backport a6ab68509bc); the production build a394e92fb5d, the hotfix cd0d6088c5a and CAND3 758106616eb fail the same query with FILE_DOESNT_EXIST; official 26.8.8.8 is correct"
       ],
-      "decision": "open: keep the backport (it fixes the one- and two-index cases; the three-index query errors before and after, only the error code changes) and find what upstream 26.3 has that the fork lacks: MergeTreeReadTask.cpp equals upstream 26.3 at 935df7a3b67, so the missing piece is elsewhere; not identified yet. First-party code does not create text indexes (code search). Correction 2026-09-25 ~16:45Z: the first version of this entry said every 26.3 build recursed; that came from runs capped at TasksMax=512, where ClickHouse could not start its threads and dumped core",
+      "decision": "fixed by backporting what upstream 26.3 had and the fork lacked: #107758 (26.3 manual backport of 1c1c0315839 from #98882, merged into 26.3 on 2026-06-17, before the #108607 backport #108663). IndexReadTasks/IndexReadColumns were std::unordered_map, copied into the read pool and iterated independently in getPrewhereActions and getReadTaskColumns, so the PREWHERE readers and actions of the text-index steps could be paired in different orders, and MergeTreeRangeReader executed None-type step actions on its sample block although the runtime skips them; with three indexes equals(a, 'alpha') received a non-String column (gdb: MergeTreeRangeReader::executePrewhereActionsAndFilterColumns). Found by a trees-only fetch of upstream 26.3 and `git log fa3aa24e791..de30904` over the direct-read files: #107758 was the only 26.3 merge there missing from the fork. Correction 2026-09-25 ~16:45Z (kept): the first version of this entry said every 26.3 build recursed; that came from runs capped at TasksMax=512, where ClickHouse could not start its threads and dumped core",
       "match": [
         {
           "suite": "fork-stateless",
           "test": "04411_text_index_multiple_partially_materialized"
         }
       ],
-      "evidence": "evidence/fix_ci_20260925/textindex_recursion_26_3/results.txt (supersedes results_INVALID_tasksmax512.txt), evidence/fix_ci_20260925/release_cand4/logs/test_fork-stateless_20260925T153202Z.log"
+      "evidence": "evidence/fix_ci_20260925/textindex_recursion_26_3/cand7/results.txt (CAND6 306 / CAND7 correct, gdb backtrace, PREWHERE step log, upstream patch), evidence/fix_ci_20260925/textindex_recursion_26_3/results.txt (per-build comparison), evidence/fix_ci_20260925/hostname_isolation/test_container-check_20260925T192942Z.log (04411 OK on an isolated server)",
+      "fixed_by": "ebce9807455 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107758)"
+    },
+    {
+      "id": "KD-UP-107758",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: text index direct read paired PREWHERE readers and actions in different orders (row policy on a String column; several text indexes)",
+      "effect": "with query_plan_direct_read_from_text_index and use_skip_indexes_on_data_read: a row policy that reads a String column before the text-index step fails the query with ILLEGAL_TYPE_OF_COLUMN_FOR_FILTER (59); with three partially materialized text indexes (after the #108607 backport) equals() recursed until TOO_DEEP_RECURSION (306, KD-UP-TEXTINDEX-DIRECTREAD-3IDX)",
+      "affects": [
+        "26.3 prod a394e92fb5d (04332 fails there with ILLEGAL_TYPE_OF_COLUMN_FOR_FILTER and returns 1000/1000 on official 26.8.8.8, clickhouse local in a capped scope: evidence/fix_ci_20260925/textindex_recursion_26_3/cand7/o04332_*); CAND6 9172cf78527 fails the same way"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107758 (of 1c1c0315839 from #98882) unchanged, with its test 04332_text_index_direct_read_row_policy",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04332_text_index_direct_read_row_policy"
+        }
+      ],
+      "fixed_by": "ebce9807455 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107758)",
+      "evidence": "evidence/fix_ci_20260925/textindex_recursion_26_3/cand7/ (04332 PROD263/CAND6 FAIL, UP2688/CAND7 OK), evidence/fix_ci_20260925/hostname_isolation/test_container-check_20260925T192942Z.log (04332 OK on an isolated server)"
     },
     {
       "id": "KD-ENV-HOSTNAME-SUBSTITUTION",
-      "status": "open",
+      "status": "fixed",
       "title": "test environment: clickhouse-test replaces the host name in every test output with 'localhost'; the build host is called 'build', so a test whose output contains the word 'build' fails",
       "effect": "04881_low_cardinality_default_value_needle fails on this host only: its one differing line is the reference with 'build' replaced by 'localhost' (90/90 lines otherwise equal); the product output is correct",
       "affects": [
         "the stateless gate on hosts whose name occurs in test outputs (sentio_build: 'build')"
       ],
-      "decision": "open (environment): run the stateless tier on a host whose name does not occur in the outputs, or give clickhouse-test a non-colliding host name; the test and its reference are not edited. The check is evidence/fix_ci_20260925/release_cand4/04881_hostname_substitution_check.txt",
+      "decision": "fixed in the test environment, test and reference unchanged: the gate's stateless server runs in a container with its own UTS namespace and the host name localhost (tools/isolated_ch.sh CH_ISO_HOST_ISOLATION=container, the run_checks.sh default), and clickhouse-test runs with the LD_PRELOAD library tools/hostname_shim.c, so both report localhost and the runner's substitution changes nothing; isolated_ch.sh refuses when the server's and the runner's host names differ. An LD_PRELOAD for the server alone cannot work (ClickHouse clears LD_PRELOAD and re-executes itself) and unprivileged user namespaces are blocked on this host",
       "match": [
         {
           "suite": "fork-stateless",
           "test": "04881_low_cardinality_default_value_needle"
         }
       ],
-      "evidence": "evidence/fix_ci_20260925/release_cand4/04881_hostname_substitution_check.txt; tests/clickhouse-test replace_in_file(stdout, socket.gethostname(), 'localhost')"
+      "evidence": "evidence/fix_ci_20260925/hostname_isolation/README.txt (container mode: 04881 OK; real host name: 04881 FAIL on exactly the substituted line), evidence/fix_ci_20260925/release_cand4/04881_hostname_substitution_check.txt (the original attribution)",
+      "fixed_by": "f2f0ba1bcb6 (26.3-lts-decimal512, 2026-09-25; test environment)"
     },
     {
       "id": "KD-UP-100849",

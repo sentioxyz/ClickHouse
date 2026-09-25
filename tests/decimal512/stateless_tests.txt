@@ -242,3 +242,6 @@ blockchain_decimal512_type_conversion
 10319_aggregate_state_declared_size_no_allocation
 # found by the CAND5 gtest run (2026-09-25): upstream #100849, Protobuf schema cache (not backported to 26.3 upstream):
 04061_protobuf_cache_with_envelope
+# found while fixing KD-UP-TEXTINDEX-DIRECTREAD-3IDX (2026-09-25): upstream #107758 (26.3 backport of the #98882 text index
+# prewhere fix), its upstream test:
+04332_text_index_direct_read_row_policy
