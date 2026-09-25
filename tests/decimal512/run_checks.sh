@@ -31,7 +31,8 @@
 #       [--perf-rounds <n>]                release: rounds of tools/perf/perf_compare.py (default 7, at least 5)
 #       [--instance a|b|c]                 isolated server slot for the stateless tests (default c: ports 59000..)
 #       [--workers N]                      engine processes per matrix run (run_matrix.py --workers; default
-#                                          $DECIMAL512_MATRIX_WORKERS or 1). Results do not depend on N.
+#                                          $DECIMAL512_MATRIX_WORKERS or 1). Results do not depend on N. Each engine process
+#                                          starts ~520 threads: the cgroup's pids.max must be >= N * 640 + 1024 (checked).
 #       [--matrix-cache DIR]               reuse a matrix result (tools/matrix/matrix_cache.py) only when the engine, the SQL,
 #                                          the oracle, run_matrix.py, python and the time zone are byte-identical; the
 #                                          result is then recorded as REUSED historical evidence (results/*.reuse.json,
@@ -89,6 +90,13 @@ if [ -e "$OUT" ] && [ -n "$(ls -A "$OUT" 2>/dev/null)" ]; then echo "ERROR: --ou
 # the only server this script talks to is its own loopback instance; refuse an environment pointing elsewhere
 case ${CLICKHOUSE_HOST:-127.0.0.1} in 127.0.0.1|localhost) ;; *) echo "REFUSE: CLICKHOUSE_HOST=$CLICKHOUSE_HOST" >&2; exit 2;; esac
 case $WORKERS in ''|*[!0-9]*|0) echo "ERROR: --workers must be a positive integer" >&2; exit 2;; esac
+# every clickhouse local starts ~520 threads (16-core host): with too small a pids limit one of the parallel engine
+# processes cannot create a thread and hangs (2026-09-25: TasksMax=4096 with 8 workers). Refuse up front instead.
+PIDS_MAX=$(cat "/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup)/pids.max" 2>/dev/null)
+if [ -n "$PIDS_MAX" ] && [ "$PIDS_MAX" != max ] && [ "$PIDS_MAX" -lt $((WORKERS * 640 + 1024)) ]; then
+  echo "ERROR: pids.max $PIDS_MAX of this cgroup is below $((WORKERS * 640 + 1024)) for $WORKERS matrix worker(s) (~520 threads per engine process): raise TasksMax or lower --workers" >&2
+  exit 2
+fi
 RUN_STARTED_AT=$(date -u +%FT%TZ)
 mkdir -p "$OUT"/{gen,results,logs}
 OUT=$(cd "$OUT" && pwd)
