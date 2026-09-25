@@ -2995,19 +2995,19 @@
     {
       "id": "KD-UP-TEXTINDEX-DIRECTREAD-3IDX",
       "status": "open",
-      "title": "upstream 26.3: direct read from text index over three partially materialized text indexes recurses in equals() (FunctionComparison executeWithConstString <-> executeImpl)",
-      "effect": "the query fails with TOO_DEEP_RECURSION (306) on a server; clickhouse local runs out of stack and dumps core; with query_plan_direct_read_from_text_index = 0 the result is correct",
+      "title": "26.3 backport of #108607 in the fork: a query that uses three partially materialized text indexes with direct read recurses in equals() (FunctionComparison executeString -> executeWithConstString -> executeImpl)",
+      "effect": "that query fails with TOO_DEEP_RECURSION (306) instead of the FILE_DOESNT_EXIST (107) of the production build; queries over one or two such indexes, which the backport fixes, return correct results; no wrong result was seen in 9 query shapes (including a cross-column check); with query_plan_direct_read_from_text_index = 0 the result is correct",
       "affects": [
-        "26.3 prod a394e92fb5d, the hotfix cd0d6088c5a, CAND3 758106616eb (before the #108607 backport) and CAND4 e7432cac56f; official 26.8.8.8 is correct"
+        "CAND4 e7432cac56f (with the #108607 backport a6ab68509bc); the production build a394e92fb5d, the hotfix cd0d6088c5a and CAND3 758106616eb fail the same query with FILE_DOESNT_EXIST; official 26.8.8.8 is correct"
       ],
-      "decision": "open: a pre-existing 26.3 upstream bug, not a regression of this branch (the fork's FunctionsComparison changes are type-dispatch additions only). The #108607 backport fixes the two-index case of 04411 (FILE_DOESNT_EXIST on the production build); the three-index section of the same test reaches this bug. The upstream fix is not identified yet (no later official 26.3 build on the host); workaround query_plan_direct_read_from_text_index = 0. First-party code does not create text indexes (code search, historical report)",
+      "decision": "open: keep the backport (it fixes the one- and two-index cases; the three-index query errors before and after, only the error code changes) and find what upstream 26.3 has that the fork lacks: MergeTreeReadTask.cpp equals upstream 26.3 at 935df7a3b67, so the missing piece is elsewhere; not identified yet. First-party code does not create text indexes (code search). Correction 2026-09-25 ~16:45Z: the first version of this entry said every 26.3 build recursed; that came from runs capped at TasksMax=512, where ClickHouse could not start its threads and dumped core",
       "match": [
         {
           "suite": "fork-stateless",
           "test": "04411_text_index_multiple_partially_materialized"
         }
       ],
-      "evidence": "evidence/fix_ci_20260925/textindex_recursion_26_3/ (repro per build), evidence/fix_ci_20260925/release_cand4/logs/test_fork-stateless_20260925T153202Z.log"
+      "evidence": "evidence/fix_ci_20260925/textindex_recursion_26_3/results.txt (supersedes results_INVALID_tasksmax512.txt), evidence/fix_ci_20260925/release_cand4/logs/test_fork-stateless_20260925T153202Z.log"
     },
     {
       "id": "KD-ENV-HOSTNAME-SUBSTITUTION",
