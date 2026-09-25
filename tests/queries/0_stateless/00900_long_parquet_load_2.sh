@@ -41,6 +41,9 @@ EXCLUDE=(
     04045_delta_no_padding_3vals.parquet
     04045_delta_no_padding_5vals.parquet
     04045_delta_sample_93093.parquet
+    # Malformed DELTA_BYTE_ARRAY files of 05035 (upstream #115703): a page with zero lengths, a Decimal column.
+    05035_delta_byte_array_zero_values.parquet
+    05035_delta_byte_array_decimal.parquet
 )
 
 for NAME in $(find "$DATA_DIR" -type f \( -iname '*.parquet' -o -iname '*.parquet.gz' \) -print0 | xargs -0 -n 1 basename | LC_ALL=C sort | grep -vFf <(printf '%s\n' "${EXCLUDE[@]}")); do
