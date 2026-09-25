@@ -152,9 +152,11 @@ if [ "$TIER" != quick ]; then
     fi
   done < "$HERE/stateless_tests.txt"
   touch "$OUT/logs/.stateless_start"   # every file of the tree written after this marker is a side effect of the run
-  if bash "$T/isolated_ch.sh" start "$INST" "$BIN" "$TREE" > "$OUT/logs/server_start.log" 2>&1; then
+  # CH_ISO_KEEPER=1: the server has a private loopback Keeper, so tests that need ZooKeeper (Replicated tables,
+  # generateSerialID, ...) run as in upstream CI instead of failing on "no Zookeeper configuration"
+  if CH_ISO_KEEPER=1 bash "$T/isolated_ch.sh" start "$INST" "$BIN" "$TREE" > "$OUT/logs/server_start.log" 2>&1; then
     bash "$T/isolated_ch.sh" test "$INST" "$TREE" fork-stateless "${BBID:0:12}" --no-random-settings --no-random-merge-tree-settings \
-      --no-zookeeper --no-shard --no-stateful -j 4 "${SEL[@]}" > "$OUT/logs/stateless_driver.log" 2>&1
+      --no-shard --no-stateful -j 4 "${SEL[@]}" > "$OUT/logs/stateless_driver.log" 2>&1
     log "fork stateless tests: rc=$? (${#SEL[@]} selected, ${#EXCLUDED[@]} excluded)"
   else
     log "ERROR: isolated server did not start (see logs/server_start.log)"

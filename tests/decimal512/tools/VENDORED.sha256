@@ -9,7 +9,7 @@ f60db21fd46eb1a0cc633802df1c67f7e0f7b79526f7f93d6a2a01e8f7919de9  matrix/cases.l
 5c1e0a681f10cab3cc2b911763a717799e7b2e319c112b4effed8da7e01bfe53  regression_proof.py  <- scripts/regression_proof.py
 7d42240d4a170c73de0f2f731585e99fa8275e78964ceb343c95466058d37ba5  check_gate.py  <- scripts/check_gate.py
 b45af979aa15cad7c12a4fc376da7485f649f07652a3518aa0de4cf98251d9a7  scan_wide_dispatch.py  <- scripts/scan_wide_dispatch.py
-00f83d56c76eb4f622c56a03715517e917e9132a3e77305a41d8b06b4d3c9fb1  isolated_ch.sh  <- scripts/isolated_ch.sh
+019cd4290d47e8b138ffa98f69285cef79beb8dace550910663f54f4d858b923  isolated_ch.sh  <- scripts/isolated_ch.sh
 70ccfbdbfcf6dbce250e04f43d4d93f986a293660141183a54480580a825f4a6  compat/run_compat2.sh  <- tests/compat/run_compat2.sh
 1b82858fb4bcc2a7d1d93c3a33f98e703c8cdee95207a201f19fc32bb138177b  compat/write_dyn_json.sql  <- tests/compat/write_dyn_json.sql
 17cc8975a21720a9defcedf536cb900e6cc7c3315f7db149c9ba503d92c6fd09  compat/read_dyn_json.sql  <- tests/compat/read_dyn_json.sql
@@ -26,3 +26,6 @@ f6f509cf02c87777c895ddb9b14398841452c10739720e00c6367abe934b40b0  historical/gen
 91744e123352542136d61ee98c3e1804bf1dba26954e8638213cbaf607f1c641  historical/hist_check.py  <- tests/historical/hist_check.py
 7c9cd53bc41220ccaf4362c723b7f25e2f834676103b0ca9dfd1972b5ab8b3d7  historical/compare_part_bytes.py  <- tests/historical/compare_part_bytes.py
 ae46edff4c20b945407ad27ad62d1bf3ef0c5387e302146969d9ff49d5219928  historical/hist_backup.sh  <- tests/historical/hist_backup.sh
+37454cfefc24e4830410a1ceb8460da86c59f0ea9162cb204bf7246ac31f5519  parquet/parquet_decimal_writer.py  <- tests/parquet/parquet_decimal_writer.py
+2c07f41dc7ae707ff8d19ff475fbe691a4fde6ea619a373d877b644935128676  replication/mixed_distributed_groupby.sh  <- tests/replication/mixed_distributed_groupby.sh
+7353524b21d4e12373cb4d2b8cf4b138be5f880787e3b4356cc228f8af3574fc  upstream/triage_server_tests.py  <- scripts/triage_server_tests.py

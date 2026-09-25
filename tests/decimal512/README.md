@@ -122,7 +122,14 @@ The entries also record the visible behaviour changes of the fixes (`visible_cha
     BACKUP/RESTORE across builds (`hist_backup.sh`).
   - `tools/upstream/triage_upstream_tests.py`: applicability triage of upstream fixes by running their own
     regression tests on the fork build and on a build that contains the fix.
+  - `tools/upstream/triage_server_tests.py`: the same for tests that need a server (shell tests, clusters,
+    ZooKeeper via the embedded loopback Keeper, pyarrow fixtures with `--python-bin`), on one isolated instance.
   - `tools/replication/mixed_replication.sh`: the mixed-version Keeper/ReplicatedMergeTree check.
+  - `tools/replication/mixed_distributed_groupby.sh`: distributed GROUP BY over shards of both builds (rolling
+    upgrade), compared with baseline-only and candidate-only clusters; not part of the gate (its finding for
+    nullable 29..64-byte keys is a decision about the upgrade procedure, see the release report).
+  - `tools/parquet/parquet_decimal_writer.py`: dependency-free Parquet writer and oracle for Decimal fixtures of any
+    physical layout (used by 10317 and 10318).
   - `tools/perf/perf_compare.py`: the performance comparison.
   - `tools/gate_mutation_test.py`: every fail-closed rule of the gate, on synthetic evidence.
   - `tools/matrix/`: generators with independent oracles, `run_matrix.py`, `lock_cases.py`, and `cases.lock.json`
@@ -130,7 +137,8 @@ The entries also record the visible behaviour changes of the fixes (`visible_cha
   - `tools/regression_proof.py`: the buggy binary must FAIL and the fixed binary must PASS.
   - `tools/check_gate.py`: the gate.
   - `tools/scan_wide_dispatch.py`: the 256-bit dispatch scan.
-  - `tools/isolated_ch.sh`: the isolated loopback server.
+  - `tools/isolated_ch.sh`: the isolated loopback server (`CH_ISO_KEEPER=1`: with a private single-node Keeper on
+    loopback ports that are part of the isolation proof; the stateless tier uses it).
   - `tools/compat/`: on-disk, aggregate-state and protocol compatibility. `native_compat.sh` needs
     `CH_ISO_SCRIPT=tests/decimal512/tools/isolated_ch.sh`.
 
@@ -157,6 +165,6 @@ and on pull requests into `26.3-lts-decimal512`, with a read-only token and no s
 - The protocol compatibility run (`tools/compat/native_compat.sh`) needs two isolated servers and is passed in as
   evidence.
 - Performance is a synthetic comparison on the build host, not a replay of production queries.
-- Upstream regression tests that need a server feature this runner does not provide (ZooKeeper, replication,
-  distributed tables, external services) were not run for the applicability triage; they are "unknown".
+- Upstream regression tests that need external services (S3, Kafka, HDFS, MySQL/PostgreSQL servers, ...) cannot run
+  in isolation; their fixes stay "unknown" in the applicability triage.
 - No sanitizer build of the full binary (disk and shared-host limits); see the release report.

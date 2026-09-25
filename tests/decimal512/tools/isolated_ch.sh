@@ -2,7 +2,8 @@
 # isolated_ch.sh - isolated, NON-PRODUCTION ClickHouse test instances and test runs on this host.
 #
 # PRODUCTION BOUNDARY: this script never talks to production. Instances listen on loopback only (127.0.0.1-3), have
-# no Keeper/raft port, no remote hosts except themselves, and keep data under $CH_ISO_ROOT. Every test
+# no Keeper/raft port unless CH_ISO_KEEPER=1 asks for a private single-node Keeper on loopback ports (below), no
+# remote hosts except themselves, and keep data under $CH_ISO_ROOT. Every test
 # run first proves isolation (all ports owned by our PID, loopback only, expected buildId, binary copied
 # under $CH_ISO_ROOT) and refuses otherwise (fail closed).
 #
@@ -14,8 +15,14 @@
 #                         exits with clickhouse-test's exact status (or cd's status if <tree> cannot be entered)
 #   isolated_ch.sh local  <binary> <sql-file>        clickhouse local, fresh temp dir, stdin=/dev/null
 #
-# Env: CH_ISO_ROOT (default ${CLAUDE_JOB_DIR:-$HOME/.cache}/ch-isolated), CH_ISO_LOGS (default $CH_ISO_ROOT/logs)
-# Port bases per instance name: a=39000 b=49000 c=59000 (tcp=base, http=base-876, mysql=+4, pg=+5, interserver=+9).
+# Env: CH_ISO_ROOT (default ${CLAUDE_JOB_DIR:-$HOME/.cache}/ch-isolated), CH_ISO_LOGS (default $CH_ISO_ROOT/logs),
+#      CH_ISO_KEEPER=1 at `start`: embedded single-node Keeper on loopback (client port base+81, raft port base+82) and a
+#      <zookeeper> section pointing at it, for tests that need ZooKeeper (Replicated*, generateSerialID, ...). Its ports are
+#      part of the isolation proof like all others (owned by the server PID, loopback only), so a Keeper that listened
+#      on a non-loopback address would make every `test` refuse.
+# Port bases per instance name: a=39000 b=49000 c=59000 d=29000 (tcp=base, http=base-876, mysql=+4, pg=+5,
+# interserver=+9, keeper=+81, raft=+82).
+# The production boundary is unchanged with CH_ISO_KEEPER: the Keeper is a private, empty ensemble of this instance.
 # Lessons baked in (2026-09-24): clickhouse local inherits the caller's stdin and can block on a socket ->
 # always </dev/null; 26.8 MemoryWorker reads the session cgroup and a concurrent build makes the server
 # refuse queries -> memory_worker_use_cgroup=0 and memory_worker_dynamic_hard_limit=0 in the test config;
@@ -27,8 +34,11 @@ LOGS=${CH_ISO_LOGS:-$ROOT/logs}
 mkdir -p "$ROOT/bin" "$LOGS"
 
 ports() {
-  case $1 in a) BASE=39000;; b) BASE=49000;; c) BASE=59000;; *) echo "instance name must be a, b or c" >&2; exit 2;; esac
+  case $1 in a) BASE=39000;; b) BASE=49000;; c) BASE=59000;; d) BASE=29000;; *) echo "instance name must be a, b, c or d" >&2; exit 2;; esac
   HTTP=$((BASE - 876)); MYSQL=$((BASE + 4)); PG=$((BASE + 5)); IS=$((BASE + 9)); D=$ROOT/inst-$1
+  KEEPER=$((BASE + 81)); RAFT=$((BASE + 82))
+  ALL_PORTS="$BASE $HTTP $MYSQL $PG $IS"
+  if [ -f "$D/keeper.enabled" ] || [ "${CH_ISO_KEEPER:-0}" = 1 ]; then ALL_PORTS="$ALL_PORTS $KEEPER $RAFT"; fi
 }
 
 prove_isolated() {  # $1 name, $2 expected build id prefix
@@ -36,7 +46,7 @@ prove_isolated() {  # $1 name, $2 expected build id prefix
   local pid; pid=$(cat "$D/server.pid" 2>/dev/null) || { echo "REFUSE: no pid file"; return 90; }
   local exe; exe=$(readlink "/proc/$pid/exe") || { echo "REFUSE: instance not running"; return 90; }
   case "$exe" in "$ROOT"/bin/*) ;; *) echo "REFUSE: server exe $exe is not under $ROOT/bin"; return 89;; esac
-  for p in $BASE $HTTP $MYSQL $PG $IS; do
+  for p in $ALL_PORTS; do
     ss -ltnp | awk -v a="127.0.0.1:$p" '$4==a{print $6}' | grep -q "pid=$pid," || { echo "REFUSE: 127.0.0.1:$p not owned by pid $pid"; return 90; }
   done
   if ss -ltnp | grep "pid=$pid," | awk '{print $4}' | grep -vqE '^127\.0\.0\.[123]:'; then echo "REFUSE: non-loopback listener"; return 91; fi
@@ -75,14 +85,27 @@ if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then return 0; fi
 
 case ${1:-} in
 start)
-  NAME=$2; BIN=$3; TREE=$4; ports "$NAME"
-  for p in $BASE $HTTP $MYSQL $PG $IS; do
+  NAME=$2; BIN=$3; TREE=$4; rm -f "$ROOT/inst-$NAME/keeper.enabled"; ports "$NAME"
+  for p in $ALL_PORTS; do
     ss -ltn | awk '{print $4}' | grep -qE ":$p\$" && { echo "REFUSE: port $p busy"; exit 3; }
   done
   BID=$(readelf -n "$BIN" | awk '/Build ID/{print substr($3,1,12)}')
   COPY=$ROOT/bin/clickhouse-$BID
   [ -x "$COPY" ] || cp "$BIN" "$COPY"
   mkdir -p "$D"/{data,tmp,log,conf,access}
+  KEEPER_XML=""
+  if [ "${CH_ISO_KEEPER:-0}" = 1 ]; then
+    mkdir -p "$D/coordination"; touch "$D/keeper.enabled"
+    # interserver_listen_host: without it the raft listener binds every interface (KeeperServer.cpp), with it only loopback
+    KEEPER_XML="<interserver_listen_host>127.0.0.1</interserver_listen_host>
+    <keeper_server><tcp_port>$KEEPER</tcp_port><server_id>1</server_id>
+        <log_storage_path>$D/coordination/log</log_storage_path><snapshot_storage_path>$D/coordination/snapshots</snapshot_storage_path>
+        <coordination_settings><operation_timeout_ms>10000</operation_timeout_ms><session_timeout_ms>30000</session_timeout_ms><raft_logs_level>warning</raft_logs_level></coordination_settings>
+        <raft_configuration><server><id>1</id><hostname>127.0.0.1</hostname><port>$RAFT</port></server></raft_configuration></keeper_server>
+    <zookeeper><node><host>127.0.0.1</host><port>$KEEPER</port></node></zookeeper>
+    <macros><shard>s1</shard><replica>r1</replica></macros>
+    <distributed_ddl><path>/clickhouse/task_queue/ddl</path></distributed_ddl>"
+  fi
   # a private copy of the tree's format schemas: tests copy their own schemas into CLICKHOUSE_SCHEMA_FILES, which must
   # not be the source tree (nor the host default /var/lib/clickhouse/format_schemas that shell_config.sh falls back to)
   rm -rf "$D/format_schemas" && cp -r "$TREE/tests/queries/0_stateless/format_schemas" "$D/format_schemas"
@@ -113,6 +136,7 @@ start)
     <query_log><database>system</database><table>query_log</table><flush_interval_milliseconds>1000</flush_interval_milliseconds></query_log>
     <text_log><database>system</database><table>text_log</table><level>trace</level><flush_interval_milliseconds>1000</flush_interval_milliseconds></text_log>
     <crash_log><database>system</database><table>crash_log</table><flush_interval_milliseconds>1000</flush_interval_milliseconds></crash_log>
+    $KEEPER_XML
 </clickhouse>
 XML
   cat > "$D/conf/users.xml" <<'XML'
@@ -129,7 +153,7 @@ XML
   ready=0
   for _ in $(seq 1 90); do timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query "SELECT 1" < /dev/null > /dev/null 2>&1 && { ready=1; break; }; sleep 1; done
   [ "$ready" = 1 ] || { echo "REFUSE: instance $NAME did not become ready (see $D/log/)"; exit 94; }
-  echo "started $NAME pid=$(cat "$D/server.pid") build_id=$(timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query 'SELECT buildId()' < /dev/null) ports=$BASE,$HTTP,$MYSQL,$PG,$IS"
+  echo "started $NAME pid=$(cat "$D/server.pid") build_id=$(timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query 'SELECT buildId()' < /dev/null) ports=${ALL_PORTS// /,}"
   ;;
 stop)
   ports "$2"; pid=$(cat "$D/server.pid" 2>/dev/null) || { echo "not running"; exit 0; }
@@ -157,6 +181,7 @@ test)
   export CLICKHOUSE_CONFIG=$D/conf/config.xml CLICKHOUSE_CONFIG_CLIENT=$D/conf/client.xml CLICKHOUSE_BINARY=$EXE
   export CLICKHOUSE_USER_FILES=$TREE/tests/queries/0_stateless CLICKHOUSE_TMP=$ROOT/tests-tmp-$NAME
   export CLICKHOUSE_SCHEMA_FILES=$D/format_schemas
+  [ -f "$D/keeper.enabled" ] && export CLICKHOUSE_PORT_KEEPER=$KEEPER
   mkdir -p "$CLICKHOUSE_TMP"
   TS=$(date -u +%Y%m%dT%H%M%SZ); LOG=$LOGS/test_${LABEL}_${TS}.log
   echo "# instance=$NAME label=$LABEL ts=$TS exe=$EXE tree=$TREE" > "$LOG"
