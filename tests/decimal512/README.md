@@ -37,7 +37,7 @@ host's `/var/lib/clickhouse`.
 | tier | when | what runs | typical time |
 |---|---|---|---|
 | quick | every commit that touches 512-bit code | `midpoint`/`avg2` matrix (1192), operations matrix (7114), key matrix (400) | minutes |
-| full | periodically, and before a release | quick + vector form (1192) + fixed-seed random differential matrix (`random`, 3000, seed 20260925) + 256-bit dispatch scan against `dispatch_scan_baseline.json` + the stateless tests in `stateless_tests.txt` (95: the fork's tests, 10310-10316, and the upstream tests of the cherry-picked fixes) | about 20 minutes |
+| full | periodically, and before a release | quick + vector form (1192) + fixed-seed random differential matrix (`random`, 3000, seed 20260925) + 256-bit dispatch scan against `dispatch_scan_baseline.json` + the stateless tests in `stateless_tests.txt` (97: the fork's tests, 10310-10316, and the upstream tests of the cherry-picked fixes) | about 20 minutes |
 | nightly | scheduled | full + a second fixed-seed random matrix (`random_nightly`, 9000, seed 20260926) | about 30 minutes |
 | release | before an image is built or deployed | nightly + regression proofs against `--buggy-binary` (the baseline) for the keys, midpoint and operations matrices + on-disk and aggregate-state compatibility with the baseline in both directions + mixed-version Keeper/ReplicatedMergeTree replication with rollback (`tools/replication/mixed_replication.sh`, the production Keeper build) + a synthetic performance comparison with the baseline (`tools/perf/perf_compare.py`) + image identity | about an hour |
 

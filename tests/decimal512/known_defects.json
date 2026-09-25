@@ -791,6 +791,42 @@
       ],
       "fixed_by": "3cef223c76c (26.3-lts-decimal512, 2026-09-25; backport of upstream #107481)",
       "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-117925",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: formatDateTimeInJodaSyntax with a time zone name longer than 32 characters overflows a fixed buffer",
+      "effect": "crash (any user, one SELECT)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#118033 of #117925 unchanged, with its test",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05059_formatDateTime_extralong_timezone"
+        }
+      ],
+      "fixed_by": "e6cba6b1df3 (26.3-lts-decimal512, 2026-09-25; backport of upstream #117925)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-107663",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area NULL/RF: a runtime join filter on JSON columns drops matching rows",
+      "effect": "wrong JOIN result",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109074 of #107663 unchanged, with its test",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04327_join_runtime_filter_json"
+        }
+      ],
+      "fixed_by": "a33ab46c456 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107663)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
     }
   ]
 }
