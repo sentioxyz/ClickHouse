@@ -83,6 +83,9 @@ start)
   COPY=$ROOT/bin/clickhouse-$BID
   [ -x "$COPY" ] || cp "$BIN" "$COPY"
   mkdir -p "$D"/{data,tmp,log,conf,access}
+  # a private copy of the tree's format schemas: tests copy their own schemas into CLICKHOUSE_SCHEMA_FILES, which must
+  # not be the source tree (nor the host default /var/lib/clickhouse/format_schemas that shell_config.sh falls back to)
+  rm -rf "$D/format_schemas" && cp -r "$TREE/tests/queries/0_stateless/format_schemas" "$D/format_schemas"
   cat > "$D/conf/config.xml" <<XML
 <clickhouse>
     <logger><level>information</level><log>$D/log/server.log</log><errorlog>$D/log/server.err.log</errorlog><size>200M</size><count>3</count></logger>
@@ -91,7 +94,7 @@ start)
     <interserver_http_port>$IS</interserver_http_port><interserver_http_host>127.0.0.1</interserver_http_host>
     <path>$D/data/</path><tmp_path>$D/tmp/</tmp_path>
     <user_files_path>$TREE/tests/queries/0_stateless/</user_files_path>
-    <format_schema_path>$TREE/tests/queries/0_stateless/format_schemas/</format_schema_path>
+    <format_schema_path>$D/format_schemas/</format_schema_path>
     <user_directories><users_xml><path>$D/conf/users.xml</path></users_xml><local_directory><path>$D/access/</path></local_directory></user_directories>
     <default_profile>default</default_profile><default_database>default</default_database>
     <max_server_memory_usage_to_ram_ratio>0.25</max_server_memory_usage_to_ram_ratio>
@@ -153,6 +156,7 @@ test)
   export CLICKHOUSE_PORT_MYSQL=$MYSQL CLICKHOUSE_PORT_POSTGRESQL=$PG CLICKHOUSE_PORT_INTERSERVER=$IS
   export CLICKHOUSE_CONFIG=$D/conf/config.xml CLICKHOUSE_CONFIG_CLIENT=$D/conf/client.xml CLICKHOUSE_BINARY=$EXE
   export CLICKHOUSE_USER_FILES=$TREE/tests/queries/0_stateless CLICKHOUSE_TMP=$ROOT/tests-tmp-$NAME
+  export CLICKHOUSE_SCHEMA_FILES=$D/format_schemas
   mkdir -p "$CLICKHOUSE_TMP"
   TS=$(date -u +%Y%m%dT%H%M%SZ); LOG=$LOGS/test_${LABEL}_${TS}.log
   echo "# instance=$NAME label=$LABEL ts=$TS exe=$EXE tree=$TREE" > "$LOG"

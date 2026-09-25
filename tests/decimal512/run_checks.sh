@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# Decimal512/Int512 checks of the Sentio fork, in three tiers:
+# Decimal512/Int512 checks of the Sentio fork, in four tiers:
 #   quick    per commit:   midpoint/avg2, operations and key matrices (clickhouse local, no server)
-#   full     periodic:     quick + vector-form matrix + 256-bit dispatch scan + the fork's stateless tests
-#   release  before an image is built or deployed: full + regression proof against the previous build + on-disk and
-#            aggregate-state compatibility in both directions + image identity; Keeper/replication and performance
-#            have no automated check yet and are declared not run, so a release is BLOCKED until they exist.
+#   full     periodic:     quick + vector-form matrix + fixed-seed random differential matrix (3000 cases) + 256-bit
+#                          dispatch scan + the fork's stateless tests
+#   nightly  scheduled:    full + a second fixed-seed random differential matrix (9000 cases)
+#   release  before an image is built or deployed: nightly + regression proofs against the previous build + on-disk and
+#            aggregate-state compatibility in both directions + mixed-version Keeper/ReplicatedMergeTree replication
+#            with rollback + a synthetic performance comparison with the previous build + image identity.
 #
 # PRODUCTION BOUNDARY: this script never talks to production. It runs `clickhouse local` (no listening ports) and,
 # for the stateless tests, one loopback-only server started and proven isolated by tools/isolated_ch.sh (fail
 # closed). It never pulls or pushes images, never uses credentials and never deploys anything.
 #
-#   tests/decimal512/run_checks.sh --tier quick|full|release --binary <clickhouse> --out <new or empty dir>
+#   tests/decimal512/run_checks.sh --tier quick|full|nightly|release --binary <clickhouse> --out <new or empty dir>
 #       [--source-sha <commit the binary was built from>]  default: the binary's embedded GIT_HASH (a hint only)
 #       [--source-clean]                   the operator asserts the binary was built from a clean checkout of that
 #                                          commit (release requires it; the embedded GIT_HASH must also match)
@@ -22,6 +24,11 @@
 #                                          are kept as the (attested) image identity
 #       [--protocol-evidence <native_matrix.tsv>]  release: output of tools/compat/native_compat.sh OLD=<baseline>
 #                                          NEW=<binary> (not run here); its identities.tsv must sit next to it
+#       [--keeper-binary <clickhouse-keeper>]  release: the Keeper build production runs (never upgraded); used by
+#                                          tools/replication/mixed_replication.sh (loopback only)
+#       [--keeper-expected-sha256 <hex>]   release: sha256 of the production Keeper binary, with --keeper-basis <text>
+#                                          saying where it comes from (an operator attestation, compared by the gate)
+#       [--perf-rounds <n>]                release: rounds of tools/perf/perf_compare.py (default 7, at least 5)
 #       [--instance a|b|c]                 isolated server slot for the stateless tests (default c: ports 59000..)
 #
 # Exit status is the gate's (tools/check_gate.py): 0 PASS, 3 PASS WITH OPEN KNOWN DEFECTS (not releasable),
@@ -33,7 +40,7 @@ TREE=$(cd "$HERE/../.." && pwd)
 T=$HERE/tools
 
 usage() { sed -n '2,/^set -u$/p' "$0" | sed '$d' >&2; exit 2; }
-TIER= BIN= OUT= SRC= BUGGY= IMAGE= PROTO= CLEAN=null INST=c
+TIER= BIN= OUT= SRC= BUGGY= IMAGE= PROTO= CLEAN=null INST=c KEEPER= KEEPER_SHA= KEEPER_BASIS= PERF_ROUNDS=7
 while [ $# -gt 0 ]; do
   case $1 in
     --tier) TIER=$2; shift 2;;
@@ -45,10 +52,14 @@ while [ $# -gt 0 ]; do
     --image) IMAGE=$2; shift 2;;
     --protocol-evidence) PROTO=$2; shift 2;;
     --instance) INST=$2; shift 2;;
+    --keeper-binary) KEEPER=$2; shift 2;;
+    --keeper-expected-sha256) KEEPER_SHA=$2; shift 2;;
+    --keeper-basis) KEEPER_BASIS=$2; shift 2;;
+    --perf-rounds) PERF_ROUNDS=$2; shift 2;;
     *) usage;;
   esac
 done
-case $TIER in quick|full|release) ;; *) usage;; esac
+case $TIER in quick|full|nightly|release) ;; *) usage;; esac
 case $INST in a|b|c) ;; *) usage;; esac
 [ -n "$BIN" ] && [ -x "$BIN" ] || { echo "ERROR: --binary must be an executable clickhouse binary" >&2; exit 2; }
 [ -n "$OUT" ] || usage
@@ -85,7 +96,10 @@ gen() {
    python3 gen_midpoint_matrix.py "$OUT/gen/midpoint.sql" "$OUT/gen/midpoint.oracle.jsonl" &&
    python3 gen_midpoint_vector.py "$OUT/gen/midpoint_vector.sql" "$OUT/gen/midpoint_vector.oracle.jsonl" &&
    python3 gen_decimal512_ops_matrix.py "$OUT/gen/ops.sql" "$OUT/gen/ops.oracle.jsonl" &&
-   python3 gen_composite_keys.py "$OUT/gen/keys.sql" "$OUT/gen/keys.oracle.jsonl") > "$OUT/logs/gen.log" 2>&1 \
+   python3 gen_composite_keys.py "$OUT/gen/keys.sql" "$OUT/gen/keys.oracle.jsonl" &&
+   python3 gen_random_decimal512.py "$OUT/gen/random.sql" "$OUT/gen/random.oracle.jsonl" &&
+   python3 gen_random_decimal512.py "$OUT/gen/random_nightly.sql" "$OUT/gen/random_nightly.oracle.jsonl" --seed 20260926 --cases 9000) \
+    > "$OUT/logs/gen.log" 2>&1 \
     || { log "ERROR: matrix generation failed (see logs/gen.log)"; exit 1; }
 }
 
@@ -108,6 +122,12 @@ matrix_suite keys-matrix keys tested
 if [ "$TIER" != quick ]; then
   run_matrix midpoint_vector "$BIN" tested
   matrix_suite midpoint-vector-matrix midpoint_vector tested
+  run_matrix random "$BIN" tested
+  matrix_suite random-matrix random tested
+  if [ "$TIER" = nightly ] || [ "$TIER" = release ]; then
+    run_matrix random_nightly "$BIN" tested
+    matrix_suite random-nightly-matrix random_nightly tested
+  fi
 
   if git -C "$TREE" cat-file -e "$SRC^{commit}" 2>/dev/null; then
     python3 "$T/scan_wide_dispatch.py" --repo "$TREE" --rev "$SRC" --baseline "$HERE/dispatch_scan_baseline.json" --json \
@@ -156,9 +176,9 @@ if [ -n "$BUGGY" ]; then
 fi
 if [ "$TIER" = release ]; then
   if [ -n "$BUGGY" ]; then
-    for m in midpoint keys; do run_matrix $m "$BUGGY" previous; done
+    for m in midpoint ops keys; do run_matrix $m "$BUGGY" previous; done
     python3 "$T/regression_proof.py" --buggy previous="$OUT/results/keys.previous.result.jsonl:$OUT/results/keys.previous.summary.json" \
-      --fixed tested="$OUT/results/keys.tested.result.jsonl:$OUT/results/keys.tested.summary.json" --target keys-512 \
+      --fixed tested="$OUT/results/keys.tested.result.jsonl:$OUT/results/keys.tested.summary.json" --target keys-512 --target single-key-512 \
       --control keys-control --control single-key-control --buggy-binary "$BUGGY" --fixed-binary "$BIN" \
       --json "$OUT/results/proof.keys.json" > "$OUT/results/proof.keys.txt" 2>&1
     log "regression proof keys: rc=$?"
@@ -167,8 +187,17 @@ if [ "$TIER" = release ]; then
       --control midpoint-reject --buggy-binary "$BUGGY" --fixed-binary "$BIN" \
       --json "$OUT/results/proof.midpoint.json" > "$OUT/results/proof.midpoint.txt" 2>&1
     log "regression proof midpoint: rc=$?"
-    proof_suite keys '["keys-512"]' '["keys-control", "single-key-control"]'
+    OPS_T="boundary parse-boundary int512-arith int512-supertype midpoint-int512 scale-overflow convert-wide scale-154"
+    OPS_C="int-wrap-control int-supertype-control midpoint-int-control scale-overflow-control convert-wide-control"
+    python3 "$T/regression_proof.py" --buggy previous="$OUT/results/ops.previous.result.jsonl:$OUT/results/ops.previous.summary.json" \
+      --fixed tested="$OUT/results/ops.tested.result.jsonl:$OUT/results/ops.tested.summary.json" \
+      $(for c in $OPS_T; do printf -- '--target %s ' "$c"; done) $(for c in $OPS_C; do printf -- '--control %s ' "$c"; done) \
+      --buggy-binary "$BUGGY" --fixed-binary "$BIN" --json "$OUT/results/proof.ops.json" > "$OUT/results/proof.ops.txt" 2>&1
+    log "regression proof ops: rc=$?"
+    jlist() { printf '['; local sep=; for c in "$@"; do printf '%s"%s"' "$sep" "$c"; sep=', '; done; printf ']'; }
+    proof_suite keys '["keys-512", "single-key-512"]' '["keys-control", "single-key-control"]'
     proof_suite midpoint '["midpoint-dec512"]' '["midpoint-reject"]'
+    proof_suite ops "$(jlist $OPS_T)" "$(jlist $OPS_C)"
   else
     NOT_RUN+=('{"name": "regression-proof", "reason": "no --buggy-binary given"}')
   fi
@@ -201,8 +230,25 @@ if [ "$TIER" = release ]; then
     IMG_JSON=", \"image\": {\"ref\": \"$IMAGE\", \"id\": \"$IID\", \"repo_digests\": \"$RDIG\", \"binary_sha256\": \"$ISHA\", \"inspect\": \"results/image_inspect.json\", \"binary_sha256_output\": \"results/image_binary_sha256.txt\"}"
     log "image $IMAGE: id=${IID:-unknown} repo digests=${RDIG:-none} binary sha256=${ISHA:-unknown}"
   fi
-  NOT_RUN+=('{"name": "keeper-replication", "reason": "no automated isolated Keeper/ReplicatedMergeTree mixed-version check exists yet"}')
-  NOT_RUN+=('{"name": "performance", "reason": "no benchmark against the previous build exists yet"}')
+  if [ -n "$BUGGY" ] && [ -n "$KEEPER" ]; then
+    # Keeper (the production build, never upgraded) + two replicas on 127.0.0.1: baseline -> candidate -> rollback
+    bash "$T/replication/mixed_replication.sh" "$OUT/replication" --keeper "$KEEPER" --baseline "$BUGGY" --candidate "$BIN" \
+      > "$OUT/logs/replication.log" 2>&1
+    log "mixed-version replication: rc=$?"
+    rm -rf "$OUT"/replication/iso/r1/data "$OUT"/replication/iso/r2/data "$OUT"/replication/iso/keeper/coordination
+    KX=; [ -n "$KEEPER_SHA" ] && KX=", \"keeper_expected_sha256\": \"$KEEPER_SHA\", \"keeper_basis\": \"${KEEPER_BASIS:-operator}\""
+    suite "{\"name\": \"keeper-replication\", \"kind\": \"replication\", \"steps\": \"replication/steps.tsv\", \"identities\": \"replication/identities.tsv\"$KX}"
+  else
+    NOT_RUN+=('{"name": "keeper-replication", "reason": "needs --buggy-binary (baseline) and --keeper-binary (the production Keeper build)"}')
+  fi
+  if [ -n "$BUGGY" ]; then
+    python3 "$T/perf/perf_compare.py" --baseline "$BUGGY" --candidate "$BIN" --out "$OUT/perf" --rounds "$PERF_ROUNDS" \
+      > "$OUT/logs/perf.log" 2>&1
+    log "performance comparison: rc=$? $(head -1 "$OUT/logs/perf.log" 2>/dev/null | cut -c1-200)"
+    suite '{"name": "performance", "kind": "perf", "summary": "perf/perf_summary.json", "raw": "perf/perf_raw.tsv"}'
+  else
+    NOT_RUN+=('{"name": "performance", "reason": "no --buggy-binary (baseline) to compare with"}')
+  fi
 fi
 
 DIRTY=$CLEAN   # null unless --source-clean: this script cannot see the tree the binary was built from

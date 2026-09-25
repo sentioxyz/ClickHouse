@@ -1,5 +1,6 @@
 # Stateless tests of the Sentio fork's Decimal512/Int512 work: every test added or modified by the fork relative to
-# the upstream base (git diff --name-only --diff-filter=AM v26.3.12.3-lts(d23c7536b98) cd0d6088c5a -- tests/queries/0_stateless).
+# the upstream base (git diff --name-only --diff-filter=AM v26.3.12.3-lts(d23c7536b98) cd0d6088c5a -- tests/queries/0_stateless),
+# plus 10310-10316 (added 2026-09-25 with the Decimal512/Int512 fixes; 10316: Decimal(154, 154) and precision 154).
 # Selected by exact name (the runner builds "^<name>\." selectors); every listed test must produce a result line.
 # A line "<name>  # exclude: <KD-id>: <reason>" is not run; the gate counts it as a failure of that open known defect,
 # never as a pass. An exclusion without an open entry in known_defects.json fails the gate.
@@ -28,7 +29,7 @@
 02468_decimal512_exception_handling
 02469_decimal512_performance
 02475_precise_decimal_arithmetics
-02483_capnp_decimals  # exclude: KD-TEST-02483-PATH: copies its schema into the hard-coded /workspace/.clickhouse_runtime (writes outside the test tree); not run until the test is fixed, counted as a known-open failure
+02483_capnp_decimals
 02676_to_decimal_string
 02685_decimal512_various
 02686_postgres_protocol_decimal_512
@@ -45,6 +46,13 @@
 10307_decimal512_end_to_end
 10308_nullable_fixed_keys_512_bitmap
 10309_decimal512_midpoint_mixed_types
+10310_int512_arithmetic
+10311_int512_common_supertype
+10312_int512_single_key
+10313_int512_midpoint
+10314_decimal512_int512_range
+10315_decimal512_multiply_overflow
+10316_decimal512_scale154
 alter_add_decimal_column
 alter_decimal_256_to_512_conversion
 blockchain_decimal512_added_condition
@@ -60,3 +68,35 @@ blockchain_decimal512_implicit_conversion_blockchain
 blockchain_decimal512_implicit_conversion_edge_cases
 blockchain_decimal512_special_scenarios
 blockchain_decimal512_type_conversion
+# upstream fixes cherry-picked into the fork (2026-09-25), with their upstream tests:
+04745_join_low_cardinality_wide_int_key
+04047_join_filter_pushdown_equivalent_using_types
+04092_hash_join_shrink_replicated_columns
+04330_join_global_left_semi_chunk_consistency
+04650_join_use_nulls_repeated_on_condition_in_where
+04077_lazy_materialization_array_join
+04408_lazy_materialization_part_offset_prewhere
+04328_union_branch_sparse_header_mismatch
+04070_view_with_projection_not_found_column
+04299_constraint_subst_correlated_subquery_root
+04305_constraint_const_substitution_correlated_subquery
+04927_uniq_injective_tuple_nullable
+04263_single_value_or_null_merge_state
+03212_variant_dynamic_cast_or_default
+04510_accurateCastOrDefault_settings
+04512_accurateCastOrDefault_nullable_target
+05030_ml_method_malformed_state
+05031_resample_combinator_overflow
+05032_group_uniq_array_malformed_state
+04338_window_funnel_deserialize_event_bounds
+04262_uniq_state_or_null_with_rollup
+04273_uniq_state_or_null_rollup_consumers
+04338_has_map_dynamic_key_lowcardinality_arg
+05027_read_wkb_deep_nesting
+05028_json_merge_patch_deep_nesting
+05029_remote_description_deep_braces
+05034_capnproto_deep_schema
+04260_dynamic_subcolumn_compressed_memory
+04626_mutation_in_partition_query_parameter
+04692_insert_dedup_json_path_names
+04001_attach_clone_part_level_reset

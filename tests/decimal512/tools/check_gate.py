@@ -5,7 +5,7 @@ PRODUCTION BOUNDARY: reads local files, hashes them and reads ELF notes (`readel
 no engine or container, pulls nothing and connects nowhere.
 
   check_gate.py --manifest evidence.json --known-defects known_defects.json --case-lock cases.lock.json
-                [--tier quick|full|release] [--json out]
+                [--tier quick|full|nightly|release] [--json out]
 
 Exit codes: 0 PASS; 3 PASS WITH OPEN KNOWN DEFECTS (quick/full only: nothing unexpected failed, but the build is
 not releasable); 1 FAIL or BLOCKED; 2 usage or unreadable input.
@@ -36,6 +36,12 @@ Rules (each violation is printed as a PROBLEM and fails the gate):
     compared.
   * stateless tests: the selection is re-derived from the pinned selection file; every selected test has exactly
     one result line, no test outside the selection ran, skips fail, and the log names the server's build.
+  * Keeper/replication (tools/replication/mixed_replication.sh): identities bind BASELINE to the baseline and CANDIDATE to
+    the gated binary (KEEPER is reported, and compared with the declared production Keeper binary when given); every
+    required step is present once with rc 0 and SAME/OK; any DIFF/ERROR/REFUSED/NOT_FETCHED step fails.
+  * performance (tools/perf/perf_compare.py): identities as above; the thresholds must be the fixed ones below and are
+    reported as engineering judgment, not an SLO; medians, ratios and verdicts are recomputed from perf_raw.tsv (at
+    least 5 rounds per build and query); a SLOWER query, a NOISY control or a failed query fails the gate.
   * missing evidence, zero cases, `not_run` entries (release), unreviewed dispatch-scan sites fail.
   * known defects (registry): a recomputed failure that matches an OPEN defect is known-open, any other failure is
     unexpected. An open defect whose checks ran and all passed is stale; a selector that matches no row of a suite
@@ -51,17 +57,29 @@ import json
 import mmap
 import os
 import re
+import statistics
 import subprocess
 import sys
 
 REQUIRED = {
     "quick": ["midpoint-matrix", "ops-matrix", "keys-matrix"],
-    "full": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "fork-stateless", "dispatch-scan"],
-    "release": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "fork-stateless", "dispatch-scan",
+    "full": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "random-matrix", "fork-stateless",
+             "dispatch-scan"],
+    "nightly": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "random-matrix",
+                "random-nightly-matrix", "fork-stateless", "dispatch-scan"],
+    "release": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "random-matrix",
+                "random-nightly-matrix", "fork-stateless", "dispatch-scan",
                 "regression-proof", "compat-disk", "compat-protocol", "keeper-replication", "performance"],
 }
 HEX40, HEX64 = re.compile(r"^[0-9a-f]{40}$"), re.compile(r"^[0-9a-f]{64}$")
 SUMMARY_ATTESTATION = ("sql_sha256", "oracle_sha256", "ids_sha256", "cases", "result_sha256")
+REPLICATION_REQUIRED_STEPS = ("keeper.start", "r1.start.baseline", "r2.start.baseline", "create", "fetch.baseline_to_baseline",
+                              "r2.start.candidate", "read.after_upgrade", "fetch.baseline_to_candidate", "fetch.candidate_to_baseline",
+                              "mutation.baseline_initiated", "mutation.candidate_initiated", "merge.candidate_fetched_by_baseline",
+                              "merge.downloaded_by_baseline", "r2.rollback.baseline", "read.after_rollback", "replication.after_rollback")
+REPLICATION_BAD_VERDICTS = ("DIFF", "ERROR", "REFUSED", "NOT_FETCHED")
+# performance thresholds: engineering judgment (initial, 2026-09-25), NOT a user-approved SLO; perf_compare.py uses the same
+PERF_RATIO_MAX, PERF_NOISE_FLOOR_S, PERF_CONTROL_BAND, PERF_MIN_ROUNDS = 1.10, 0.010, (0.90, 1.10), 5
 PROTOCOL_ROLES = ("OLD", "NEW")
 
 
@@ -548,8 +566,107 @@ def suite_scan(g: Gate, s: dict, binary: dict) -> None:
                    f"{sm.get('legacy')} legacy (debt), {sm.get('lost_unreviewed')} lost unreviewed, rev {sm.get('rev_sha', '')[:11]}")
 
 
+def bind_roles(g: Gate, name: str, ids: dict, binary: dict) -> None:
+    """BASELINE must be the verified baseline, CANDIDATE the gated binary (sha256 recorded by the runner before the run)."""
+    for role, want, what in (("BASELINE", g.baseline, "baseline"), ("CANDIDATE", binary, "candidate")):
+        got = (ids.get(role) or {}).get("sha256")
+        if not want or got != want.get("sha256"):
+            g.problems.append(f"{name}: {role} ran sha256 {got}, not the {what} {(want or {}).get('sha256')}")
+
+
+def suite_replication(g: Gate, s: dict, binary: dict) -> None:
+    """tools/replication/mixed_replication.sh: identities.tsv and steps.tsv."""
+    name = s.get("name")
+    ids = {}
+    for line in open(g.path(s["identities"]), encoding="utf-8").read().splitlines()[1:]:
+        parts = line.split("\t")
+        if len(parts) >= 4:
+            ids[parts[0]] = {"path": parts[1], "sha256": parts[2], "build_id": parts[3], "version": parts[4] if len(parts) > 4 else ""}
+    bind_roles(g, name, ids, binary)
+    keeper = ids.get("KEEPER") or {}
+    if not keeper.get("sha256"):
+        g.problems.append(f"{name}: no KEEPER identity")
+    want_keeper = s.get("keeper_expected_sha256")
+    if want_keeper:
+        ok = keeper.get("sha256") == want_keeper
+        g.record("Keeper binary in the replication check", keeper.get("sha256"), f"attested ({s.get('keeper_basis') or 'operator'})", "OK" if ok else "MISMATCH")
+        if not ok:
+            g.problems.append(f"{name}: Keeper sha256 {keeper.get('sha256')} is not the declared production Keeper binary {want_keeper}")
+    rows = [l.split("\t") for l in open(g.path(s["steps"]), encoding="utf-8").read().splitlines()[1:] if l.strip()]
+    by_step = collections.defaultdict(list)
+    for r in rows:
+        r = (r + [""] * 5)[:5]
+        by_step[r[0]].append(r)
+        if r[3] in REPLICATION_BAD_VERDICTS:
+            g.problems.append(f"{name}: step {r[0]} ({r[1]}) rc={r[2]} {r[3]}: {r[4][:160]}")
+    for st in REPLICATION_REQUIRED_STEPS:
+        got = by_step.get(st, [])
+        if not got:
+            g.problems.append(f"{name}: required step {st} missing")
+            continue
+        if len(got) > 1:
+            g.problems.append(f"{name}: step {st} appears {len(got)} times")
+        ok = got[0][2] == "0" and got[0][3] in ("SAME", "OK")
+        g.rows_seen.append({"suite": name, "id": st, "status": "PASS" if ok else "FAIL"})
+        if not ok:
+            g.problems.append(f"{name}: required step {st} rc={got[0][2]} {got[0][3]}")
+    info = [f"{r[0]}: {r[4][:200]}" for r in rows if (r + [""] * 4)[3] == "INFO"]
+    g.notes.append(f"{name}: {len(REPLICATION_REQUIRED_STEPS)} required steps checked (Keeper {keeper.get('version', '?')} sha256 {str(keeper.get('sha256'))[:12]}); "
+                   f"informational: {info if info else 'none'}")
+
+
+def suite_perf(g: Gate, s: dict, binary: dict) -> None:
+    """tools/perf/perf_compare.py: verdicts recomputed from perf_raw.tsv with the fixed thresholds."""
+    name = s.get("name")
+    sm = json.load(open(g.path(s["summary"]), encoding="utf-8"))
+    ids = {k.upper(): v for k, v in (sm.get("identities") or {}).items()}
+    bind_roles(g, name, ids, binary)
+    th = sm.get("thresholds") or {}
+    if (th.get("ratio_max"), th.get("noise_floor_s"), tuple(th.get("control_band") or ())) != (PERF_RATIO_MAX, PERF_NOISE_FLOOR_S, PERF_CONTROL_BAND):
+        g.problems.append(f"{name}: thresholds {th} are not the gate's ({PERF_RATIO_MAX}, {PERF_NOISE_FLOOR_S}, {PERF_CONTROL_BAND})")
+    if "engineering judgment" not in str(th.get("basis", "")):
+        g.problems.append(f"{name}: the thresholds are not labelled as engineering judgment (they are not an approved SLO)")
+    raw = collections.defaultdict(list)
+    for line in open(g.path(s["raw"]), encoding="utf-8").read().splitlines()[1:]:
+        rnd, role, qid, sec = (line.split("\t") + [""] * 4)[:4]
+        raw[(role, qid)].append(float(sec) if sec else None)
+    qs = sm.get("queries") or []
+    if not qs:
+        g.problems.append(f"{name}: zero queries")
+    reported = {r.get("query"): r.get("verdict") for r in sm.get("results") or []}
+    slower, noisy, failed = [], [], []
+    for q in qs:
+        qid, cat = q.get("id"), q.get("category")
+        med = {}
+        for role in ("baseline", "candidate"):
+            ts = raw.get((role, qid), [])
+            if len(ts) < PERF_MIN_ROUNDS or len(ts) != sm.get("rounds"):
+                g.problems.append(f"{name}: {qid} has {len(ts)} {role} runs (need {sm.get('rounds')} >= {PERF_MIN_ROUNDS})")
+            med[role] = statistics.median(ts) if ts and None not in ts else None
+        b, c = med["baseline"], med["candidate"]
+        if cat == "new":
+            v = "NEW (candidate only)" if c is not None else "FAILED"
+        elif b is None or c is None:
+            v = "FAILED"
+        else:
+            ratio = c / b if b > 0 else float("inf")
+            if cat == "control":
+                v = "OK" if PERF_CONTROL_BAND[0] <= ratio <= PERF_CONTROL_BAND[1] or abs(c - b) <= PERF_NOISE_FLOOR_S else "NOISY"
+            else:
+                v = "SLOWER" if ratio > PERF_RATIO_MAX and c - b > PERF_NOISE_FLOOR_S else "OK"
+        if reported.get(qid) != v:
+            g.problems.append(f"{name}: {qid}: perf_compare.py says {reported.get(qid)!r}, the recomputation says {v!r}")
+        (slower if v == "SLOWER" else noisy if v == "NOISY" else failed if v == "FAILED" else []).append(qid)
+        g.rows_seen.append({"suite": name, "id": qid, "status": "PASS" if v in ("OK", "NEW (candidate only)") else "FAIL"})
+    for what, lst in (("slower than the baseline beyond the threshold", slower), ("noisy controls (inconclusive)", noisy), ("failed queries", failed)):
+        if lst:
+            g.problems.append(f"{name}: {what}: {lst}")
+    g.notes.append(f"{name}: {len(qs)} queries, {sm.get('rounds')} rounds, {sm.get('threads')} threads; slower {slower}, noisy {noisy}, failed {failed}; "
+                   f"thresholds {PERF_RATIO_MAX}x/{PERF_NOISE_FLOOR_S * 1000:.0f} ms ({th.get('basis')}); load {sm.get('environment', {}).get('loadavg_before')} -> {sm.get('environment', {}).get('loadavg_after')}")
+
+
 KINDS = {"matrix": suite_matrix, "clickhouse-test": suite_clickhouse_test, "proof": suite_proof, "compat": suite_compat,
-         "protocol": suite_protocol, "scan": suite_scan}
+         "protocol": suite_protocol, "scan": suite_scan, "replication": suite_replication, "perf": suite_perf}
 
 
 def matches(sel: dict, rec: dict) -> bool:

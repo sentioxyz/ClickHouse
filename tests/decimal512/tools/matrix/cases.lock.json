@@ -39,26 +39,79 @@
    "sql_sha256": "65041829468c0a933c64eb68558f6ead2c2a6a62a438f0803bb441a5320e4cfd"
   },
   "ops": {
-   "cases": 7026,
+   "cases": 7114,
    "categories": {
     "arith": 3552,
     "boundary": 43,
     "compare": 2368,
+    "convert-wide": 17,
+    "convert-wide-control": 5,
     "float": 720,
     "int-supertype-control": 7,
-    "int-wrap-control": 14,
-    "int512-arith": 11,
+    "int-wrap-control": 18,
+    "int512-arith": 18,
     "int512-supertype": 7,
     "midpoint-int-control": 28,
     "midpoint-int512": 28,
     "null": 240,
-    "parse-boundary": 8
+    "parse-boundary": 14,
+    "scale-154": 10,
+    "scale-overflow": 29,
+    "scale-overflow-control": 10
    },
    "generator": "gen_decimal512_ops_matrix.py",
-   "generator_sha256": "7107a8361d27b426bdf7d3fefc42078d7cd62aa2ec3ce0e7de17565120628c92",
-   "ids_sha256": "198ffe9ad1fd0df02c4972772e97f94d612f9edfc35401140d57cac7f564f597",
-   "oracle_sha256": "813e2e4000eca4cf66dc788083a0aa7ec7395d8c385de258e8ccea70a677b529",
-   "sql_sha256": "f999cda9e990850e23b61ac849834a3a4dd309a98d95fade034a0fa5ca302d91"
+   "generator_sha256": "5e75196b7a3c3b64f36a5292332af10058a6a87eb32f5273b848aacae7ca210d",
+   "ids_sha256": "1db0d0552d434ee288aea37d4c1dc2ec15fb89db0bef1328ab1a995a8886279b",
+   "oracle_sha256": "a3b3811095a3b6aec979e28a5b8662932dfb850b9b67110196f7ab5cbef10518",
+   "sql_sha256": "45ec31927758b1dd8dd79928d7615e4e1995cae88e6ebae189ae72f7bbc9f23c"
+  },
+  "random": {
+   "cases": 3000,
+   "categories": {
+    "random-cast": 266,
+    "random-compare": 283,
+    "random-compare-int": 258,
+    "random-divide": 257,
+    "random-greatest": 281,
+    "random-least": 279,
+    "random-minus": 295,
+    "random-multiply": 256,
+    "random-plus": 247,
+    "random-round": 286,
+    "random-text": 292
+   },
+   "generator": "gen_random_decimal512.py",
+   "generator_sha256": "3bb1627e782d34135b9b4161bbca2a4eb119c8c0ee2c3c4b34cbc7bfd0fbc356",
+   "ids_sha256": "27cf65ae7afa7bc7f171f1d21c2c7df2527aeb5cdfda17f2f1d161410c80f5f0",
+   "oracle_sha256": "8cf9b5deb8738c826cada78242361cac6bcb5cdfd20cccdc9e680187d20d37b0",
+   "sql_sha256": "4bc1bfc7164ddd1c7bad43994f40cbcaeeba1d0a8468ac32ed2188f2d1306fc9"
+  },
+  "random_nightly": {
+   "cases": 9000,
+   "categories": {
+    "random-cast": 776,
+    "random-compare": 807,
+    "random-compare-int": 833,
+    "random-divide": 803,
+    "random-greatest": 809,
+    "random-least": 791,
+    "random-minus": 847,
+    "random-multiply": 871,
+    "random-plus": 830,
+    "random-round": 824,
+    "random-text": 809
+   },
+   "generator": "gen_random_decimal512.py",
+   "generator_args": [
+    "--seed",
+    "20260926",
+    "--cases",
+    "9000"
+   ],
+   "generator_sha256": "3bb1627e782d34135b9b4161bbca2a4eb119c8c0ee2c3c4b34cbc7bfd0fbc356",
+   "ids_sha256": "38b810b78cbd25c245ea79ca12a6f3e146fe4f442b9bbbf386cdc9d2aa530af1",
+   "oracle_sha256": "23be046ed65bb6a549506d05878b7f583cae6b9f20404109b079531615a1f690",
+   "sql_sha256": "e5db09a2eda45679b3bde4e967159cffc6f387aacf013f58bc211be546d5f3be"
   }
  },
  "schema": 1

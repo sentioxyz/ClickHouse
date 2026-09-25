@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "updated": "2026-09-24",
-  "about": "Open Decimal512/Int512 defects of the Sentio fork, as exposed by the checks in tests/. scripts/check_gate.py reads this file: a failing check that matches an OPEN defect is reported as known-open (quick/full exit 3, release BLOCKED), any other failing check is unexpected (exit 1). An open defect whose checks all pass is stale and fails the gate: mark it fixed with evidence in the same change. Expectations encode the intended semantics; they are never edited to make a binary pass. Entries with status `fixed` stay as regression guards: their checks must pass (a failure is unexpected), and a release needs a PROVEN regression proof (recomputed by the gate: the baseline fails, the candidate passes) for every `fixed` entry that names a `proof`.",
+  "updated": "2026-09-25",
+  "about": "Decimal512/Int512 defects (open and fixed) of the Sentio fork, as exposed by the checks in tests/. scripts/check_gate.py reads this file: a failing check that matches an OPEN defect is reported as known-open (quick/full exit 3, release BLOCKED), any other failing check is unexpected (exit 1). An open defect whose checks all pass is stale and fails the gate: mark it fixed with evidence in the same change. Expectations encode the intended semantics; they are never edited to make a binary pass. Entries with status `fixed` stay as regression guards: their checks must pass (a failure is unexpected), and a release needs a PROVEN regression proof (recomputed by the gate: the baseline fails, the candidate passes) for every `fixed` entry that names a `proof`.",
   "defects": [
     {
       "id": "KD-KEYSNULLMAP-512",
@@ -50,33 +50,41 @@
     {
       "id": "KD-D512-PRECISION-154",
       "title": "Decimal512 allows precision 154 but Int512 holds only |v| < 2^511 (~6.7e153): out-of-range literals/casts wrap silently. Fork-specific: upstream Decimal256 (precision 76) always fits Int256 (~5.8e76)",
-      "status": "open",
+      "status": "fixed",
       "effect": "silent wrong result",
       "affects": [
         "26.3 prod a394e92fb5d",
         "26.3 hotfix cd0d6088c5a",
         "26.8 port fff703a776e"
       ],
-      "decision": "user: reject values outside the Int512 range on parse/cast (keep precision 154), or cap the precision at 153 (changes the type, needs a migration plan)",
+      "decision": "user 2026-09-25: keep precision 154 and check the Int512 range after text parsing and CAST/scale conversion (implemented)",
       "match": [
         {
           "suite": "ops-matrix",
           "category": "parse-boundary"
         }
       ],
-      "evidence": "evidence/phase6/matrix_r4 (ops, category parse-boundary)"
+      "evidence": "evidence/phase6/matrix_r4 (ops, category parse-boundary); fixed: evidence/fix_ci_20260925",
+      "fixed_by": "ccec6585e62 (26.3-lts-decimal512, 2026-09-25)",
+      "visible_change": "text and CAST inputs outside |v| < 2^511 (about 6.7e153) used to wrap silently and are now rejected (ARGUMENT_OUT_OF_BOUND or DECIMAL_OVERFLOW; the OrNull/OrZero forms give NULL/0)",
+      "proof": {
+        "matrix": "ops",
+        "targets": [
+          "parse-boundary"
+        ]
+      }
     },
     {
       "id": "KD-D512-MUL-OVERFLOW",
       "title": "Decimal512 multiply does not detect overflow (decimal_check_overflow=1) and wraps silently; plus/minus at the Int512 limit are detected. Inherited: upstream documents that overflow checks are not implemented for Decimal128/Decimal256 (docs/en/sql-reference/data-types/decimal.md:70-72) and official 26.8.8.8 wraps the same way",
-      "status": "open",
+      "status": "fixed",
       "effect": "silent wrong result (upstream-documented limitation for wide decimals)",
       "affects": [
         "26.3 prod a394e92fb5d",
         "26.3 hotfix cd0d6088c5a",
         "26.8 port fff703a776e"
       ],
-      "decision": "user: implement an overflow-checked 512-bit multiply (the expectation used here, as Decimal32/Decimal64 behave), or accept the upstream limitation for Decimal512 in writing; the checks keep failing either way until implemented, so an accepted limitation is an explicit release decision, never a pass",
+      "decision": "user 2026-09-25: Decimal512 multiplication obeys decimal_check_overflow (default 1: DECIMAL_OVERFLOW, as Decimal32/Decimal64); Decimal128/Decimal256 keep the upstream behaviour (no check) (implemented)",
       "match": [
         {
           "suite": "ops-matrix",
@@ -84,88 +92,125 @@
           "op": "multiply"
         }
       ],
-      "evidence": "evidence/phase6/matrix_r4 (ops, category boundary, op multiply); official 26.8.8.8: toDecimal128/256 multiply wraps, toDecimal32/64 multiply -> DECIMAL_OVERFLOW (2026-09-24)"
+      "evidence": "evidence/phase6/matrix_r4 (ops, category boundary, op multiply); official 26.8.8.8: toDecimal128/256 multiply wraps, toDecimal32/64 multiply -> DECIMAL_OVERFLOW (2026-09-24); fixed: evidence/fix_ci_20260925",
+      "fixed_by": "e919236606a (26.3-lts-decimal512, 2026-09-25)",
+      "visible_change": "an overflowing Decimal512 multiplication raises DECIMAL_OVERFLOW instead of returning a wrapped value; decimal_check_overflow = 0 restores the wrap. The fork test blockchain_decimal512_arithmetic_operations pinned two wrapped results; it now expects the error by default and keeps the wrapped values under decimal_check_overflow = 0",
+      "proof": {
+        "matrix": "ops",
+        "targets": [
+          "boundary"
+        ]
+      }
     },
     {
       "id": "KD-I512-SINGLE-KEY",
       "title": "A single (U)Int512 key (non-nullable, or nullable with its null map stripped) in IN / DISTINCT / JOIN throws LOGICAL_ERROR 'Numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32'",
-      "status": "open",
+      "status": "fixed",
       "effect": "query error (LOGICAL_ERROR; aborts builds that abort on logical errors, e.g. Debug)",
       "affects": [
         "26.3 prod a394e92fb5d",
         "26.3 hotfix cd0d6088c5a",
         "26.8 port fff703a776e"
       ],
-      "decision": "none needed for the expectation (same result as Int256/Decimal512(0)); fix: let SetVariants/HashJoin choose a method for 64-byte numeric keys",
+      "decision": "implemented as expected: SetVariants uses keys512 for a 64-byte key, HashJoin hashes it",
       "match": [
         {
           "suite": "keys-matrix",
           "category": "single-key-512"
         }
       ],
-      "evidence": "evidence/phase6/matrix_r4 (keys, category single-key-512); src/Interpreters/SetVariants.cpp:147, src/Interpreters/HashJoin/HashJoin.cpp:347 (26.3)"
+      "evidence": "evidence/phase6/matrix_r4 (keys, category single-key-512); src/Interpreters/SetVariants.cpp:147, src/Interpreters/HashJoin/HashJoin.cpp:347 (26.3); fixed: evidence/fix_ci_20260925",
+      "fixed_by": "aa544056a1f (26.3-lts-decimal512, 2026-09-25)",
+      "proof": {
+        "matrix": "keys",
+        "targets": [
+          "single-key-512"
+        ]
+      }
     },
     {
       "id": "KD-I512-ARITH",
       "title": "(U)Int512 integer arithmetic (+ - * intDiv modulo) is not implemented: ILLEGAL_TYPE_OF_ARGUMENT",
-      "status": "open",
+      "status": "fixed",
       "effect": "query error",
       "affects": [
         "26.3 prod a394e92fb5d",
         "26.3 hotfix cd0d6088c5a",
         "26.8 port fff703a776e"
       ],
-      "decision": "user: implement with (U)Int256 semantics (the expectation used here), or declare (U)Int512 arithmetic unsupported (then the expectation becomes an explicit error and this entry is closed by a documented decision)",
+      "decision": "user 2026-09-25: (U)Int512 arithmetic with (U)Int256 semantics, integer wrap-around included (implemented). Decimal op (U)Int512 stays ILLEGAL_TYPE_OF_ARGUMENT, as before",
       "match": [
         {
           "suite": "ops-matrix",
           "category": "int512-arith"
         }
       ],
-      "evidence": "evidence/phase6/matrix_r4 (ops, category int512-arith); src/Functions/FunctionBinaryArithmetic.h:837 IntegerTypes lacks 512 (26.3)"
+      "evidence": "evidence/phase6/matrix_r4 (ops, category int512-arith); src/Functions/FunctionBinaryArithmetic.h:837 IntegerTypes lacks 512 (26.3); fixed: evidence/fix_ci_20260925",
+      "fixed_by": "83cfaac930b (26.3-lts-decimal512, 2026-09-25)",
+      "proof": {
+        "matrix": "ops",
+        "targets": [
+          "int512-arith"
+        ]
+      }
     },
     {
       "id": "KD-I512-SUPERTYPE",
       "title": "The common supertype of (U)Int512 and another integer is Variant(...) instead of (U)Int512 (getLeastSupertype ladder stops at 256); greatest/least throw",
-      "status": "open",
+      "status": "fixed",
       "effect": "silent type change (Variant result), query errors downstream",
       "affects": [
         "26.3 prod a394e92fb5d",
         "26.3 hotfix cd0d6088c5a",
         "26.8 port fff703a776e"
       ],
-      "decision": "user: extend the ladder to 512 (the expectation used here) or keep the current behaviour and document it",
+      "decision": "user 2026-09-25: extend the ladder to 512 bits (implemented only where a 512-bit integer takes part, so Int256 + UInt256 still has no common integer type)",
       "match": [
         {
           "suite": "ops-matrix",
           "category": "int512-supertype"
         }
       ],
-      "evidence": "evidence/phase6/matrix_r4 (ops, category int512-supertype); src/DataTypes/getLeastSupertype.cpp:185-207 (26.3)"
+      "evidence": "evidence/phase6/matrix_r4 (ops, category int512-supertype); src/DataTypes/getLeastSupertype.cpp:185-207 (26.3); fixed: evidence/fix_ci_20260925",
+      "fixed_by": "ffa6b3a825f (26.3-lts-decimal512, 2026-09-25)",
+      "visible_change": "Variant(Int512, IntN) becomes Int512 (use_variant_as_common_type = 1, the 26.3 default) and NO_COMMON_TYPE becomes Int512 (setting 0); Int512 with UInt512, and UInt512 with a signed type, still have no common integer type (Variant or NO_COMMON_TYPE)",
+      "proof": {
+        "matrix": "ops",
+        "targets": [
+          "int512-supertype"
+        ]
+      }
     },
     {
       "id": "KD-I512-MIDPOINT",
       "title": "avg2/midpoint of two (U)Int512 throw LOGICAL_ERROR 'Arguments of midpoint have incorrect data types' (same root cause as KD-I512-ARITH)",
-      "status": "open",
+      "status": "fixed",
       "effect": "query error (LOGICAL_ERROR)",
       "affects": [
         "26.3 prod a394e92fb5d",
         "26.3 hotfix cd0d6088c5a",
         "26.8 port fff703a776e"
       ],
-      "decision": "follows KD-I512-ARITH; expectation = (U)Int256 semantics (truncation toward zero, no overflow)",
+      "decision": "follows KD-I512-ARITH (implemented): (U)Int256 semantics",
       "match": [
         {
           "suite": "ops-matrix",
           "category": "midpoint-int512"
         }
       ],
-      "evidence": "evidence/phase6/matrix_r4 (ops, category midpoint-int512)"
+      "evidence": "evidence/phase6/matrix_r4 (ops, category midpoint-int512); fixed: evidence/fix_ci_20260925",
+      "fixed_by": "83cfaac930b (26.3-lts-decimal512, 2026-09-25)",
+      "proof": {
+        "matrix": "ops",
+        "targets": [
+          "midpoint-int512"
+        ]
+      }
     },
     {
       "id": "KD-TEST-01875-512-PATH",
       "title": "fork test 01875_ssd_cache_dictionary_decimal512_type hard-codes /workspace/.clickhouse_runtime/user_files: PATH_ACCESS_DENIED outside that layout",
-      "status": "open",
+      "status": "fixed",
       "effect": "test defect (coverage missing, not a product result)",
       "decision": "fix the test to use the runner's user_files path; do not delete it",
       "match": [
@@ -174,12 +219,13 @@
           "test": "01875_ssd_cache_dictionary_decimal512_type"
         }
       ],
-      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.1"
+      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.1; fixed: evidence/fix_ci_20260925",
+      "fixed_by": "2216daa16e7 (26.3-lts-decimal512, 2026-09-25): the dictionary path is $USER_FILES_PATH/0d512"
     },
     {
       "id": "KD-TEST-02483-PATH",
       "title": "fork test 02483_capnp_decimals copies its schema to the hard-coded /workspace/.clickhouse_runtime/format_schemas (writes outside the test tree) and fails elsewhere",
-      "status": "open",
+      "status": "fixed",
       "effect": "test defect (coverage missing; side effect on the host)",
       "decision": "fix the test to use the runner's format_schemas path; do not delete it",
       "match": [
@@ -188,12 +234,13 @@
           "test": "02483_capnp_decimals"
         }
       ],
-      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.2"
+      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.2; fixed: evidence/fix_ci_20260925",
+      "fixed_by": "2216daa16e7 (26.3-lts-decimal512, 2026-09-25): the upstream script is restored; tools/isolated_ch.sh gives every instance a private copy of format_schemas and exports CLICKHOUSE_SCHEMA_FILES"
     },
     {
       "id": "KD-TEST-BLOCKCHAIN-ULP",
       "title": "fork test blockchain_decimal512_arithmetic_operations: reference differs by 1 ulp in exp(toDecimal512('1', 0)) (same output on buggy and fixed builds)",
-      "status": "open",
+      "status": "fixed",
       "effect": "test defect (weak/environment-dependent reference)",
       "decision": "compare with a tolerance or round the Float64 result in the test; do not re-record the reference from one binary",
       "match": [
@@ -202,12 +249,13 @@
           "test": "blockchain_decimal512_arithmetic_operations"
         }
       ],
-      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.3"
+      "evidence": "evidence/phase6/goalb_detect_analysis.md section 6.3; fixed: evidence/fix_ci_20260925",
+      "fixed_by": "2216daa16e7 (26.3-lts-decimal512, 2026-09-25): exp() is compared to 10 decimals; the reference is the mathematical value (e, e^2), not one binary's output"
     },
     {
       "id": "KD-TEST-01875-256-VACUOUS",
       "title": "fork test 01875_ssd_cache_dictionary_decimal256_type is disabled: the script prints its reference and exits 0, so its OK runs no query",
-      "status": "open",
+      "status": "fixed",
       "effect": "vacuous test (reported OK, covers nothing)",
       "decision": "re-enable after fixing the path issue, or remove it from the selection with a recorded reason",
       "match": [
@@ -217,7 +265,532 @@
           "vacuous": true
         }
       ],
-      "evidence": "evidence/phase6/goalb_detect_analysis.md footnote 1 (script lines 8-11)"
+      "evidence": "evidence/phase6/goalb_detect_analysis.md footnote 1 (script lines 8-11); fixed: evidence/fix_ci_20260925",
+      "fixed_by": "2216daa16e7 (26.3-lts-decimal512, 2026-09-25): the upstream script is restored and runs its queries"
+    },
+    {
+      "id": "KD-D512-SCALE-OVERFLOW",
+      "status": "fixed",
+      "title": "Decimal512 operand scale-ups (plus, minus, comparisons, division, CAST between scales) wrapped silently when the scaled operand left the Int512 range, because the 512-bit overflow check was a no-op. Production build a394e92fb5d",
+      "fixed_by": "e919236606a (26.3-lts-decimal512, 2026-09-25): overflow detected; 47909d0560a: exact results",
+      "effect": "silent wrong result",
+      "visible_change": "a scale-up of plus/minus/least/greatest/divide that leaves Int512 is computed exactly in 1024 bits and raises DECIMAL_OVERFLOW only if the exact result does not fit; comparisons are decided exactly (never DECIMAL_OVERFLOW); CAST between scales raises DECIMAL_OVERFLOW (the result does not fit); decimal_check_overflow = 0 keeps the unchecked wrap for arithmetic",
+      "match": [
+        {
+          "suite": "ops-matrix",
+          "category": "scale-overflow"
+        }
+      ],
+      "proof": {
+        "matrix": "ops",
+        "targets": [
+          "scale-overflow"
+        ]
+      },
+      "evidence": "found 2026-09-25 while fixing KD-D512-MUL-OVERFLOW; evidence/fix_ci_20260925"
+    },
+    {
+      "id": "KD-D512-CONVERT-WIDE",
+      "status": "fixed",
+      "title": "(U)Int512 -> Decimal: Int512 values converted to Decimal256/128/64 were truncated to 256 bits without an overflow error, UInt512 values above the Int512 range converted to Decimal512 wrapped, and scale-ups of Int512 into Decimal512 wrapped. Production build a394e92fb5d",
+      "fixed_by": "ccec6585e62 (26.3-lts-decimal512, 2026-09-25)",
+      "effect": "silent wrong result",
+      "match": [
+        {
+          "suite": "ops-matrix",
+          "category": "convert-wide"
+        }
+      ],
+      "proof": {
+        "matrix": "ops",
+        "targets": [
+          "convert-wide"
+        ]
+      },
+      "evidence": "found 2026-09-25 while fixing KD-D512-PRECISION-154; evidence/fix_ci_20260925"
+    },
+    {
+      "id": "KD-D512-SCALE-154",
+      "status": "fixed",
+      "title": "Decimal(154, 154) and precision 154: 10^154 does not fit Int512 (exp10_i512(154) wrapped to a negative number), so every computation that needs it was wrong: printing (0.5 printed as -1.1592...), Float64 conversion, casts to and from scale 0 (1 cast to Decimal(154, 154) stored a wrong value instead of overflowing), Float64 to Decimal(154, 154) (0.5 stored as -0.1703...), comparisons with integers (0.5 < 1 gave 0), plus/minus/divide with scale-154 operands, rounding to whole numbers, avg and isDecimalOverflow. Production builds a394e92fb5d and 115be6e9fdf (Debug, 2026-08-26 to 2026-09-17)",
+      "effect": "silent wrong result, on read and on write (INSERT ... SELECT through a float/integer conversion or arithmetic)",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 prod Debug 115be6e9fdf",
+        "26.3 hotfix cd0d6088c5a",
+        "26.3 candidate 2026-09-25 (before the fix)"
+      ],
+      "decision": "user 2026-09-25 (task.expanded-validation-20260925.md): fix it, keeping precision/scale 154 and the storage format; implemented as option (b): 10^154 saturates and every consumer handles it exactly (whole part 0, exact fraction, exact comparisons, 1024-bit arithmetic intermediates, DECIMAL_OVERFLOW only where the exact result does not fit)",
+      "match": [
+        {
+          "suite": "ops-matrix",
+          "category": "scale-154"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "10316_decimal512_scale154"
+        }
+      ],
+      "evidence": "found 2026-09-25; evidence/fix_ci_20260925/scale154 (81-case probe per path: PROD263 28/81, DEBUG0825 28/81, Decimal256 controls 7/7 on every build incl. official 26.8.8.8)",
+      "fixed_by": "47909d0560a (26.3-lts-decimal512, 2026-09-25)",
+      "proof": {
+        "matrix": "ops",
+        "targets": [
+          "scale-154"
+        ]
+      }
+    },
+    {
+      "id": "KD-D512-ROUND-RANGE",
+      "status": "fixed",
+      "title": "round/floor/ceil/roundBankers of Decimal512 near the Int512 limit wrapped: precision 154 admits values up to 2^511 - 1 (about 6.7e153), and e.g. round(6.7e153, -153) = 7e153 does not fit Int512 (gave -6e153). Production build a394e92fb5d",
+      "effect": "silent wrong result (rounding at precision 154 close to the range limit)",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 prod Debug 115be6e9fdf"
+      ],
+      "decision": "DECIMAL_OVERFLOW when the exact rounded value does not fit Int512 (rows that cannot overflow keep the Int512 fast path)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "10316_decimal512_scale154"
+        }
+      ],
+      "fixed_by": "47909d0560a (26.3-lts-decimal512, 2026-09-25)",
+      "evidence": "found 2026-09-25 by tools/scale154/probe_scale154.py (case round(max, -153)); evidence/fix_ci_20260925/scale154"
+    },
+    {
+      "id": "KD-UP-113230-JOIN-LC-WIDE",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3): a hash join on a single LowCardinality(UInt128/Int128/UInt256/Int256) key (or Nullable of these) packs every key to the same value, so unequal keys match. Production build a394e92fb5d returns 3 rows instead of 1 (and aborts for LowCardinality(Nullable(UInt256)) through KD-KEYSNULLMAP-512)",
+      "effect": "silent wrong JOIN result",
+      "affects": [
+        "26.3 prod a394e92fb5d",
+        "26.3 candidate 2026-09-25 (before the cherry-pick)"
+      ],
+      "decision": "cherry-pick upstream ClickHouse/ClickHouse#113230 (26.3 backport #114968, in v26.3.31.5): one line in HashJoin.cpp chooseMethod, with its upstream test",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04745_join_low_cardinality_wide_int_key"
+        }
+      ],
+      "fixed_by": "3a3a23039eb (26.3-lts-decimal512, 2026-09-25; cherry-pick of upstream #113230)",
+      "evidence": "evidence/fix_ci_20260925/audit (applicability) and evidence/fix_ci_20260925/upstream_repro (PROD263 3 rows, official 26.8.8.8 1 row)"
+    },
+    {
+      "id": "KD-UP-99999",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area JOIN: chained `JOIN USING` whose key types change after join conversions (legacy filter pushdown)",
+      "effect": "exc Unexpected return type",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107547 of #99999 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04047_join_filter_pushdown_equivalent_using_types"
+        }
+      ],
+      "fixed_by": "ccd2a9846f5 (26.3-lts-decimal512, 2026-09-25; backport of upstream #99999)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-102042",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area JOIN: RIGHT/FULL JOIN with max_bytes_in_join set",
+      "effect": "exc LOGICAL_ERROR",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#109540 of #102042 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04092_hash_join_shrink_replicated_columns"
+        }
+      ],
+      "fixed_by": "99abbf13325 (26.3-lts-decimal512, 2026-09-25; backport of upstream #102042)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-106928",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area JOIN: LEFT JOIN, unique right keys, mixed ON, small max_joined_block_size_rows",
+      "effect": "exc LOGICAL_ERROR",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#113161 of #106928 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04330_join_global_left_semi_chunk_consistency"
+        }
+      ],
+      "fixed_by": "5aacc5a2b5a (26.3-lts-decimal512, 2026-09-25; backport of upstream #106928)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-112007",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area JOIN: JOIN ON condition repeated in WHERE with join_use_nulls=1",
+      "effect": "exc AMBIGUOUS_COLUMN_NAME",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#112173 of #112007 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04650_join_use_nulls_repeated_on_condition_in_where"
+        }
+      ],
+      "fixed_by": "a3d60b4c12c (26.3-lts-decimal512, 2026-09-25; backport of upstream #112007)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-101644",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: lazy materialization (ORDER BY…LIMIT) with arrayJoin",
+      "effect": "wrong (LIMIT not respected)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107015 of #101644 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04077_lazy_materialization_array_join"
+        }
+      ],
+      "fixed_by": "4d7e7b333e7 (26.3-lts-decimal512, 2026-09-25; backport of upstream #101644)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-108287",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: _part_offset in WHERE with lazy materialization",
+      "effect": "exc",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111599 of #108287 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04408_lazy_materialization_part_offset_prewhere"
+        }
+      ],
+      "fixed_by": "75b1492230a (26.3-lts-decimal512, 2026-09-25; backport of upstream #108287)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-107041",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: UNION/INTERSECT/EXCEPT branches read the same column Sparse vs full (e.g. MV push)",
+      "effect": "exc LOGICAL_ERROR (abort on debug)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#108170 of #107041 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04328_union_branch_sparse_header_mismatch"
+        }
+      ],
+      "fixed_by": "d74126be5d8 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107041)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-101218",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: SELECT from a VIEW over a table with a normal projection",
+      "effect": "exc NOT_FOUND_COLUMN_IN_BLOCK",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106003 of #101218 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04070_view_with_projection_not_found_column"
+        }
+      ],
+      "fixed_by": "f3fb1611863 (26.3-lts-decimal512, 2026-09-25; backport of upstream #101218)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-106349",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area CTE/AN/QP: optimize_using_constraints with correlated subqueries",
+      "effect": "crash / NOT_FOUND_COLUMN_IN_BLOCK",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#107954 of #106349 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04299_constraint_subst_correlated_subquery_root"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04305_constraint_const_substitution_correlated_subquery"
+        }
+      ],
+      "fixed_by": "c2ada8f21d7 (26.3-lts-decimal512, 2026-09-25; backport of upstream #106349)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-115466",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: uniq* over an injective function that hides nullability, e.g. `uniqExact(tuple(x))` over Nullable",
+      "effect": "wrong (NULL rows dropped)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115599 of #115466 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04927_uniq_injective_tuple_nullable"
+        }
+      ],
+      "fixed_by": "a54503b19b6 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115466)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-105734",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: singleValueOrNullMerge after several distinct values",
+      "effect": "wrong (value instead of NULL)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115419 of #105734 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04263_single_value_or_null_merge_state"
+        }
+      ],
+      "fixed_by": "dcf24febab3 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105734)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-114912",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area DEC: accurateCastOrDefault settings propagation and NULL handling",
+      "effect": "wrong",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#115536 of #114912 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "03212_variant_dynamic_cast_or_default"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04510_accurateCastOrDefault_settings"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04512_accurateCastOrDefault_nullable_target"
+        }
+      ],
+      "fixed_by": "88db427f1d0 (26.3-lts-decimal512, 2026-09-25; backport of upstream #114912)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-115701",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: malformed stochastic*/groupUniqArray/groupArrayIntersect/topK/Resample state",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116350 of #115701 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05030_ml_method_malformed_state"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05031_resample_combinator_overflow"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05032_group_uniq_array_malformed_state"
+        }
+      ],
+      "fixed_by": "f6f9a3b03f2 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115701)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-107412",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: crafted windowFunnel state",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#108222 of #107412 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04338_window_funnel_deserialize_event_bounds"
+        }
+      ],
+      "fixed_by": "8de4f57e319 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107412)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-105470",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area AGG: uniqStateOrNull-type chains with ROLLUP/CUBE/TOTALS and a Nullable argument",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#105872 of #105470 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04262_uniq_state_or_null_with_rollup"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "04273_uniq_state_or_null_rollup_consumers"
+        }
+      ],
+      "fixed_by": "b2c0bebe216 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105470)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-107956",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: `has(Map with Dynamic key, LowCardinality needle)`",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#108304 of #107956 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04338_has_map_dynamic_key_lowcardinality_arg"
+        }
+      ],
+      "fixed_by": "b0f1a187cf5 (26.3-lts-decimal512, 2026-09-25; backport of upstream #107956)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-115700",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area OTHER: deep nesting in readWKB, JSONMergePatch, url/remote address parser, CURSOR, CapnProto; EXECUTE with a non-literal",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116319 of #115700 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "05027_read_wkb_deep_nesting"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05028_json_merge_patch_deep_nesting"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05029_remote_description_deep_braces"
+        },
+        {
+          "suite": "fork-stateless",
+          "test": "05034_capnproto_deep_schema"
+        }
+      ],
+      "fixed_by": "e4c8cb8bfd6 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115700)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-105464",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: Dynamic subcolumns of a compressed Memory table after ALTER",
+      "effect": "crash",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#106485 of #105464 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04260_dynamic_subcolumn_compressed_memory"
+        }
+      ],
+      "fixed_by": "b24d4b42074 (26.3-lts-decimal512, 2026-09-25; backport of upstream #105464)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-111518",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: `ALTER … UPDATE/DELETE IN PARTITION {param:Type}`",
+      "effect": "data availability (table fails to load on every replica)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#111854 of #111518 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04626_mutation_in_partition_query_parameter"
+        }
+      ],
+      "fixed_by": "e0a5f8cc503 (26.3-lts-decimal512, 2026-09-25; backport of upstream #111518)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-115866",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: insert dedup of rows with Object/JSON paths",
+      "effect": "data (wrong deduplication)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#116110 of #115866 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04692_insert_dedup_json_path_names"
+        }
+      ],
+      "fixed_by": "7fed07387b9 (26.3-lts-decimal512, 2026-09-25; backport of upstream #115866)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
+    },
+    {
+      "id": "KD-UP-107481",
+      "status": "fixed",
+      "title": "upstream bug present in the fork base (v26.3.12.3), area STOR: REPLACE/MOVE/ATTACH PARTITION FROM kept the merge level of a part from a table with other merge semantics, so FINAL skipped its deduplication",
+      "effect": "wrong (FINAL duplicates)",
+      "affects": [
+        "26.3 prod a394e92fb5d (its upstream test fails there and passes on official 26.8.8.8)"
+      ],
+      "decision": "cherry-pick the 26.3 backport ClickHouse/ClickHouse#110339 of #107481 unchanged, with its test(s)",
+      "match": [
+        {
+          "suite": "fork-stateless",
+          "test": "04001_attach_clone_part_level_reset"
+        }
+      ],
+      "fixed_by": "3cef223c76c (26.3-lts-decimal512, 2026-09-25; backport of upstream #107481)",
+      "evidence": "evidence/fix_ci_20260925/upstream_repro (triage_*.tsv, applicability.zh-CN.md)"
     }
   ]
 }

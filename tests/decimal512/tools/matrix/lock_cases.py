@@ -24,12 +24,19 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MATRICES = {  # name -> generator (all write <sql> <oracle>)
+MATRICES = {  # name -> generator, or (generator, fixed extra arguments); all write <sql> <oracle>
     "midpoint": "gen_midpoint_matrix.py",
     "midpoint_vector": "gen_midpoint_vector.py",
     "ops": "gen_decimal512_ops_matrix.py",
     "keys": "gen_composite_keys.py",
+    "random": "gen_random_decimal512.py",  # fixed seed 20260925, 3000 cases (full tier)
+    "random_nightly": ("gen_random_decimal512.py", ["--seed", "20260926", "--cases", "9000"]),  # nightly/release tiers
 }
+
+
+def generator_of(name: str) -> tuple[str, list[str]]:
+    g = MATRICES[name]
+    return (g, []) if isinstance(g, str) else (g[0], list(g[1]))
 
 
 def sha256_file(path: str) -> str:
@@ -57,11 +64,14 @@ def describe(name: str, gen: str, sql: str, oracle: str) -> dict:
 def generate() -> dict:
     out = {}
     with tempfile.TemporaryDirectory(prefix="lock-cases-") as d:
-        for name, gen in MATRICES.items():
+        for name in MATRICES:
+            gen, extra = generator_of(name)
             sql, orc = os.path.join(d, f"{name}.sql"), os.path.join(d, f"{name}.oracle.jsonl")
-            subprocess.run([sys.executable, os.path.join(HERE, gen), sql, orc], check=True, capture_output=True, cwd=d,
+            subprocess.run([sys.executable, os.path.join(HERE, gen), sql, orc] + extra, check=True, capture_output=True, cwd=d,
                            env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
             out[name] = describe(name, gen, sql, orc)
+            if extra:
+                out[name]["generator_args"] = extra
     return {"schema": 1, "matrices": out}
 
 

@@ -229,6 +229,7 @@ def boundary_rows():
             cat = "int512-arith" if bits == 512 else "int-wrap-control"
             rows.append((cat, f"{op}(to{name}('{x}'), to{name}('{y}'))", {"type": name, "value": str(val)}))
     rows += int512_rows()
+    rows += wide_rows()
     return rows
 
 
@@ -277,6 +278,150 @@ def int512_rows():
             for a, b in ((0, 1), (1, 2), (umax, umax), (umax, umax - 1)):
                 rows.append((mid, f"{fn}(to{U}('{a}'), to{U}('{b}'))", {"type": U, "value": str((a + b) // 2)}))
             rows.append((mid, f"{fn}(materialize(to{I}('-3')), to{I}('0'))", {"type": I, "value": "-1"}))
+    return rows
+
+
+def wide_rows():
+    """Rows added in 2026-09-25 (appended so that every earlier case id stays the same):
+    scale-overflow   an operand scale-up of Decimal512 (plus/minus/compare/divide/CAST between scales) that leaves the
+                     Int512 range. Builds without the Int512 multiplication check wrapped silently. The expectation is
+                     the exact result (FunctionBinaryArithmetic.h applyScaledWide/applyScaledDivWide compute such rows
+                     in 1024 bits; DecimalComparison.h decides comparisons exactly), and DECIMAL_OVERFLOW only where the
+                     exact result does not fit (always for CAST). "scale-overflow-control" runs the same shapes on
+                     Decimal64, where upstream's rule (DECIMAL_OVERFLOW for any scale-up overflow) stays, on every binary
+    convert-wide     (U)Int256/(U)Int512 -> Decimal conversions: the exact value, or DECIMAL_OVERFLOW when it does not fit
+                     (accurateCastOrNull: NULL); "convert-wide-control" runs (U)Int256 -> Decimal128/256 on every binary
+    parse-boundary   more text inputs at the Int512 limit (154 digits, a scaled 153-digit value, vector form, OrNull)
+    scale-154        Decimal(154, 154): 10^154 does not fit Int512, so the scale multiplier of scale 154 cannot be
+                     represented (it wrapped to a negative number); the expectation is the mathematical value, and
+                     DECIMAL_OVERFLOW only where the exact result does not fit (known_defects.json KD-D512-SCALE-154;
+                     tools/scale154/probe_scale154.py covers every path per binary)"""
+    rows = []
+    d = lambda v, s: f"CAST('{G.fmt_decimal(v, s) if isinstance(v, int) else v}' AS Decimal(154, {s}))"
+    ovf = {"error_any": OVERFLOW_CODES}
+    dec_t = lambda s: f"Decimal(154, {s})"
+    e60, e50 = 10 ** 60, 10 ** 50
+    half100 = 5 * 10 ** 99  # 0.5 at scale 100
+    so = "scale-overflow"
+    rows += [
+        (so, f"plus({d(e60, 0)}, {d(half100, 100)})", ovf),
+        (so, f"minus({d(half100, 100)}, {d(e60, 0)})", ovf),
+        (so, f"plus(materialize({d(e60, 0)}), {d(half100, 100)})", ovf),
+        (so, f"plus({d(e50, 0)}, {d(half100, 100)})", {"type": dec_t(100), "value": G.fmt_decimal(e50 * 10 ** 100 + half100, 100)}),
+        # 7e60 * 10^100 wraps to a negative Int512: builds without the check answer 1, the exact answer is 0
+        (so, f"less({d(7 * e60, 0)}, {d(half100, 100)})", {"type": "UInt8", "value": "0"}),
+        (so, f"less(materialize({d(7 * e60, 0)}), {d(half100, 100)})", {"type": "UInt8", "value": "0"}),
+        (so, f"equals({d(e60, 0)}, {d(half100, 100)})", {"type": "UInt8", "value": "0"}),
+        (so, f"less({d(e50, 0)}, {d(half100, 100)})", {"type": "UInt8", "value": "0"}),
+        (so, f"less({d(5 * 10 ** 149, 150)}, toInt64(10000))", {"type": "UInt8", "value": "1"}),
+        (so, f"less({d(5 * 10 ** 149, 150)}, toInt64(1000))", {"type": "UInt8", "value": "1"}),
+        (so, f"divide({d(10 ** 153, 1)}, {d(1, 1)})", ovf),
+        (so, f"divide({d(10 ** 152, 1)}, {d(1, 1)})", {"type": dec_t(1), "value": G.fmt_decimal(10 ** 153, 1)}),
+        (so, f"CAST({d(e60, 0)} AS Decimal(154, 100))", ovf),
+        (so, f"CAST(materialize({d(e60, 0)}) AS Decimal(154, 100))", ovf),
+        (so, f"CAST({d(e50, 0)} AS Decimal(154, 100))", {"type": dec_t(100), "value": G.fmt_decimal(e50 * 10 ** 100, 100)}),
+    ]
+    c64 = lambda v, s: f"toDecimal64('{v}', {s})"
+    sc = "scale-overflow-control"
+    rows += [
+        (sc, f"plus({c64('100000000000', 0)}, {c64('0.5', 10)})", ovf),
+        (sc, f"minus({c64('0.5', 10)}, {c64('100000000000', 0)})", ovf),
+        (sc, f"plus({c64('100000', 0)}, {c64('0.5', 10)})", {"type": "Decimal(18, 10)", "value": "100000.5"}),
+        (sc, f"less({c64('100000000000', 0)}, {c64('0.5', 10)})", ovf),
+        (sc, f"equals({c64('100000000000', 0)}, {c64('0.5', 10)})", ovf),
+        (sc, f"less({c64('0.5', 17)}, toInt64(1000))", ovf),
+        (sc, f"less({c64('0.5', 15)}, toInt64(1000))", {"type": "UInt8", "value": "1"}),
+        (sc, f"divide({c64('99999999999999999.9', 1)}, {c64('0.1', 1)})", ovf),
+        (sc, f"divide({c64('9999999999999999.9', 1)}, {c64('0.1', 1)})", {"type": "Decimal(18, 1)", "value": "99999999999999999"}),
+        (sc, f"CAST({c64('100000000000', 0)} AS Decimal(18, 10))", ovf),
+    ]
+    imax, imin, e90 = 2 ** 511 - 1, -2 ** 511, 10 ** 90
+    cw = "convert-wide"
+    rows += [
+        (cw, f"toDecimal512(toUInt512('{imax + 1}'), 0)", ovf),
+        (cw, f"toDecimal512(materialize(toUInt512('{imax + 1}')), 0)", ovf),
+        (cw, f"toDecimal512(toUInt512('{imax}'), 0)", {"type": dec_t(0), "value": str(imax)}),
+        (cw, f"toDecimal512(materialize(toUInt512('{imax}')), 0)", {"type": dec_t(0), "value": str(imax)}),
+        (cw, f"toDecimal512(toInt512('{imin}'), 0)", {"type": dec_t(0), "value": str(imin)}),
+        (cw, f"toDecimal512(toInt512('{e90}'), 3)", {"type": dec_t(3), "value": G.fmt_decimal(e90 * 1000, 3)}),
+        (cw, f"toDecimal512(toInt512('{10 ** 150}'), 5)", ovf),
+        (cw, f"toDecimal512(materialize(toInt512('{10 ** 150}')), 5)", ovf),
+        (cw, f"toDecimal512(toUInt256('{2 ** 256 - 1}'), 0)", {"type": dec_t(0), "value": str(2 ** 256 - 1)}),
+        # CAST from a big integer to a decimal is not supported upstream either (Int128/Int256 -> Decimal raise
+        # CANNOT_CONVERT_TYPE on official 26.8.8.8); toDecimalX() is the conversion path for them
+        (cw, f"CAST(toInt512('{e90}') AS Decimal(154, 3))", {"error": "CANNOT_CONVERT_TYPE"}),
+        (cw, f"toDecimal256(toInt512('{e90}'), 0)", ovf),
+        (cw, f"toDecimal256(materialize(toInt512('{e90}')), 0)", ovf),
+        (cw, f"toDecimal256(toInt512('-5'), 2)", {"type": "Decimal(76, 2)", "value": "-5"}),
+        (cw, f"toDecimal128(toUInt512('{10 ** 30}'), 0)", {"type": "Decimal(38, 0)", "value": str(10 ** 30)}),
+        (cw, f"toDecimal64(toInt512('{imin}'), 0)", ovf),
+        (cw, f"accurateCastOrNull(toUInt512('{imax + 1}'), 'Decimal(154, 0)')", {"type": "Nullable(Decimal(154, 0))", "value": "\\N"}),
+        (cw, f"accurateCastOrNull(materialize(toUInt512('{imax + 1}')), 'Decimal(154, 0)')", {"type": "Nullable(Decimal(154, 0))", "value": "\\N"}),
+    ]
+    cc = "convert-wide-control"
+    rows += [
+        (cc, "toDecimal256(toInt256('-5'), 2)", {"type": "Decimal(76, 2)", "value": "-5"}),
+        (cc, f"toDecimal128(toInt256('{10 ** 40}'), 0)", ovf),
+        (cc, f"toDecimal128(materialize(toInt256('{10 ** 40}')), 0)", ovf),
+        (cc, f"toDecimal64(toUInt256('{10 ** 30}'), 0)", ovf),
+        (cc, f"toDecimal128(toUInt256('{10 ** 30}'), 0)", {"type": "Decimal(38, 0)", "value": str(10 ** 30)}),
+    ]
+    pb = "parse-boundary"
+    rows += [
+        (pb, f"CAST('{'9' * 154}' AS Decimal(154, 0))", {"error_any": PARSE_REJECT_CODES}),
+        (pb, f"CAST('{'9' * 153}' AS Decimal(154, 1))", {"error_any": PARSE_REJECT_CODES}),
+        (pb, f"CAST(materialize('{imax + 1}') AS Decimal(154, 0))", {"error_any": PARSE_REJECT_CODES}),
+        (pb, f"toDecimal512OrNull('{imax + 1}', 0)", {"type": "Nullable(Decimal(154, 0))", "value": "\\N"}),
+        (pb, f"toDecimal512OrNull('{imin}', 0)", {"type": "Nullable(Decimal(154, 0))", "value": str(imin)}),
+        (pb, f"CAST('{10 ** 152}' AS Decimal(154, 1))", {"type": dec_t(1), "value": str(10 ** 152)}),
+    ]
+    # intDiv with a decimal operand runs on the decimal path, which has no (U)Int512 case: rejected like plus/minus/
+    # multiply/divide (the result-type check used to accept it and execution threw LOGICAL_ERROR); (U)Int256 works
+    for q in ("intDiv(toDecimal512('7.5', 1), toInt512('2'))", "intDiv(toInt512('7'), toDecimal512('2.5', 1))",
+              "intDivOrZero(toDecimal32('7.5', 1), toUInt512('2'))", "intDiv(materialize(toDecimal256('7.5', 1)), toUInt512('2'))"):
+        rows.append(("int512-arith", q, {"error": "ILLEGAL_TYPE_OF_ARGUMENT"}))
+    rows.append(("int-wrap-control", "intDiv(toDecimal256('7.5', 1), toInt256('2'))", {"type": "Int256", "value": "3"}))
+    # the (U)Int256 rules carried over: a big integer shift amount is not implemented, bitHammingDistance of one width works
+    for w, cat in ((512, "int512-arith"), (256, "int-wrap-control")):
+        rows.append((cat, f"bitShiftLeft(toInt{w}('7'), toInt128('3'))", {"error": "NOT_IMPLEMENTED"}))
+        rows.append((cat, f"bitShiftLeft(toInt{w}('7'), toUInt16(3))", {"type": f"Int{w}", "value": "56"}))
+        # BitHammingDistanceImpl: UInt16 for operands of 256 bits and more (a distance up to 512 does not fit UInt8)
+        rows.append((cat, f"bitHammingDistance(toInt{w}('7'), toInt{w}('3'))", {"type": "UInt16", "value": "1"}))
+    s154 = "scale-154"
+    rows += [
+        (s154, "toDecimal512('0.5', 154)", {"type": dec_t(154), "value": "0.5"}),
+        (s154, "toDecimal512('-0.5', 154)", {"type": dec_t(154), "value": "-0.5"}),
+        (s154, "toFloat64(toDecimal512('0.5', 154))", {"type": "Float64", "value": "0.5"}),
+        (s154, "CAST(toDecimal512('0.5', 154) AS Decimal(154, 0))", {"type": dec_t(0), "value": "0"}),
+        # comparing with an integer needs 1 * 10^154, which leaves Int512: decided exactly
+        (s154, "less(toDecimal512('0.5', 154), 1)", {"type": "UInt8", "value": "1"}),
+    ]
+    # appended 2026-09-25 (scale-154 fix): the scaled intermediate leaves Int512 but the exact result fits
+    ex = "scale-overflow"
+    q = lambda v, s_: f"CAST('{v}' AS Decimal(154, {s_}))"
+    rows += [
+        (ex, f"minus({q('0.7', 1)}, {q('0.3', 154)})", {"type": dec_t(154), "value": "0.4"}),
+        (ex, f"minus(materialize({q('0.7', 1)}), {q('0.3', 154)})", {"type": dec_t(154), "value": "0.4"}),
+        (ex, f"plus({q('-0.6', 154)}, 1)", {"type": dec_t(154), "value": "0.4"}),
+        (ex, f"plus({q('0.5', 154)}, 1)", ovf),
+        (ex, f"least({q('0.5', 154)}, 1)", {"type": dec_t(154), "value": "0.5"}),
+        (ex, f"greatest({q('0.5', 154)}, 1)", ovf),
+        # scales adding up to more than 154: rejected at analysis time (upstream rule, every decimal width)
+        (ex, f"divide({q('0.01', 2)}, {q('0.5', 154)})", ovf),
+        (ex, f"divide(materialize({q('0.01', 2)}), {q('0.5', 154)})", ovf),
+        # Decimal(154, 60) division: the dividend is scaled by 10^60 first, which leaves Int512 from 6.7e33 up
+        (ex, f"divide({q('1' + '0' * 40, 60)}, {q('2', 60)})", {"type": dec_t(60), "value": "5" + "0" * 39}),
+        (ex, f"divide(materialize({q('1' + '0' * 40, 60)}), {q('-2', 60)})", {"type": dec_t(60), "value": "-5" + "0" * 39}),
+        (ex, f"divide({q('1' + '0' * 90, 60)}, {q('0.5', 60)})", {"type": dec_t(60), "value": "2" + "0" * 90}),
+        (ex, f"divide({q('1' + '0' * 93, 60)}, {q('0.1', 60)})", ovf),
+        (ex, f"less(toDecimal128('1', 0), {q('0.5', 154)})", {"type": "UInt8", "value": "0"}),
+        (ex, f"greaterOrEquals(materialize({q('0.5', 154)}), toInt256('-1'))", {"type": "UInt8", "value": "1"}),
+        (s154, f"toString({q('-0.25', 154)})", {"type": "String", "value": "-0.25"}),
+        (s154, f"CAST({q('1', 0)} AS Decimal(154, 154))", ovf),
+        (s154, f"toInt64({q('-0.5', 154)})", {"type": "Int64", "value": "0"}),
+        (s154, f"trunc({q('0.6', 154)})", {"type": dec_t(154), "value": "0"}),
+        (s154, f"round({q('0.6', 154)})", ovf),
+    ]
     return rows
 
 
