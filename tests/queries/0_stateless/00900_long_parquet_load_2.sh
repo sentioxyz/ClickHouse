@@ -41,6 +41,8 @@ EXCLUDE=(
     04045_delta_no_padding_3vals.parquet
     04045_delta_no_padding_5vals.parquet
     04045_delta_sample_93093.parquet
+    # Hand-crafted file with an inconsistent bloom filter size for the 04654 out-of-bounds test.
+    04654_bloom_filter_bitset_out_of_bounds.parquet
     # Malformed DELTA_BYTE_ARRAY files of 05035 (upstream #115703): a page with zero lengths, a Decimal column.
     05035_delta_byte_array_zero_values.parquet
     05035_delta_byte_array_decimal.parquet
