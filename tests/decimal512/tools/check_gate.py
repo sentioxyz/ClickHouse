@@ -73,7 +73,8 @@ REQUIRED = {
                 "random-nightly-matrix", "fork-stateless", "dispatch-scan"],
     "release": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "random-matrix",
                 "random-nightly-matrix", "fork-stateless", "dispatch-scan",
-                "regression-proof", "compat-disk", "compat-protocol", "keeper-replication", "performance", "mixed-groupby"],
+                "regression-proof", "compat-disk", "compat-protocol", "keeper-replication", "performance", "mixed-groupby",
+                "upgrade-path"],
 }
 # the fork keeps it next to this script (tools/replication/), the skill under tests/replication/
 GROUPBY_LOCK = next((p for p in (os.path.join(os.path.dirname(os.path.abspath(__file__)), "replication", "groupby_cases.lock.json"),
@@ -783,6 +784,97 @@ def suite_groupby(g: Gate, s: dict, binary: dict) -> None:
     g.notes.append(f"{name}: {summary} match the oracle (recomputed from the result files; old_only is not gated)")
 
 
+UPGRADE_PATH_PHASES = ("P0", "P1", "P2", "P3", "P4", "P4b", "F1", "R1a", "R1", "N1", "P5", "P6")
+UPGRADE_PATH_CANDIDATE_PHASES = ("P4", "P5", "P6")  # candidate-only application paths: every row must equal the oracle
+UPGRADE_PATH_BAD = {"WRONG", "VIOLATION", "DIFF", "ERROR", "NOT_APPLIED", "STILL_ON", "NOT_RESTORED", "UNEXPECTED_OK", "REFUSED"}
+
+
+def suite_upgrade_path(g: Gate, s: dict, binary: dict) -> None:
+    """tools/replication/upgrade_path_check.sh: acceptance of the upgrade PATH (version groups switched with the
+    application's addresses, a per-group remote_url_allow_hosts fence, fault injection, rollback). Recomputed here:
+    the spans of every phase from its query_log rows (a query whose parts ran on two builds), the oracle outcome of every
+    candidate-only row from its result sha256 against the tree's case lock, and the fail-closed, fence and replica
+    outcomes. A PASS accepts the procedure only; it does not close KD-D512-MIXED-GROUPBY-NULLABLE, whose mixed-groupby
+    checks keep failing and keep the release BLOCKED."""
+    name = s.get("name")
+    n0 = len(g.problems)
+    ids = {}
+    for line in open(g.path(s["identities"]), encoding="utf-8").read().splitlines()[1:]:
+        parts = line.split("\t")
+        if len(parts) >= 4:
+            ids[parts[0].upper()] = {"path": parts[1], "sha256": parts[2], "build_id": parts[3]}
+    bind_roles(g, name, ids, binary)
+    builds = {ids[r]["build_id"][:12] for r in ("BASELINE", "CANDIDATE") if r in ids}
+    d = g.path(s["results_dir"])
+    spans_total = 0
+    for ph in UPGRADE_PATH_PHASES:
+        f = os.path.join(d, f"querylog_{ph}.tsv")
+        if not os.path.isfile(f):
+            g.problems.append(f"{name}: query_log of phase {ph} missing (spans cannot be checked)")
+            continue
+        by, nodes = collections.defaultdict(set), collections.defaultdict(set)
+        for line in open(f, encoding="utf-8"):
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < 8:
+                continue
+            node, build, iq = parts[0], parts[1][:12], parts[2]
+            by[iq].add(build)
+            nodes[iq].add(node)
+            if build not in builds:
+                g.problems.append(f"{name}: phase {ph} ran on build {build}, neither the baseline nor the candidate")
+                break
+        spanning = [iq for iq, b in by.items() if len(b) > 1]
+        multi = sum(1 for iq in by if len(nodes[iq]) > 1)
+        if ph == "N1":
+            if not spanning:
+                g.problems.append(f"{name}: the negative control found no query spanning both builds (the detector would miss the hazard)")
+        else:
+            spans_total += len(spanning)
+            if spanning:
+                g.problems.append(f"{name}: {len(spanning)} quer(ies) of phase {ph} ran on both builds, e.g. {spanning[:2]}")
+            if ph != "F1" and multi == 0:
+                g.problems.append(f"{name}: no multi-node query observed in phase {ph} (the span check would be vacuous)")
+    expect = {}
+    for c in json.load(open(GROUPBY_LOCK, encoding="utf-8"))["cases"]:
+        expect[c["shape"]] = c["expected_sha256"]
+    counts = collections.Counter()
+    phases_seen = set()
+    for line in open(os.path.join(d, "checks.tsv"), encoding="utf-8").read().splitlines()[1:]:
+        r = line.split("\t")
+        if len(r) < 8:
+            g.problems.append(f"{name}: malformed checks row {r[:3]}")
+            continue
+        ph, check, cfg, shape, var, outcome, detail, sha = r[:8]
+        phases_seen.add(ph)
+        base = outcome.split("(")[0]
+        counts[base] += 1
+        if base in UPGRADE_PATH_BAD:
+            g.problems.append(f"{name}: {ph} {check} {cfg} {shape} {var}: {outcome}")
+        if check in ("fanout", "local", "write"):
+            if ph in UPGRADE_PATH_CANDIDATE_PHASES and (sha != expect.get(shape) or base != "ORACLE"):
+                g.problems.append(f"{name}: candidate-only {ph} {check} {shape} {var} does not equal the oracle (sha {sha[:12]}, recorded {outcome})")
+            if ph == "F1" and base != "FAILED_CLOSED":
+                g.problems.append(f"{name}: F1 {check} {shape} {var} with the active replica down was {outcome}, not failed closed")
+    missing = [p for p in UPGRADE_PATH_PHASES if p not in phases_seen and p not in ("R1a",)]
+    if missing:
+        g.problems.append(f"{name}: phases without checks: {missing}")
+    for need in ("FAILED_CLOSED", "REJECTED", "SAME"):
+        if not counts[need]:
+            g.problems.append(f"{name}: no {need} outcome (fail-closed, fence or replica checks absent)")
+    try:
+        verdict = json.load(open(os.path.join(d, "summary.json"), encoding="utf-8")).get("verdict")
+    except (OSError, ValueError):
+        verdict = None
+    ok = len(g.problems) == n0
+    if ok != (verdict == "PASS"):
+        g.problems.append(f"{name}: the harness verdict {verdict} disagrees with the gate's recomputation ({'PASS' if ok else 'FAIL'})")
+        ok = False
+    g.notes.append(f"{name}: procedure acceptance {'PASS' if ok else 'FAIL'} (recomputed: {len(UPGRADE_PATH_PHASES)} phases, "
+                   f"{spans_total} queries spanning builds outside the negative control, {counts['FAILED_CLOSED']} failed closed, "
+                   f"{counts['REJECTED']} fence rejections, {counts['SAME']} replica comparisons); it does not close "
+                   f"KD-D512-MIXED-GROUPBY-NULLABLE")
+
+
 def suite_perf(g: Gate, s: dict, binary: dict) -> None:
     """tools/perf/perf_compare.py: verdicts recomputed from perf_raw.tsv with the fixed thresholds."""
     name = s.get("name")
@@ -833,7 +925,7 @@ def suite_perf(g: Gate, s: dict, binary: dict) -> None:
                    f"thresholds {PERF_RATIO_MAX}x/{PERF_NOISE_FLOOR_S * 1000:.0f} ms ({th.get('basis')}); load {sm.get('environment', {}).get('loadavg_before')} -> {sm.get('environment', {}).get('loadavg_after')}")
 
 
-KINDS = {"matrix": suite_matrix, "clickhouse-test": suite_clickhouse_test, "proof": suite_proof, "compat": suite_compat,
+KINDS = {"upgrade-path": suite_upgrade_path, "matrix": suite_matrix, "clickhouse-test": suite_clickhouse_test, "proof": suite_proof, "compat": suite_compat,
          "protocol": suite_protocol, "scan": suite_scan, "replication": suite_replication, "perf": suite_perf,
          "groupby": suite_groupby}
 

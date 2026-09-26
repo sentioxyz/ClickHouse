@@ -338,6 +338,15 @@ if [ "$TIER" = release ]; then
   else
     NOT_RUN+=('{"name": "mixed-groupby", "reason": "needs --buggy-binary (baseline)"}')
   fi
+  # acceptance of the upgrade PATH (version groups + fence + switch + rollback); it never closes the mixed-groupby defect
+  if [ -n "$BUGGY" ] && [ -n "$KEEPER" ]; then
+    bash "$T/replication/upgrade_path_check.sh" "$OUT/upgrade_path" --keeper "$KEEPER" --baseline "$BUGGY" --candidate "$BIN" \
+      > "$OUT/logs/upgrade_path.log" 2>&1
+    log "upgrade path (procedure acceptance): rc=$?"
+    suite '{"name": "upgrade-path", "kind": "upgrade-path", "results_dir": "upgrade_path/results", "identities": "upgrade_path/identities.tsv"}'
+  else
+    NOT_RUN+=('{"name": "upgrade-path", "reason": "needs --buggy-binary (baseline) and --keeper-binary"}')
+  fi
   if [ -n "$BUGGY" ]; then
     python3 "$T/perf/perf_compare.py" --baseline "$BUGGY" --candidate "$BIN" --out "$OUT/perf" --rounds "$PERF_ROUNDS" \
       > "$OUT/logs/perf.log" 2>&1

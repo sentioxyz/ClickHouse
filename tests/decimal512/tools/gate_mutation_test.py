@@ -207,6 +207,35 @@ def build(d):
             f.write(f"{c['id']}\t{c['topology']}\t{c['shape']}\t{c['variant']}\t{c['gated']}\tPASS\t{text.count(chr(10))}\t0\t{h}\t{c['expected_sha256']}\n")
     suites["mixed-groupby"] = {"name": "mixed-groupby", "kind": "groupby", "cases": "groupby/results/cases.tsv", "results_dir": "groupby/results",
                                "identities": "groupby/identities.tsv", "lock": "groupby/groupby_cases.lock.json"}
+    # upgrade path acceptance, shaped like tools/replication/upgrade_path_check.sh output
+    up = os.path.join(d, "upgrade_path")
+    os.makedirs(os.path.join(up, "results"), exist_ok=True)
+    open(os.path.join(up, "identities.tsv"), "w").write(
+        f"role\tpath\tsha256\tbuild_id\nKEEPER\tk\t{'0' * 64}\tkk\nBASELINE\t{base}\t{bs_}\t{bb}\nCANDIDATE\t{cand}\t{cs}\t{cb}\n")
+    shapes = sorted({c["shape"] for c in json.load(open(C.GROUPBY_LOCK))["cases"]})
+    expect = {c["shape"]: c["expected_sha256"] for c in json.load(open(C.GROUPBY_LOCK))["cases"]}
+    with open(os.path.join(up, "results/checks.tsv"), "w") as f:
+        f.write("phase\tcheck\tconfig\tshape\tvariant\toutcome\tdetail\tresult_sha256\n")
+        for ph in C.UPGRADE_PATH_PHASES:
+            for shape in shapes:
+                if ph == "F1":
+                    f.write(f"F1\tfanout\tg1\t{shape}\tsingle\tFAILED_CLOSED\tconnection refused\tempty\n")
+                elif ph in C.UPGRADE_PATH_CANDIDATE_PHASES:
+                    f.write(f"{ph}\tfanout\tg1\t{shape}\tsingle\tORACLE\t\t{expect[shape]}\n")
+                else:
+                    f.write(f"{ph}\tfanout\tg0\t{shape}\tsingle\tBASELINE_OWN\t\t{'1' * 64}\n")
+        f.write("P2\tfence\tx0->1\tother_group\t-\tREJECTED\tCode: 491\t-\nP3\treplicas:events\tx0=x1\t-\t-\tSAME\t2 rows\t-\n")
+    for ph in C.UPGRADE_PATH_PHASES:
+        with open(os.path.join(up, f"results/querylog_{ph}.tsv"), "w") as f:
+            if ph == "F1":
+                f.write(f"x1\t{cb}\tq-{ph}\tq-{ph}\t1\tExceptionWhileProcessing\t210\t{ph}|g1\n")
+                continue
+            b = cb if ph in C.UPGRADE_PATH_CANDIDATE_PHASES else bb
+            f.write(f"x0\t{b}\tq-{ph}\tq-{ph}\t1\tQueryFinish\t0\t{ph}|x\ny0\t{b}\tq-{ph}\tq-{ph}-2\t0\tQueryFinish\t0\t{ph}|x\n")
+            if ph == "N1":
+                f.write(f"x1\t{cb}\tq-N1b\tq-N1b\t1\tQueryFinish\t0\tN1|x\ny0\t{bb}\tq-N1b\tq-N1b-2\t0\tQueryFinish\t0\tN1|x\n")
+    jdump(os.path.join(up, "results/summary.json"), {"verdict": "PASS"})
+    suites["upgrade-path"] = {"name": "upgrade-path", "kind": "upgrade-path", "results_dir": "upgrade_path/results", "identities": "upgrade_path/identities.tsv"}
     jdump(os.path.join(d, "results/image_inspect.json"), [{"Id": "sha256:" + "a" * 64}])
     open(os.path.join(d, "results/image_binary_sha256.txt"), "w").write(f"{cs}  /usr/bin/clickhouse\n")
     reg = {"defects": [
@@ -250,6 +279,15 @@ def edit_json(path, fn):
     obj = json.load(open(path))
     fn(obj)
     jdump(path, obj)
+
+
+def edit_lines_tsv(path, fn):
+    """rewrite a TSV file (header kept) row by row"""
+    rows = [l.rstrip("\n").split("\t") for l in open(path)]
+    with open(path, "w") as f:
+        f.write("\t".join(rows[0]) + "\n")
+        for r in rows[1:]:
+            f.write("\t".join(fn(r)) + "\n")
 
 
 def edit_lines(path, fn):
@@ -493,6 +531,21 @@ def main():
                              f"candidate\t{os.path.join(base, 'bin/cand.bin')}\t{sha(os.path.join(base, 'bin/base.bin'))}"))
         mutate("mixed-groupby mixed-version failure without an open defect is unexpected", "mixed-groupby: 1 unexpected failure",
                lambda d: groupby_fail(d, mixed["id"], mf))
+        UQ, UC, UI = "upgrade_path/results/querylog_{}.tsv", "upgrade_path/results/checks.tsv", "upgrade_path/identities.tsv"
+        cb_ = bid(os.path.join(base, "bin/cand.bin"))
+        mutate("upgrade path: a query of a switch phase ran on both builds", "ran on both builds",
+               lambda d: open(os.path.join(d, UQ.format("P4")), "a").write(f"y0\t{bid(os.path.join(base, 'bin/base.bin'))}\tq-P4\tq-P4-3\t0\tQueryFinish\t0\tP4|x\n"))
+        mutate("upgrade path: negative control without a span (blind detector)", "negative control found no query",
+               lambda d: open(os.path.join(d, UQ.format("N1")), "w").write(f"x1\t{cb_}\tq\tq\t1\tQueryFinish\t0\tN1|x\ny1\t{cb_}\tq\tq2\t0\tQueryFinish\t0\tN1|x\n"))
+        mutate("upgrade path: candidate-only result is not the oracle", "does not equal the oracle",
+               lambda d: edit_lines_tsv(os.path.join(d, UC), lambda r: r[:7] + ["f" * 64] if r[0] == "P5" else r))
+        mutate("upgrade path: failed-over fan-out returned a result", "not failed closed",
+               lambda d: edit_lines_tsv(os.path.join(d, UC), lambda r: r[:5] + ["BASELINE_OWN"] + r[6:] if r[0] == "F1" else r))
+        mutate("upgrade path: candidate is another binary", "CANDIDATE ran sha256",
+               lambda d: sub(d, UI, f"CANDIDATE\t{os.path.join(base, 'bin/cand.bin')}\t{sha(os.path.join(base, 'bin/cand.bin'))}",
+                             f"CANDIDATE\t{os.path.join(base, 'bin/cand.bin')}\t{sha(os.path.join(base, 'bin/base.bin'))}"))
+        mutate("upgrade path: harness verdict disagrees with the recomputation", "disagrees with the gate's recomputation",
+               lambda d: jdump(os.path.join(d, "upgrade_path/results/summary.json"), {"verdict": "FAIL"}))
         mutate("performance thresholds loosened", "thresholds", lambda d: edit_json(os.path.join(d, PS), lambda s: s["thresholds"].update(ratio_max=1.5)))
         mutate("performance thresholds presented as an SLO", "engineering judgment",
                lambda d: edit_json(os.path.join(d, PS), lambda s: s["thresholds"].update(basis="approved SLO")))
