@@ -10,7 +10,7 @@ f60db21fd46eb1a0cc633802df1c67f7e0f7b79526f7f93d6a2a01e8f7919de9  matrix/cases.l
 5c1e0a681f10cab3cc2b911763a717799e7b2e319c112b4effed8da7e01bfe53  regression_proof.py  <- scripts/regression_proof.py
 536ee2c51f9b741fc18b970025f5f724331251a22ad3e0325ee12831222aa422  check_gate.py  <- scripts/check_gate.py
 b45af979aa15cad7c12a4fc376da7485f649f07652a3518aa0de4cf98251d9a7  scan_wide_dispatch.py  <- scripts/scan_wide_dispatch.py
-f11e337e61f03b3fe1b3fb9c4dee5512b7774c7a20ef05c3206f10ba68cdbd7e  isolated_ch.sh  <- scripts/isolated_ch.sh
+203c6d7eac34875f9f0df88871f893e54f0e6e3b1c12693a01da23a7d85dd14e  isolated_ch.sh  <- scripts/isolated_ch.sh
 e6f588a71595b9eefda307f139a2641cc61d882d87e4da5e0dcc8235273b2eef  hostname_shim.c  <- scripts/hostname_shim.c
 70ccfbdbfcf6dbce250e04f43d4d93f986a293660141183a54480580a825f4a6  compat/run_compat2.sh  <- tests/compat/run_compat2.sh
 1b82858fb4bcc2a7d1d93c3a33f98e703c8cdee95207a201f19fc32bb138177b  compat/write_dyn_json.sql  <- tests/compat/write_dyn_json.sql

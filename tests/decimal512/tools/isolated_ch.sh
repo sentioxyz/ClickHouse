@@ -182,6 +182,7 @@ XML
 </clickhouse>
 XML
   printf '<config><host>127.0.0.1</host><port>%s</port></config>\n' "$BASE" > "$D/conf/client.xml"
+launch_and_wait() {  # 0 = ready; 1 = not ready (the caller decides whether to retry)
   rm -f "$D/hostname_shim" "$D/container" "$D/server.pid"
   case ${CH_ISO_HOST_ISOLATION:-real} in
   real)
@@ -210,12 +211,44 @@ XML
   *) echo "CH_ISO_HOST_ISOLATION must be real or container" >&2; exit 2;;
   esac
   ready=0
-  for _ in $(seq 1 90); do timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query "SELECT 1" < /dev/null > /dev/null 2>&1 && { ready=1; break; }; sleep 1; done
-  if [ "$ready" != 1 ]; then
-    echo "REFUSE: instance $NAME did not become ready (see $D/log/)"
-    [ -f "$D/container" ] && docker stop -t 30 "$(cat "$D/container")" > /dev/null 2>&1
-    exit 94
+  for _ in $(seq 1 90); do
+    timeout 10 "$COPY" client --host 127.0.0.1 --port "$BASE" --query "SELECT 1" < /dev/null > /dev/null 2>&1 && { ready=1; break; }
+    grep -qs 'Address already in use' "$D/log/server.err.log" && break   # the server gave up; do not wait out the loop
+    sleep 1
+  done
+  [ "$ready" = 1 ]
+}
+# Fixed ports (39000/49000/59000/29000 and their HTTP ports 38124/48124/58124/28124) lie inside the Linux ephemeral range
+# (32768-60999): another process's outgoing connection can hold one for a moment, and the server then exits with
+# EADDRINUSE (seen 2026-09-26T05:48Z on 127.0.0.1:58124). Such a start is retried exactly once, after the collision is
+# logged and no socket (TIME_WAIT included) holds the instance's ports any more (at most 75 s); any other start failure,
+# a port still held after 75 s, or a second collision, refuses.
+attempt=1
+until launch_and_wait; do
+  collided=$(grep -s -o 'Address already in use: 127\.0\.0\.[123]:[0-9]*' "$D/log/server.err.log" | head -1)
+  if [ -f "$D/container" ]; then  # a --rm container can linger for a moment after it stops; the retry reuses its name
+    docker stop -t 30 "$(cat "$D/container")" > /dev/null 2>&1
+    for _ in $(seq 1 30); do docker container inspect "$(cat "$D/container")" > /dev/null 2>&1 || break; sleep 1; done
   fi
+  if [ "$attempt" = 1 ] && [ -n "$collided" ]; then
+    echo "WARN: instance $NAME: port collision at start ($collided; an ephemeral port of another connection); retrying once" >&2
+    mv "$D/log/server.err.log" "$D/log/server.err.log.attempt1" 2>/dev/null; mv "$D/log/server.log" "$D/log/server.log.attempt1" 2>/dev/null
+    # wait until no socket in any state (a listener, a live connection, or a TIME_WAIT left by one, ~60 s) uses one of
+    # this instance's ports as its local port; a closed connection's TIME_WAIT also blocks the listener
+    busy=""
+    for _ in $(seq 1 75); do
+      busy=""
+      for p in $ALL_PORTS; do [ -n "$(ss -tanH "( sport = :$p )" 2>/dev/null)" ] && busy="$busy $p"; done
+      [ -z "$busy" ] && break
+      sleep 1
+    done
+    [ -n "$busy" ] && { echo "REFUSE: port(s)$busy still in use 75 s after the collision"; exit 3; }
+    attempt=2
+    continue
+  fi
+  echo "REFUSE: instance $NAME did not become ready (see $D/log/)"
+  exit 94
+done
   if [ -f "$D/container" ]; then
     # the pid file holds a host PID (host PID namespace): the server, which is the container's main process or, with
     # ClickHouse's watchdog, its direct child
