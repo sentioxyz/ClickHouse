@@ -36,10 +36,10 @@ host's `/var/lib/clickhouse`.
 
 | tier | when | what runs | typical time |
 |---|---|---|---|
-| quick | every commit that touches 512-bit code | `midpoint`/`avg2` matrix (1192), operations matrix (7114), key matrix (400) | minutes |
+| quick | every commit that touches 512-bit code | `midpoint`/`avg2` matrix (1192), operations matrix (7114), key matrix (400), application-SQL matrix (20) | minutes |
 | full | periodically, and before a release | quick + vector form (1192) + fixed-seed random differential matrix (`random`, 3000, seed 20260925) + 256-bit dispatch scan against `dispatch_scan_baseline.json` + the stateless tests in `stateless_tests.txt` (229: the fork's tests, 10310-10319, and the tests of the cherry-picked fixes; tests that need pyarrow run outside the gate) | about 20 minutes |
 | nightly | scheduled | full + a second fixed-seed random matrix (`random_nightly`, 9000, seed 20260926) | about 30 minutes |
-| release | before an image is built or deployed | nightly + regression proofs against `--buggy-binary` (the baseline) for the keys, midpoint and operations matrices + on-disk and aggregate-state compatibility with the baseline in both directions + mixed-version Keeper/ReplicatedMergeTree replication with rollback (`tools/replication/mixed_replication.sh`, the production Keeper build) + mixed-version distributed GROUP BY over shards of both builds, both coordinator directions, against locked oracle cases (`tools/replication/mixed_distributed_groupby.sh`) + a synthetic performance comparison with the baseline (`tools/perf/perf_compare.py`) + image identity | about an hour |
+| release | before an image is built or deployed | nightly + regression proofs against `--buggy-binary` (the baseline) for the keys, midpoint, operations and application-SQL matrices + on-disk and aggregate-state compatibility with the baseline in both directions + mixed-version Keeper/ReplicatedMergeTree replication with rollback (`tools/replication/mixed_replication.sh`, the production Keeper build) + mixed-version distributed GROUP BY over shards of both builds, both coordinator directions, against locked oracle cases (`tools/replication/mixed_distributed_groupby.sh`) + a synthetic performance comparison with the baseline (`tools/perf/perf_compare.py`) + image identity | about an hour |
 
 Exit status (from `tools/check_gate.py`):
 
@@ -118,6 +118,12 @@ The entries also record the visible behaviour changes of the fixes (`visible_cha
 - `tools/`: byte-identical copies of the `clickhouse-decimal512-upgrade` skill scripts. `tools/VENDORED.sha256`
   records their hashes. `tools/gen_stateless_references.py` is the one repository-only tool: it writes the stateless
   tests `10310`-`10316` from an independent Python oracle, and CI requires the committed files to be what it writes.
+  - `tools/matrix/gen_app_sql.py`: the application-SQL matrix. Queries that sentio-core's event-log segmentation adaptor
+    generates (recorded verbatim in `tools/matrix/appsql_sentio_core.json` with the sentio-core commit, test and patch
+    hashes) run on inline data against an independent Python oracle. Target category `appsql-keysnullmap`: the queries
+    that the 26.3 production build answers wrongly (NULL merged with 0, a value moved into another key column) or aborts
+    on (`KD-KEYSNULLMAP-512-APPSQL`); controls: the same queries with the proposed application patch's compatibility
+    key, hand-made extensions of that technique, and shapes outside the affected key range.
   - `tools/matrix/gen_random_decimal512.py`: fixed-seed random differential cases (plus/minus/multiply/divide,
     comparisons, least/greatest, casts between scales, text, round) with an exact Python oracle; locked like the
     other matrices.

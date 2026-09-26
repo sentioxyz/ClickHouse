@@ -66,12 +66,12 @@ import subprocess
 import sys
 
 REQUIRED = {
-    "quick": ["midpoint-matrix", "ops-matrix", "keys-matrix"],
-    "full": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "random-matrix", "fork-stateless",
+    "quick": ["midpoint-matrix", "ops-matrix", "keys-matrix", "appsql-matrix"],
+    "full": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "appsql-matrix", "random-matrix", "fork-stateless",
              "dispatch-scan"],
-    "nightly": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "random-matrix",
+    "nightly": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "appsql-matrix", "random-matrix",
                 "random-nightly-matrix", "fork-stateless", "dispatch-scan"],
-    "release": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "random-matrix",
+    "release": ["midpoint-matrix", "midpoint-vector-matrix", "ops-matrix", "keys-matrix", "appsql-matrix", "random-matrix",
                 "random-nightly-matrix", "fork-stateless", "dispatch-scan",
                 "regression-proof", "compat-disk", "compat-protocol", "keeper-replication", "performance", "mixed-groupby",
                 "upgrade-path"],

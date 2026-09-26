@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-25",
+  "updated": "2026-09-26",
   "about": "Decimal512/Int512 defects (open and fixed) of the Sentio fork, as exposed by the checks in tests/. scripts/check_gate.py reads this file: a failing check that matches an OPEN defect is reported as known-open (quick/full exit 3, release BLOCKED), any other failing check is unexpected (exit 1). An open defect whose checks all pass is stale and fails the gate: mark it fixed with evidence in the same change. Expectations encode the intended semantics; they are never edited to make a binary pass. Entries with status `fixed` stay as regression guards: their checks must pass (a failure is unexpected), and a release needs a PROVEN regression proof (recomputed by the gate: the baseline fails, the candidate passes) for every `fixed` entry that names a `proof`.",
   "defects": [
     {
@@ -22,6 +22,26 @@
         ]
       },
       "evidence": "evidence/phase6/matrix_r4/proofs (PROD263 132/333 FAIL -> HOTFIX263v2 0/333)"
+    },
+    {
+      "id": "KD-KEYSNULLMAP-512-APPSQL",
+      "title": "Application queries that reach KD-KEYSNULLMAP-512: sentio-core event-log segmentation over several events with a BigInt breakdown (hour bucket + Nullable(Int256) = 40-byte nullable fixed key). Production build a394e92fb5d: the GROUP BY merges NULL with 0 and moves a value into another key column (BigInt 5 read back as timestamp 1970-01-01 00:00:05); the DISTINCT of rolling unique-user and cumulative COUNT queries, and of the proposed application patch v1's DISTINCT query, aborts (libc++ hardening assertion)",
+      "status": "fixed",
+      "fixed_by": "the KeysNullMap fix bae5ba481f3 (as in KD-KEYSNULLMAP-512), included in CAND9 00c680b9009",
+      "effect": "silent wrong dashboard results, or a server abort, on ordinary application queries",
+      "match": [
+        {
+          "suite": "appsql-matrix",
+          "category": "appsql-keysnullmap"
+        }
+      ],
+      "proof": {
+        "matrix": "appsql",
+        "targets": [
+          "appsql-keysnullmap"
+        ]
+      },
+      "evidence": "reviews/clickhouse-upgrade-20260924 evidence/fix_ci_20260925/appsql_matrix_20260926 (production build: 9/9 targets FAIL, 3 of them CRASH(signal 6); CAND9: 20/20 PASS; regression proof PROVEN) and evidence/fix_ci_20260925/app_patch_isolated_builds_20260926/sentio-core-v2 (the SQL and its 196 executions)"
     },
     {
       "id": "KD-MIDPOINT-DEC512",

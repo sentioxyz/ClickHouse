@@ -1,5 +1,19 @@
 {
  "matrices": {
+  "appsql": {
+   "cases": 20,
+   "categories": {
+    "appsql-control": 5,
+    "appsql-extension": 3,
+    "appsql-keysnullmap": 9,
+    "appsql-workaround": 3
+   },
+   "generator": "gen_app_sql.py",
+   "generator_sha256": "a4a915247f2c385a3df4a968810e128158990b7c34955bb3862be04296e8900b",
+   "ids_sha256": "08e248e6b13c9a5f2d1c5d37bf0a6e2946b56fe6f948ab9829ed539923e6b326",
+   "oracle_sha256": "33164d754269d0fe7e8e648ee4eec2957b42e0667a2abfcecc3bf8e0e1e7a878",
+   "sql_sha256": "b37a010df43f781e4720ae89e4300519c0ca3b2b145e0f69bc4230f70451a32d"
+  },
   "keys": {
    "cases": 400,
    "categories": {

@@ -83,11 +83,12 @@ MATRICES = {
     "ops": [("m20000", "arith", OKV, OKV, OKV), ("m20001", "arith", OKV, OKV, OKV), ("m80000", "boundary", {"error_any": ["DECIMAL_OVERFLOW"]}, {"error": "DECIMAL_OVERFLOW"}, {"error": "DECIMAL_OVERFLOW"})],
     "keys": [("m70000", "keys-512", OKV, OKV, BAD), ("m70001", "keys-512", OKV, OKV, OKV), ("m70002", "single-key-512", OKV, ERR, ERR),
              ("m70003", "keys-control", OKV, OKV, OKV)],
+    "appsql": [("m60000", "appsql-keysnullmap", OKV, OKV, BAD), ("m60030", "appsql-control", OKV, OKV, OKV)],
     "random": [("m90000", "random-plus", OKV, OKV, BAD), ("m90001", "random-compare", OKV, OKV, OKV)],
     "random_nightly": [("m90000", "random-cast", OKV, OKV, OKV), ("m90001", "random-round", {"error_any": ["DECIMAL_OVERFLOW"]}, {"error": "DECIMAL_OVERFLOW"}, BAD)],
 }
 SUITE_OF = {"midpoint": "midpoint-matrix", "midpoint_vector": "midpoint-vector-matrix", "ops": "ops-matrix", "keys": "keys-matrix",
-            "random": "random-matrix", "random_nightly": "random-nightly-matrix"}
+            "appsql": "appsql-matrix", "random": "random-matrix", "random_nightly": "random-nightly-matrix"}
 PERF_Q = [("q_changed", "changed", 1.00, 1.02), ("q_control", "control", 0.50, 0.50), ("q_new", "new", None, 0.30)]  # id, category, base, cand
 
 
@@ -251,7 +252,7 @@ def build(d):
     baseline = {"path": "bin/base.bin", "sha256": bs_, "build_id": bb}
     image = {"ref": "fixture:tag", "id": "sha256:" + "a" * 64, "binary_sha256": cs, "inspect": "results/image_inspect.json",
              "binary_sha256_output": "results/image_binary_sha256.txt"}
-    quick = {"schema": 2, "tier": "quick", "source": source, "binary": binary, "suites": [suites[k] for k in ("midpoint-matrix", "ops-matrix", "keys-matrix")]}
+    quick = {"schema": 2, "tier": "quick", "source": source, "binary": binary, "suites": [suites[k] for k in ("midpoint-matrix", "ops-matrix", "keys-matrix", "appsql-matrix")]}
     release = {"schema": 2, "tier": "release", "source": source, "binary": binary, "baseline": baseline, "image": image,
                "suites": list(suites.values()), "not_run": []}
     jdump(os.path.join(d, "quick.json"), quick)

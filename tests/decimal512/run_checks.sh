@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Decimal512/Int512 checks of the Sentio fork, in four tiers:
-#   quick    per commit:   midpoint/avg2, operations and key matrices (clickhouse local, no server)
+#   quick    per commit:   midpoint/avg2, operations and key matrices, and the application-SQL matrix (queries that
+#                          sentio-core generates; clickhouse local, no server)
 #   full     periodic:     quick + vector-form matrix + fixed-seed random differential matrix (3000 cases) + 256-bit
 #                          dispatch scan + the fork's stateless tests
 #   nightly  scheduled:    full + a second fixed-seed random differential matrix (9000 cases)
@@ -167,6 +168,7 @@ gen() {
    python3 gen_midpoint_vector.py "$OUT/gen/midpoint_vector.sql" "$OUT/gen/midpoint_vector.oracle.jsonl" &&
    python3 gen_decimal512_ops_matrix.py "$OUT/gen/ops.sql" "$OUT/gen/ops.oracle.jsonl" &&
    python3 gen_composite_keys.py "$OUT/gen/keys.sql" "$OUT/gen/keys.oracle.jsonl" &&
+   python3 gen_app_sql.py "$OUT/gen/appsql.sql" "$OUT/gen/appsql.oracle.jsonl" &&
    python3 gen_random_decimal512.py "$OUT/gen/random.sql" "$OUT/gen/random.oracle.jsonl" &&
    python3 gen_random_decimal512.py "$OUT/gen/random_nightly.sql" "$OUT/gen/random_nightly.oracle.jsonl" --seed 20260926 --cases 9000) \
     > "$OUT/logs/gen.log" 2>&1 \
@@ -184,10 +186,11 @@ proof_suite() {  # <matrix> <targets json> <controls json>: recomputed by the ga
 }
 
 gen
-for m in midpoint ops keys; do run_matrix $m "$BIN" tested; done
+for m in midpoint ops keys appsql; do run_matrix $m "$BIN" tested; done
 matrix_suite midpoint-matrix midpoint tested
 matrix_suite ops-matrix ops tested
 matrix_suite keys-matrix keys tested
+matrix_suite appsql-matrix appsql tested
 
 if [ "$TIER" != quick ]; then
   run_matrix midpoint_vector "$BIN" tested
@@ -263,7 +266,7 @@ if [ -n "$BUGGY" ]; then
 fi
 if [ "$TIER" = release ]; then
   if [ -n "$BUGGY" ]; then
-    for m in midpoint ops keys; do run_matrix $m "$BUGGY" previous; done
+    for m in midpoint ops keys appsql; do run_matrix $m "$BUGGY" previous; done
     python3 "$T/regression_proof.py" --buggy previous="$OUT/results/keys.previous.result.jsonl:$OUT/results/keys.previous.summary.json" \
       --fixed tested="$OUT/results/keys.tested.result.jsonl:$OUT/results/keys.tested.summary.json" --target keys-512 --target single-key-512 \
       --control keys-control --control single-key-control --buggy-binary "$BUGGY" --fixed-binary "$BIN" \
@@ -281,10 +284,16 @@ if [ "$TIER" = release ]; then
       $(for c in $OPS_T; do printf -- '--target %s ' "$c"; done) $(for c in $OPS_C; do printf -- '--control %s ' "$c"; done) \
       --buggy-binary "$BUGGY" --fixed-binary "$BIN" --json "$OUT/results/proof.ops.json" > "$OUT/results/proof.ops.txt" 2>&1
     log "regression proof ops: rc=$?"
+    python3 "$T/regression_proof.py" --buggy previous="$OUT/results/appsql.previous.result.jsonl:$OUT/results/appsql.previous.summary.json" \
+      --fixed tested="$OUT/results/appsql.tested.result.jsonl:$OUT/results/appsql.tested.summary.json" --target appsql-keysnullmap \
+      --control appsql-workaround --control appsql-extension --control appsql-control --buggy-binary "$BUGGY" --fixed-binary "$BIN" \
+      --json "$OUT/results/proof.appsql.json" > "$OUT/results/proof.appsql.txt" 2>&1
+    log "regression proof appsql: rc=$?"
     jlist() { printf '['; local sep=; for c in "$@"; do printf '%s"%s"' "$sep" "$c"; sep=', '; done; printf ']'; }
     proof_suite keys '["keys-512", "single-key-512"]' '["keys-control", "single-key-control"]'
     proof_suite midpoint '["midpoint-dec512"]' '["midpoint-reject"]'
     proof_suite ops "$(jlist $OPS_T)" "$(jlist $OPS_C)"
+    proof_suite appsql '["appsql-keysnullmap"]' '["appsql-workaround", "appsql-extension", "appsql-control"]'
   else
     NOT_RUN+=('{"name": "regression-proof", "reason": "no --buggy-binary given"}')
   fi
