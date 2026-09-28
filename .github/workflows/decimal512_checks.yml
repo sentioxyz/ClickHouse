@@ -20,7 +20,7 @@ on:
   push:
     branches:
       - '26.3-lts-decimal512'
-      - 'claude/26.3-lts-decimal512-*'
+      - '26.3-lts-decimal512-release'
   pull_request:
     branches:
       - '26.3-lts-decimal512'
