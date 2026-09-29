@@ -85,7 +85,7 @@ private:
 
         WriteBufferFromVector<ColumnString::Chars> buf_to(vec_to);
 
-        constexpr size_t max_digits = std::numeric_limits<UInt256>::digits10;
+        constexpr size_t max_digits = std::numeric_limits<UInt512>::digits10;
 
         for (size_t i = 0; i < input_rows_count; ++i)
         {
@@ -105,8 +105,8 @@ private:
                         ColumnString::Chars & vec_to, ColumnString::Offsets & result_offsets, UInt8 from_scale,
                         size_t input_rows_count) const
     {
-        /// There are no more than 77 meaning digits (as it is the max length of UInt256). So we can limit it with 77.
-        constexpr size_t max_digits = std::numeric_limits<UInt256>::digits10;
+        /// There are no more than 154 meaningful digits (the max length of UInt512). So we can limit it with 154.
+        constexpr size_t max_digits = std::numeric_limits<UInt512>::digits10;
         if (precision > max_digits)
             throw DB::Exception(DB::ErrorCodes::CANNOT_PRINT_FLOAT_OR_DOUBLE_NUMBER,
                                 "Too many fractional digits requested for Decimal, must not be more than {}", max_digits);
@@ -131,7 +131,7 @@ private:
 
         WriteBufferFromVector<ColumnString::Chars> buf_to(vec_to);
 
-        constexpr size_t max_digits = std::numeric_limits<UInt256>::digits10;
+        constexpr size_t max_digits = std::numeric_limits<UInt512>::digits10;
 
         for (size_t i = 0; i < input_rows_count; ++i)
         {
@@ -167,8 +167,8 @@ private:
     template <is_integer T>
     static void format(T value, DB::WriteBuffer & out, UInt8 precision)
     {
-        /// Fractional part for Integer is just trailing zeros. Let's limit it with 77 (like with Decimals).
-        constexpr size_t max_digits = std::numeric_limits<UInt256>::digits10;
+        /// Fractional part for Integer is just trailing zeros. Let's limit it with 154 (like with Decimals).
+        constexpr size_t max_digits = std::numeric_limits<UInt512>::digits10;
         if (precision > max_digits)
             throw DB::Exception(DB::ErrorCodes::CANNOT_PRINT_FLOAT_OR_DOUBLE_NUMBER,
                                 "Too many fractional digits requested, shall not be more than {}", max_digits);
@@ -192,18 +192,21 @@ public:
             case TypeIndex::UInt64:     return executeType<UInt64>(arguments, input_rows_count);
             case TypeIndex::UInt128:    return executeType<UInt128>(arguments, input_rows_count);
             case TypeIndex::UInt256:    return executeType<UInt256>(arguments, input_rows_count);
+            case TypeIndex::UInt512:    return executeType<UInt512>(arguments, input_rows_count);
             case TypeIndex::Int8:       return executeType<Int8>(arguments, input_rows_count);
             case TypeIndex::Int16:      return executeType<Int16>(arguments, input_rows_count);
             case TypeIndex::Int32:      return executeType<Int32>(arguments, input_rows_count);
             case TypeIndex::Int64:      return executeType<Int64>(arguments, input_rows_count);
             case TypeIndex::Int128:     return executeType<Int128>(arguments, input_rows_count);
             case TypeIndex::Int256:     return executeType<Int256>(arguments, input_rows_count);
+            case TypeIndex::Int512:     return executeType<Int512>(arguments, input_rows_count);
             case TypeIndex::Float32:    return executeType<Float32>(arguments, input_rows_count);
             case TypeIndex::Float64:    return executeType<Float64>(arguments, input_rows_count);
             case TypeIndex::Decimal32:  return executeType<Decimal32>(arguments, input_rows_count);
             case TypeIndex::Decimal64:  return executeType<Decimal64>(arguments, input_rows_count);
             case TypeIndex::Decimal128: return executeType<Decimal128>(arguments, input_rows_count);
             case TypeIndex::Decimal256: return executeType<Decimal256>(arguments, input_rows_count);
+            case TypeIndex::Decimal512: return executeType<Decimal512>(arguments, input_rows_count);
             default:
                 throw Exception(ErrorCodes::ILLEGAL_COLUMN, "Illegal column {} of argument of function {}",
                                 arguments[0].column->getName(), getName());
