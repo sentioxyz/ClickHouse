@@ -48,8 +48,7 @@ ValueType avgResultToValue(Float64 v, UInt32 scale = 0)
 
     if constexpr (is_decimal<ValueType>)
     {
-        const auto mult = DecimalUtils::scaleMultiplier<ValueType>(scale);
-        const Float64 scaled = v * static_cast<Float64>(mult);
+        const Float64 scaled = v * DecimalUtils::floatScaleMultiplier<Float64, ValueType>(scale); /// also for 10^154, which does not fit Int512
         return ValueType(saturating_cast(roundWithMode(scaled, RoundingMode::Round)));
     }
     else

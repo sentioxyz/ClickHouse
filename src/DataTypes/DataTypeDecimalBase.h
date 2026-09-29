@@ -112,7 +112,17 @@ public:
     T wholePart(T x) const;
     T fractionalPart(T x) const;
 
-    T maxWholeValue() const { return getScaleMultiplier(precision - scale) - T(1); }
+    T maxWholeValue() const
+    {
+        /// 10^precision fits every native type except Int512 at precision 154 (10^154 > 2^511 - 1): there the largest
+        /// storable whole part is bounded by the native range, (2^511 - 1) / 10^scale, not by the digit count.
+        if constexpr (std::is_same_v<T, Decimal512>)
+        {
+            if (precision == maxPrecision())
+                return scale == maxPrecision() ? T(0) : T(std::numeric_limits<Int512>::max() / getScaleMultiplier(scale).value);
+        }
+        return getScaleMultiplier(precision - scale) - T(1);
+    }
 
     template <typename U>
     bool canStoreWhole(U x) const
