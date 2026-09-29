@@ -3,6 +3,8 @@
 #include <base/extended_types.h>
 #include <base/defines.h>
 
+#include <bit>
+
 // NOLINTBEGIN(google-runtime-int)
 
 namespace common
@@ -239,20 +241,60 @@ namespace common
         return false;
     }
 
+    namespace detail
+    {
+        /// The i-th least significant 64-bit limb of a 512-bit integer.
+        template <typename T>
+        inline UInt64 limb512(const T & v, size_t i)
+        {
+            static_assert(sizeof(T) == 64);
+            if constexpr (std::endian::native == std::endian::little)
+                return v.items[i];
+            else
+                return v.items[7 - i];
+        }
+
+        /// v is in the Int256 range: its upper 257 bits all equal the sign bit. A product of two such values has at most
+        /// 511 significant bits, so it cannot overflow Int512. These checks run for every value of a Decimal512
+        /// multiplication or scale-up, so they compare limbs instead of making a round trip through Int256.
+        inline bool fitsInt256(const Int512 & v)
+        {
+            const UInt64 sign = static_cast<UInt64>(static_cast<Int64>(limb512(v, 3)) >> 63);
+            return limb512(v, 4) == sign && limb512(v, 5) == sign && limb512(v, 6) == sign && limb512(v, 7) == sign;
+        }
+
+        inline bool fitsUInt256(const UInt512 & v)
+        {
+            return (limb512(v, 4) | limb512(v, 5) | limb512(v, 6) | limb512(v, 7)) == 0;
+        }
+
+        /// Whether res = x * y (computed with wrap-around) overflowed, for factors that do not both fit 256 bits.
+        /// Out of line: rare, and it keeps the inlined fast path small.
+        NO_INLINE inline bool mulOverflowInt512Slow(const Int512 & x, const Int512 & y, const Int512 & res)
+        {
+            if (x == 0 || y == 0)
+                return false;
+            /// The only product whose check below would itself overflow: min * -1.
+            if ((x == -1 && y == std::numeric_limits<Int512>::min()) || (y == -1 && x == std::numeric_limits<Int512>::min()))
+                return true;
+            /// Without overflow the wrapped product is exact, so dividing it by one factor gives the other one back.
+            return res / y != x;
+        }
+
+        NO_INLINE inline bool mulOverflowUInt512Slow(const UInt512 & x, const UInt512 & y, const UInt512 & res)
+        {
+            return x != 0 && res / x != y;
+        }
+    }
+
     template <>
     inline bool mulOverflow(Int512 x, Int512 y, Int512 & res)
     {
         res = mulIgnoreOverflow(x, y);
-        /// Factors that fit into Int256 cannot overflow (|x * y| <= 2^510): the common case, checked without a division.
-        if (Int512(static_cast<Int256>(x)) == x && Int512(static_cast<Int256>(y)) == y)
+        /// Factors in the Int256 range cannot overflow (|x * y| <= 2^510): the common case, checked without a division.
+        if (likely(detail::fitsInt256(x) && detail::fitsInt256(y)))
             return false;
-        if (x == 0 || y == 0)
-            return false;
-        /// The only product whose check below would itself overflow: min * -1.
-        if ((x == -1 && y == std::numeric_limits<Int512>::min()) || (y == -1 && x == std::numeric_limits<Int512>::min()))
-            return true;
-        /// Without overflow the wrapped product is exact, so dividing it by one factor gives the other one back.
-        return res / y != x;
+        return detail::mulOverflowInt512Slow(x, y, res);
     }
 
     template <>
@@ -260,9 +302,9 @@ namespace common
     {
         res = mulIgnoreOverflow(x, y);
         /// Factors below 2^256 cannot overflow.
-        if (UInt512(static_cast<UInt256>(x)) == x && UInt512(static_cast<UInt256>(y)) == y)
+        if (likely(detail::fitsUInt256(x) && detail::fitsUInt256(y)))
             return false;
-        return x != 0 && res / x != y;
+        return detail::mulOverflowUInt512Slow(x, y, res);
     }
 }
 
