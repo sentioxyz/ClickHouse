@@ -207,7 +207,9 @@ namespace common
         return __builtin_smulll_overflow(x, y, &res);
     }
 
-    /// Overflow check is not implemented for big integers.
+    /// Overflow check is not implemented for 128-bit and 256-bit integers (as upstream: Decimal128/Decimal256 multiply
+    /// does not detect overflow). The 512-bit specializations below do check it: Decimal512 allows 154 digits of
+    /// precision, so its multiplication and scaling can leave the Int512 range, and that must not wrap silently.
 
     template <>
     inline bool mulOverflow(Int128 x, Int128 y, Int128 & res)
@@ -241,14 +243,26 @@ namespace common
     inline bool mulOverflow(Int512 x, Int512 y, Int512 & res)
     {
         res = mulIgnoreOverflow(x, y);
-        return false;
+        /// Factors that fit into Int256 cannot overflow (|x * y| <= 2^510): the common case, checked without a division.
+        if (Int512(static_cast<Int256>(x)) == x && Int512(static_cast<Int256>(y)) == y)
+            return false;
+        if (x == 0 || y == 0)
+            return false;
+        /// The only product whose check below would itself overflow: min * -1.
+        if ((x == -1 && y == std::numeric_limits<Int512>::min()) || (y == -1 && x == std::numeric_limits<Int512>::min()))
+            return true;
+        /// Without overflow the wrapped product is exact, so dividing it by one factor gives the other one back.
+        return res / y != x;
     }
 
     template <>
     inline bool mulOverflow(UInt512 x, UInt512 y, UInt512 & res)
     {
         res = mulIgnoreOverflow(x, y);
-        return false;
+        /// Factors below 2^256 cannot overflow.
+        if (UInt512(static_cast<UInt256>(x)) == x && UInt512(static_cast<UInt256>(y)) == y)
+            return false;
+        return x != 0 && res / x != y;
     }
 }
 
