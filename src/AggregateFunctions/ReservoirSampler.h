@@ -203,7 +203,7 @@ public:
         const cpp_int weighted_sum = left * (denominator - numerator) + right * numerator;
 
         cpp_int result;
-        if constexpr (std::is_same_v<U, Decimal512>)
+        if constexpr (std::is_same_v<U, DB::Decimal512>)
         {
             /// `Decimal512` exists only in this fork, and its 26.3 LTS implementation interpolated in
             /// Float64, where levels that are not exact binary fractions (such as 0.3) still produced
