@@ -1,0 +1,16 @@
+# /etc/clickhouse-server files and package versions of the image deployed on 2026-09-16
+# (clickhouse-server:26.3-lts-decimal512-release-2026-09-16, local image id sha256:707eb364fbf668de8c205bdf6e0dda1fa56168fd47da1977b5611afe6d33578a), read with --network none;
+# build.sh compares every new image with this list and reports differences (a changed config.xml is expected when the source changes it)
+527e70ef78d1a895ce02168e6c52fed43f25ae0702c95bbf161f515ee87555b4  ./config.d/data-paths.xml
+dc956966e19bf80e996a627950d09b1ef5aa501ca8762f68c95c5c431bd33c7d  ./config.d/docker_related_config.xml
+1be3ab3d3f1341513a9d6f4ba34f14adde7cf84b748fc059f89982aae5feb182  ./config.d/logger.xml
+72e19dbd9dc1953d207a1aec8df84f1c92de78ca6d7edd343b34c554e612245b  ./config.d/openssl.xml
+14b8a2cb729ee8be5066e37d0ae28098cfa98da229a097cf4aa6899db17d96aa  ./config.d/user-directories.xml
+8e4ad9ebad805a0b168c84f4a9fe2272a8ffeb157274fff6c1798cb22acbc6a9  ./config.xml
+2340372983292aafb1c94cf869958cc707a1c42451f7b93c2507799a57e54ae1  ./users.xml
+pkg ca-certificates=20260601~22.04.1
+pkg libssl3=3.0.2-0ubuntu1.29
+pkg locales=2.35-0ubuntu3.15
+pkg openssl=3.0.2-0ubuntu1.29
+pkg tzdata=2026c-0ubuntu0.22.04.1
+pkg wget=1.21.2-2ubuntu1.5
