@@ -200,7 +200,23 @@ public:
         const cpp_int denominator = cpp_int(1) << denominator_shift;
         const cpp_int left = toExactInteger(samples[left_index].value);
         const cpp_int right = toExactInteger(samples[right_index].value);
-        const cpp_int result = (left * (denominator - numerator) + right * numerator) / denominator;
+        const cpp_int weighted_sum = left * (denominator - numerator) + right * numerator;
+
+        cpp_int result;
+        if constexpr (std::is_same_v<U, Decimal512>)
+        {
+            /// `Decimal512` exists only in this fork, and its 26.3 LTS implementation interpolated in
+            /// Float64, where levels that are not exact binary fractions (such as 0.3) still produced
+            /// the expected decimal (`220`, not `219.999999`). Round to the nearest unit to keep those
+            /// results; the other Decimal types keep the upstream truncation.
+            const cpp_int half_denominator = denominator >> 1;
+            if (weighted_sum >= 0)
+                result = (weighted_sum + half_denominator) / denominator;
+            else
+                result = (weighted_sum - half_denominator) / denominator;
+        }
+        else
+            result = weighted_sum / denominator;
 
         return U(fromExactInteger<typename U::NativeType>(result));
     }
