@@ -18,14 +18,14 @@ struct MultiplyDecimalsImpl
     static constexpr auto suitable_for_short_circuit = false;
 
     template <typename FirstType, typename SecondType>
-    static Decimal256
+    static Decimal512
     execute(FirstType a, SecondType b, UInt16 scale_a, UInt16 scale_b, UInt16 result_scale)
     {
         if (a.value == 0 || b.value == 0)
-            return Decimal256(0);
+            return Decimal512(0);
 
-        Int256 sign_a = a.value < 0 ? -1 : 1;
-        Int256 sign_b = b.value < 0 ? -1 : 1;
+        Int512 sign_a = a.value < 0 ? -1 : 1;
+        Int512 sign_b = b.value < 0 ? -1 : 1;
 
         VectorWithMemoryTracking<UInt8> a_digits = DecimalOpHelpers::toDigits(a.value * sign_a);
         VectorWithMemoryTracking<UInt8> b_digits = DecimalOpHelpers::toDigits(b.value * sign_b);
@@ -46,12 +46,12 @@ struct MultiplyDecimalsImpl
         }
 
         if (multiplied.empty())
-            return Decimal256(0);
+            return Decimal512(0);
 
-        if (multiplied.size() > DecimalUtils::max_precision<Decimal256>)
-            throw DB::Exception(ErrorCodes::DECIMAL_OVERFLOW, "Numeric overflow: result bigger that Decimal256");
+        if (multiplied.size() > DecimalUtils::max_precision<Decimal512>)
+            throw DB::Exception(ErrorCodes::DECIMAL_OVERFLOW, "Numeric overflow: result bigger that Decimal512");
 
-        return Decimal256(sign_a * sign_b * DecimalOpHelpers::fromDigits(multiplied));
+        return Decimal512(sign_a * sign_b * DecimalOpHelpers::fromDigits(multiplied));
     }
 };
 

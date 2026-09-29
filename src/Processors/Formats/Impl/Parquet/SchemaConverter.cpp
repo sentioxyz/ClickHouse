@@ -1345,10 +1345,10 @@ void SchemaConverter::processPrimitiveColumn(
             }
         }
 
-        if (precision > 76)
+        if (precision > 154)
             throw Exception(
                 ErrorCodes::INCORRECT_DATA,
-                "Parquet Decimal precision {} exceeds the maximum supported ClickHouse Decimal precision 76; an explicit compatible wide-integer structure is required",
+                "Parquet Decimal precision {} exceeds the maximum supported ClickHouse Decimal precision 154",
                 precision);
 
         /// Precision of the Decimal type exactly as wide as one decoded value. Legal parquet can
@@ -1367,8 +1367,8 @@ void SchemaConverter::processPrimitiveColumn(
         {
             size_t input_size = element.type_length;
 
-            if (input_size > 32)
-                throw Exception(ErrorCodes::INCORRECT_DATA, "Parquet decimal value too long: {} bytes (at most 32 is supported)", input_size);
+            if (input_size > 64)
+                throw Exception(ErrorCodes::INCORRECT_DATA, "Parquet decimal value too long: {} bytes (at most 64 is supported)", input_size);
 
             if (precision <= 9 && input_size <= 4)
             {
@@ -1386,10 +1386,15 @@ void SchemaConverter::processPrimitiveColumn(
                 max_precision = 38;
                 out_decoder.fixed_size_converter = std::make_shared<BigEndianDecimalFixedSizeConverter<Int128>>(input_size, scale);
             }
-            else
+            else if (precision <= 76 && input_size <= 32)
             {
                 max_precision = 76;
                 out_decoder.fixed_size_converter = std::make_shared<BigEndianDecimalFixedSizeConverter<Int256>>(input_size, scale);
+            }
+            else
+            {
+                max_precision = 154;
+                out_decoder.fixed_size_converter = std::make_shared<BigEndianDecimalFixedSizeConverter<Int512>>(input_size, scale);
             }
         }
         else if (type == parq::Type::BYTE_ARRAY)
@@ -1409,10 +1414,15 @@ void SchemaConverter::processPrimitiveColumn(
                 max_precision = 38;
                 out_decoder.string_converter = std::make_shared<BigEndianDecimalStringConverter<Int128>>(scale);
             }
-            else
+            else if (precision <= 76)
             {
                 max_precision = 76;
                 out_decoder.string_converter = std::make_shared<BigEndianDecimalStringConverter<Int256>>(scale);
+            }
+            else
+            {
+                max_precision = 154;
+                out_decoder.string_converter = std::make_shared<BigEndianDecimalStringConverter<Int512>>(scale);
             }
         }
         else
@@ -1557,6 +1567,18 @@ void SchemaConverter::processPrimitiveColumn(
                     out_inferred_type = type_hint;
                     out_decoder.fixed_size_converter = std::make_shared<UUIDConverter>();
                     out_decoder.allow_stats = true;
+                    return;
+                }
+
+                /// Decimal512 written without DECIMAL annotation (fixed_string(64) encoding).
+                /// ConverterDecimal<Decimal512> writes big-endian bytes; decode back to little-endian.
+                if (which.isDecimal512() && size_t(element.type_length) == sizeof(Decimal512))
+                {
+                    out_inferred_type = type_hint;
+                    UInt32 scale = getDecimalScale(*type_hint);
+                    out_decoder.fixed_size_converter =
+                        std::make_shared<BigEndianDecimalFixedSizeConverter<Int512>>(sizeof(Decimal512), scale);
+                    out_decoder.allow_stats = false;
                     return;
                 }
 

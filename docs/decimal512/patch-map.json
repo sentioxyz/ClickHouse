@@ -1,0 +1,3365 @@
+{
+  "schema_version": 1,
+  "source_branch": "26.3-lts-decimal512",
+  "source_branch_head": "a394e92fb5da5ac310985f910316ed485920cbaa",
+  "initial_decimal512_commit": "1f0fb3353cd10c3f8558f14feb0652a77e871f95",
+  "target_baseline": {
+    "tag": "v26.8.8.8-lts",
+    "commit": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc"
+  },
+  "commits": [
+    {
+      "source_commit": "1f0fb3353cd10c3f8558f14feb0652a77e871f95",
+      "subject": "feat: port Decimal512 support to 26.3 LTS",
+      "status": "verified",
+      "target_commit": null,
+      "upstream_equivalent": null,
+      "effective_merge_tree": "candidate-worktree",
+      "evidence": [
+        {
+          "kind": "git-ancestry",
+          "note": "1f0fb3353cd10c3f8558f14feb0652a77e871f95 is verified as an ancestor of locked source head a394e92fb5da5ac310985f910316ed485920cbaa."
+        },
+        {
+          "kind": "path-audit",
+          "note": "All 315 initial paths are classified: adapted=243, upstream-equivalent=62, not-applicable-to-26.8=10."
+        },
+        {
+          "kind": "build",
+          "note": "task10-quantile-rounding-build-20260922.log linked ClickHouse successfully with source-path mapping enabled."
+        },
+        {
+          "kind": "functional-tests",
+          "note": "task15-source-initial-full-local-20260922.log passed 51/51 local source tests; task16-02686-postgres-decimal512-20260922.log passed PostgreSQL protocol coverage."
+        },
+        {
+          "kind": "service-health",
+          "note": "SYSTEM FLUSH LOGS and a follow-up SELECT succeeded on the isolated 26.8.8.1 service."
+        }
+      ]
+    },
+    {
+      "source_commit": "a9e40a6256a9a978422a8549dd30c844d179ca52",
+      "subject": "reset buffer cancellation on rewind",
+      "status": "verified",
+      "target_commit": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "upstream_equivalent": null,
+      "effective_merge_tree": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "evidence": [
+        {
+          "kind": "git-audit",
+          "note": "Both rewind implementations reset canceled=false in target baseline."
+        }
+      ]
+    },
+    {
+      "source_commit": "aeba115a6fa0f7e16a260890106b808cc45a029c",
+      "subject": "add rewind test",
+      "status": "verified",
+      "target_commit": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "upstream_equivalent": null,
+      "effective_merge_tree": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "evidence": [
+        {
+          "kind": "git-audit",
+          "note": "Final synchronous rewind test tree is identical in target baseline."
+        }
+      ]
+    },
+    {
+      "source_commit": "e6abf7195fb4576636d089705a6fa7acd1e7dba0",
+      "subject": "add rewind test to async read buffer",
+      "status": "verified",
+      "target_commit": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "upstream_equivalent": null,
+      "effective_merge_tree": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "evidence": [
+        {
+          "kind": "git-audit",
+          "note": "Final asynchronous rewind test tree is identical in target baseline."
+        }
+      ]
+    },
+    {
+      "source_commit": "1c48ddcc31bfaed9998665e10cc0b58c342802d0",
+      "subject": "check position in async test",
+      "status": "verified",
+      "target_commit": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "upstream_equivalent": null,
+      "effective_merge_tree": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "evidence": [
+        {
+          "kind": "git-audit",
+          "note": "Target final test asserts asynchronous getPosition()==0."
+        }
+      ]
+    },
+    {
+      "source_commit": "2aba6ae66b98945270ce88f8e66f82d54fecaaee",
+      "subject": "fix tests",
+      "status": "verified",
+      "target_commit": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "upstream_equivalent": null,
+      "effective_merge_tree": "0de36d42e8bbc78fdaf2bbf90a2853b5e9301bdc",
+      "evidence": [
+        {
+          "kind": "git-audit",
+          "note": "Target final test uses readStringUntilEOF and matches source final tree."
+        }
+      ]
+    },
+    {
+      "source_commit": "697aaa08aeaad5927d8177a517ad565c4187785a",
+      "subject": "Fix LOCAL JOIN AST formatting round-trip",
+      "status": "verified",
+      "target_commit": null,
+      "upstream_equivalent": null,
+      "effective_merge_tree": "candidate-worktree",
+      "evidence": [
+        {
+          "kind": "regression",
+          "note": "task17-03786_AST_formatting_inconsistencies_in_debug_check-final-20260922.log passed."
+        }
+      ]
+    },
+    {
+      "source_commit": "01b742e0fcdc7f1820435901724e1cde307955f5",
+      "subject": "Merge pull request #3 from sentioxyz/backport/pr-102524-26.3-lts-decimal512",
+      "status": "verified",
+      "target_commit": null,
+      "upstream_equivalent": null,
+      "effective_merge_tree": "merge-no-content",
+      "evidence": [
+        {
+          "kind": "git-audit",
+          "note": "Two-parent merge with zero first-parent file changes."
+        }
+      ]
+    },
+    {
+      "source_commit": "115be6e9fdf0c9f9098449f11cc372d9986d90ad",
+      "subject": "Fix LOCAL and PASTE JOIN formatting",
+      "status": "verified",
+      "target_commit": null,
+      "upstream_equivalent": null,
+      "effective_merge_tree": "candidate-worktree",
+      "evidence": [
+        {
+          "kind": "regression",
+          "note": "task17-04058_paste_join_strictness_formatting-final-20260922.log passed."
+        }
+      ]
+    },
+    {
+      "source_commit": "69ac7a8a1cf1bc5b55895cb9a3d571b94abc0ad0",
+      "subject": "Do not build IN-sets that read an unmaterialized CTE during planning",
+      "status": "verified",
+      "target_commit": null,
+      "upstream_equivalent": null,
+      "effective_merge_tree": "candidate-worktree",
+      "evidence": [
+        {
+          "kind": "regression",
+          "note": "task17-04712_materialized_cte_nested_in_set-final-20260922.log passed the materialized CTE case."
+        }
+      ]
+    },
+    {
+      "source_commit": "105430b3fd5b107c05279c62f8b5cc5c936e6c6f",
+      "subject": "Merge pull request #4 from sentioxyz/fix/materialized-cte-inplace-set-gate",
+      "status": "verified",
+      "target_commit": null,
+      "upstream_equivalent": null,
+      "effective_merge_tree": "merge-no-content",
+      "evidence": [
+        {
+          "kind": "git-audit",
+          "note": "Two-parent merge with zero first-parent file changes."
+        }
+      ]
+    },
+    {
+      "source_commit": "a394e92fb5da5ac310985f910316ed485920cbaa",
+      "subject": "Force CTE materialization when planning scalar subqueries",
+      "status": "verified",
+      "target_commit": null,
+      "upstream_equivalent": null,
+      "effective_merge_tree": "candidate-worktree",
+      "evidence": [
+        {
+          "kind": "regression",
+          "note": "task17-04712_materialized_cte_nested_in_set-final-20260922.log passed scalar-subquery CTE materialization behavior."
+        }
+      ]
+    }
+  ],
+  "initial_paths": [
+    {
+      "source_path": ".gitattributes",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": ".prettierignore",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "26.3 branch-local build or formatting metadata has no corresponding 26.8 source-preparation role."
+        }
+      ]
+    },
+    {
+      "source_path": ".prettierrc",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "26.3 branch-local build or formatting metadata has no corresponding 26.8 source-preparation role."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/Decimal.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/Decimal.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/Decimal_fwd.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/TypeLists.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/TypeName.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/arithmeticOverflow.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/extended_types.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/itoa.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/itoa.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/wide_integer_impl.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/wide_integer_to_string.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "base/base/wide_integer_to_string.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "docker/Dockerfile",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "26.3 branch-local build or formatting metadata has no corresponding 26.8 source-preparation role."
+        }
+      ]
+    },
+    {
+      "source_path": "docker/Dockerfile-tests",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "26.3 branch-local build or formatting metadata has no corresponding 26.8 source-preparation role."
+        }
+      ]
+    },
+    {
+      "source_path": "docker/Dockerfile.clickhouse-tests",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "26.3 branch-local build or formatting metadata has no corresponding 26.8 source-preparation role."
+        }
+      ]
+    },
+    {
+      "source_path": "docker/Dockerfile.official-builder",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "26.3 branch-local build or formatting metadata has no corresponding 26.8 source-preparation role."
+        }
+      ]
+    },
+    {
+      "source_path": "docker/server/Dockerfile.ubuntu",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "programs/keeper-bench/Stats.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "programs/server/config.debug.xml",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "26.3 debug-server configuration layout is absent in 26.8 and is not part of the production path-mapped build."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionAvg.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionAvgWeighted.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionGroupArrayMoving.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionQuantile.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionQuantileDeterministic.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionQuantileExact.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionQuantileExactHigh.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionQuantileExactLow.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionQuantileGK.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionSparkbar.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionSum.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/AggregateFunctionUniqUpTo.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/Combinators/AggregateFunctionMap.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/Helpers.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/AggregateFunctions/SingleValueData.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Analyzer/Passes/AggregateFunctionsArithmericOperationsPass.cpp",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.3 analyzer pass no longer exists in 26.8; Decimal arithmetic is resolved by the adapted FunctionsDecimalArithmetics path."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Client/BuzzHouse/AST/SQLProtoStr.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Client/BuzzHouse/Generator/SQLExpression.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Client/BuzzHouse/Generator/SQLFuncs.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Client/BuzzHouse/Proto/SQLGrammar.proto",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnArray.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnDecimal.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnDecimal.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnUnique.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnUnique.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnVector.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnVector.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnsCommon.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/ColumnsNumber.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/IColumn.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/MaskOperations.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/tests/gtest_column_vector.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Columns/tests/gtest_low_cardinality.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/BSONCXXHelper.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldAccurateComparison.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldBinaryEncoding.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldBinaryEncoding.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorConvertToNumber.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorConvertToNumber.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorDump.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorDump.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorHash.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorHash.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorToJSONElement.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorToJSONElement.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorToString.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorToString.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorWriteBinary.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/FieldVisitorWriteBinary.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/HashTable/Hash.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/IntervalTree.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/QueryFuzzer.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/RadixSort.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/intExp.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Common/intExp.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Compression/CompressionCodecGCD.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/DecimalComparison.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/DecimalFunctions.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/ExternalResultDescription.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/ExternalResultDescription.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/Field.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/Field.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/MySQL/PacketsProtocolText.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/PostgreSQL/insertPostgreSQLValue.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/PostgreSQLProtocol.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/SortCursor.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/TypeId.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/Types.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/Types_fwd.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/callOnTypeIndex.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Core/tests/gtest_fields_binary_enciding.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypeDecimalBase.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypeDecimalBase.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypeNumberBase.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypeNumberBase.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypesBinaryEncoding.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypesBinaryEncoding.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypesDecimal.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypesDecimal.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypesNumber.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/DataTypesNumber.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/FieldToDataType.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/FieldToDataType.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/IDataType.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/IDataType.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/Native.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/NumberTraits.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/Serializations/SerializationDecimal.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/Serializations/SerializationDecimalBase.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/Serializations/SerializationDecimalBase.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/Serializations/SerializationNumber.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/Serializations/SerializationVariant.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/Utils.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/convertMySQLDataType.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/getLeastSupertype.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/getMostSubtype.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/DataTypes/tests/gtest_data_types_binary_encoding.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Databases/PostgreSQL/fetchPostgreSQLTableStructure.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/CacheDictionaryStorage.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/DictionaryStructure.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/FlatDictionary.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/HashedArrayDictionary.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/HashedDictionary.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/HashedDictionaryCollectionType.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/IPAddressDictionary.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/RangeHashedDictionary.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/RangeHashedDictionaryGetItemsImplDecimal.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/RangeHashedDictionaryGetItemsImplInt.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/RangeHashedDictionaryGetItemsImplUInt.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/RangeHashedDictionaryGetItemsShortCircuitImplDecimal.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/RangeHashedDictionaryGetItemsShortCircuitImplInt.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Dictionaries/RangeHashedDictionaryGetItemsShortCircuitImplUInt.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Formats/CapnProtoSerializer.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Formats/JSONExtractTree.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Formats/ProtobufSerializer.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Formats/StructureToCapnProtoSchema.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Formats/StructureToProtobufSchema.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionBinaryArithmetic.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionGenerateRandomStructure.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionMathUnary.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionUnaryArithmetic.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsBinaryRepresentation.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsComparison.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsConversion.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsConversion.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsConversion_impl05.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsConversion_impl1.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsConversion_impl11.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsConversion_impl2.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsConversion_impl28.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsConversion_reg.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsDecimalArithmetics.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsHashing.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/FunctionsRound.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/array.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/arrayAggregation.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/arrayCompact.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/arrayCumSum.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/arrayCumSumNonNegative.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/arrayDifference.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/arrayElement.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/arrayLevenshtein.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/arraySort.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/array/mapOp.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/byteSwap.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/castOrDefault.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/divideDecimal.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/icebergBucketTransform.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/multiIf.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/multiplyDecimal.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/reinterpretAs.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/runningDifference.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/tests/gtest_number_traits.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Functions/toDecimalString.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/IO/ReadHelpers.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/IO/WriteHelpers.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/IO/WriteIntText.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/AggregatedData.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/AggregatedDataVariants.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/AggregationMethod.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/Aggregator.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/BloomFilterHash.h",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/RewriteSumFunctionWithSumAndCountVisitor.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/RowRefs.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/SetVariants.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/SetVariants.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Interpreters/convertFieldToType.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/ArrowColumnToCHColumn.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/AvroRowInputFormat.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/AvroRowOutputFormat.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/BSONEachRowRowInputFormat.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/BSONEachRowRowOutputFormat.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/BSONEachRowRowOutputFormat.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/CHColumnToArrowColumn.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/MsgPackRowInputFormat.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/MsgPackRowOutputFormat.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/NativeORCBlockInputFormat.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/ORCBlockOutputFormat.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/Parquet/Decoding.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/Parquet/Decoding.h",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/Parquet/PrepareForWrite.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/Parquet/Write.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Formats/Impl/ParquetBlockInputFormat.cpp",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.3 Parquet input path was split in 26.8; its Decimal512 behavior is adapted in Parquet/Decoding and SchemaConverter."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Processors/Sources/MySQLSource.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Storages/MergeTree/MergeTreePartition.cpp",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Storages/StorageGenerateRandom.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "src/Storages/StoragePostgreSQL.cpp",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/00000_decimal128_op_overflow.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/00000_decimal128_op_overflow.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/01804_dictionary_decimal512_type.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/01804_dictionary_decimal512_type.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/01875_ssd_cache_dictionary_decimal256_type.sh",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/01875_ssd_cache_dictionary_decimal512_type.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/01875_ssd_cache_dictionary_decimal512_type.sh",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02452_decimal512_extended_validation.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02452_decimal512_extended_validation.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02452_decimal512_validation.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02452_decimal512_validation.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02453_decimal512_type_conversion.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02453_decimal512_type_conversion.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02453_decimal512_type_conversion_simple.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02453_decimal512_type_conversion_simple.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02454_decimal512_basic_operations.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02454_decimal512_basic_operations.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02455_decimal512_comparison_operations.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02455_decimal512_comparison_operations.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02456_decimal512_math_functions.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02456_decimal512_math_functions.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02457_decimal512_type_conversion_functions.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02457_decimal512_type_conversion_functions.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02458_decimal512_conditional_functions.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02458_decimal512_conditional_functions.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02459_decimal512_hash_functions.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02459_decimal512_hash_functions.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02460_decimal512_aggregate_functions.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02460_decimal512_aggregate_functions.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02461_decimal512_statistical_functions.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02461_decimal512_statistical_functions.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02462_decimal512_array_operations.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02462_decimal512_array_operations.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02463_decimal512_array_advanced.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02463_decimal512_array_advanced.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02464_decimal512_sorting.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02464_decimal512_sorting.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02465_decimal512_grouping.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02465_decimal512_grouping.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02466_decimal512_serialization.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02466_decimal512_serialization.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02467_decimal512_boundary_values.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02467_decimal512_boundary_values.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02468_decimal512_exception_handling.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02468_decimal512_exception_handling.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02469_decimal512_performance.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02469_decimal512_performance.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02475_precise_decimal_arithmetics.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02483_capnp_decimals.sh",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02676_to_decimal_string.reference",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02676_to_decimal_string.sql",
+      "classification": "upstream-equivalent",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "The 26.8 baseline uses a newer generic or refactored implementation; equivalent behavior is covered by the source regression suite on the effective candidate tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02685_decimal512_various.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02685_decimal512_various.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02686_postgres_protocol_decimal_512.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/02686_postgres_protocol_decimal_512.sh",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10300_decimal512_mul_div.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10300_decimal512_mul_div.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10301_decimal512_array_funcs.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10301_decimal512_array_funcs.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10302_decimal512_functions.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10302_decimal512_functions.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10303_arrow_decimal512.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10303_arrow_decimal512.sh",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10304_parquet_orc_decimal512.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10304_parquet_orc_decimal512.sh",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10305_avro_bson_decimal512.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10305_avro_bson_decimal512.sh",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10306_dictionary_decimal512.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10306_dictionary_decimal512.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10307_decimal512_end_to_end.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/10307_decimal512_end_to_end.sh",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/alter_add_decimal_column.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/alter_add_decimal_column.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/alter_decimal_256_to_512_conversion.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/alter_decimal_256_to_512_conversion.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_added_condition.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_added_condition.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_aggregation_functions.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_aggregation_functions.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_arithmetic_operations.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "A target-specific 26.8 adaptation is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_arithmetic_operations.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_array_operations.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_array_operations.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_basic_operations.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_basic_operations.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_boundary_limits.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_boundary_limits.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_comparison_operations.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_comparison_operations.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_creation_insertion_errors.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_creation_insertion_errors.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_implicit_conversion.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_implicit_conversion.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_implicit_conversion_blockchain.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_implicit_conversion_blockchain.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_implicit_conversion_edge_cases.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_implicit_conversion_edge_cases.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_special_scenarios.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_special_scenarios.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_type_conversion.reference",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "tests/queries/0_stateless/blockchain_decimal512_type_conversion.sql",
+      "classification": "adapted",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "Exact final source content is present in the effective candidate merge tree."
+        }
+      ]
+    },
+    {
+      "source_path": "uv.lock",
+      "classification": "not-applicable-to-26.8",
+      "evidence": [
+        {
+          "kind": "effective-tree-audit",
+          "note": "26.3 branch-local build or formatting metadata has no corresponding 26.8 source-preparation role."
+        }
+      ]
+    }
+  ],
+  "candidate_effective_merge_tree": {
+    "branch": "clickhouse-v26.8.8.8-lts-decimal512-semantic-20260920",
+    "committed_base": "c1ca9c6b8f1f441e4a70c41c08f349d8bec95dd9",
+    "uncommitted_source_adaptations": true
+  },
+  "verification": {
+    "source_ancestry": "1f0fb3353cd10c3f8558f14feb0652a77e871f95 is an ancestor of a394e92fb5da5ac310985f910316ed485920cbaa",
+    "initial_path_classification_counts": {
+      "adapted": 243,
+      "upstream-equivalent": 62,
+      "not-applicable-to-26.8": 10
+    },
+    "build": "task24-final-clickhouse-build-20260922.log: ClickHouse target is current with ENABLE_BUILD_PATH_MAPPING=ON.",
+    "source_regressions": "task24-final-source-regressions-20260922.log: 51/51 local source tests passed after adapting the two SSD dictionary tests to avoid the 26.8 inline-insert protocol conflict; task24-final-postgres-20260922.log: PostgreSQL protocol test passed.",
+    "post_init_regressions": "task24-final-followup-regressions-20260922.log: 03786, 04058, and 04712 passed.",
+    "isolated_service_health": "SYSTEM FLUSH LOGS followed by SELECT version(), 1 returned 26.8.8.1 and 1."
+  }
+}

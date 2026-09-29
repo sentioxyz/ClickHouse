@@ -331,6 +331,12 @@ Most other operations are not supported.
             .syntax = "UInt256",
             .related = {"Int32"},
         });
+    factory.registerSimpleDataType("UInt512", [] { return DataTypePtr(std::make_shared<DataTypeUInt512>()); }, DataTypeFactory::Case::Sensitive,
+        Documentation{
+            .description = "A 512-bit unsigned integer. See the `Int32` entry for the full documentation of the integer types.",
+            .syntax = "UInt512",
+            .related = {"Int32"},
+        });
 
     factory.registerSimpleDataType("Int128", [] { return DataTypePtr(std::make_shared<DataTypeInt128>()); }, DataTypeFactory::Case::Sensitive,
         Documentation{
@@ -342,6 +348,12 @@ Most other operations are not supported.
         Documentation{
             .description = "A 256-bit signed integer. See the `Int32` entry for the full documentation of the integer types.",
             .syntax = "Int256",
+            .related = {"Int32"},
+        });
+    factory.registerSimpleDataType("Int512", [] { return DataTypePtr(std::make_shared<DataTypeInt512>()); }, DataTypeFactory::Case::Sensitive,
+        Documentation{
+            .description = "A 512-bit signed integer. See the `Int32` entry for the full documentation of the integer types.",
+            .syntax = "Int512",
             .related = {"Int32"},
         });
 
@@ -401,6 +413,8 @@ template class DataTypeNumber<Int128>;
 template class DataTypeNumber<UInt256>;
 template class DataTypeNumber<Int256>;
 
+template class DataTypeNumber<UInt512>;
+template class DataTypeNumber<Int512>;
 
 DataTypePtr getSmallestIndexesType(size_t num_indexes)
 {

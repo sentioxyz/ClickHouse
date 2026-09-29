@@ -198,7 +198,10 @@ std::unique_ptr<orc::Type> ORCBlockOutputFormat::getORCType(const DataTypePtr & 
         case TypeIndex::UInt128: [[fallthrough]];
         case TypeIndex::Int256: [[fallthrough]];
         case TypeIndex::UInt256: [[fallthrough]];
+        case TypeIndex::Int512: [[fallthrough]];
+        case TypeIndex::UInt512: [[fallthrough]];
         case TypeIndex::Decimal256:
+        case TypeIndex::Decimal512:
             result = orc::createPrimitiveType(orc::TypeKind::BINARY);
             break;
         case TypeIndex::String:
@@ -494,6 +497,16 @@ void ORCBlockOutputFormat::writeColumn(
             writeStrings<ColumnUInt256>(orc_column, column, null_bytemap);
             break;
         }
+        case TypeIndex::Int512:
+        {
+            writeStrings<ColumnInt512>(orc_column, column, null_bytemap);
+            break;
+        }
+        case TypeIndex::UInt512:
+        {
+            writeStrings<ColumnUInt512>(orc_column, column, null_bytemap);
+            break;
+        }
         case TypeIndex::Float32:
         {
             writeNumbers<Float32, orc::DoubleVectorBatch>(orc_column, column, null_bytemap, [](const Float32 & value){ return static_cast<double>(value); });
@@ -572,6 +585,11 @@ void ORCBlockOutputFormat::writeColumn(
         case TypeIndex::Decimal256:
         {
             writeStrings<ColumnDecimal<Decimal256>>(orc_column, column, null_bytemap);
+            break;
+        }
+        case TypeIndex::Decimal512:
+        {
+            writeStrings<ColumnDecimal<Decimal512>>(orc_column, column, null_bytemap);
             break;
         }
         case TypeIndex::Nullable:

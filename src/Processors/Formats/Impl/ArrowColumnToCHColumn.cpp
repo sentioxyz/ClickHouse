@@ -1874,6 +1874,8 @@ static ColumnWithTypeAndName readNonNullableColumnFromArrowColumn(
                     /// ORC doesn't support Decimal256 as separate type. We read and write it as binary data.
                     case TypeIndex::Decimal256:
                         return readColumnWithBigNumberFromBinaryData<ColumnDecimal<Decimal256>>(arrow_column, column_name, type_hint);
+                    case TypeIndex::Decimal512:
+                        return readColumnWithBigNumberFromBinaryData<ColumnDecimal<Decimal512>>(arrow_column, column_name, type_hint);
                     case TypeIndex::Object:
                         if (settings.enable_json_parsing)
                             return readColumnWithJSONData<arrow::BinaryArray>(
@@ -1951,6 +1953,36 @@ static ColumnWithTypeAndName readNonNullableColumnFromArrowColumn(
                         return readColumnWithBigIntegerFromFixedBinaryData<Int256>(arrow_column, column_name, type_hint);
                     case TypeIndex::UInt256:
                         return readColumnWithBigIntegerFromFixedBinaryData<UInt256>(arrow_column, column_name, type_hint);
+                    case TypeIndex::Decimal512:
+                    {
+                        const auto * fixed_type = assert_cast<arrow::FixedSizeBinaryType *>(arrow_column->type().get());
+                        const size_t fixed_len = fixed_type->byte_width();
+                        if (fixed_len != sizeof(Decimal512))
+                            throw Exception(
+                                ErrorCodes::BAD_ARGUMENTS,
+                                "Cannot insert data into {} column from fixed size binary, expected data with size {}, got {}",
+                                type_hint->getName(),
+                                sizeof(Decimal512),
+                                fixed_len);
+                        auto internal_column = type_hint->createColumn();
+                        auto & dec_col = assert_cast<ColumnDecimal<Decimal512> &>(*internal_column);
+                        dec_col.reserve(arrow_column->length());
+                        for (int chunk_i = 0, num_chunks = arrow_column->num_chunks(); chunk_i < num_chunks; ++chunk_i)
+                        {
+                            const auto & chunk = checkedCastFixedSizeBinary(*(arrow_column->chunk(chunk_i)), column_name);
+                            for (int64_t i = 0; i < chunk.length(); ++i)
+                            {
+                                if (chunk.IsNull(i))
+                                    dec_col.insertDefault();
+                                else
+                                {
+                                    const auto view = chunk.GetView(i);
+                                    dec_col.insertData(view.data(), view.size());
+                                }
+                            }
+                        }
+                        return {std::move(internal_column), type_hint, column_name};
+                    }
                     case TypeIndex::UUID:
                         return readColumnWithUUIDFromFixedBinaryData(arrow_column, column_name, type_hint);
                     default:

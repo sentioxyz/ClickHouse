@@ -117,12 +117,12 @@ public:
                 return accurate::equalsOp(static_cast<Float64>(l), decimalFieldToFloat64(r));
             }
 
-            /// Decimal vs Integer: convert integer to Decimal256 for precise comparison.
+            /// Decimal vs Integer: convert integer to Decimal512 for precise comparison.
             if constexpr (is_decimal_field<T> && is_integer<U>)
-                return l == DecimalField<Decimal256>(Decimal256(r), 0);
+                return l == DecimalField<Decimal512>(Decimal512(r), 0);
 
             if constexpr (is_integer<T> && is_decimal_field<U>)
-                return DecimalField<Decimal256>(Decimal256(l), 0) == r;
+                return DecimalField<Decimal512>(Decimal512(l), 0) == r;
 
             if constexpr (std::is_same_v<T, String> && is_arithmetic_v<U>)
             {
@@ -214,12 +214,12 @@ public:
                 return accurate::lessOp(static_cast<Float64>(l), decimalFieldToFloat64(r));
             }
 
-            /// Decimal vs Integer: convert integer to Decimal256 for precise comparison.
+            /// Decimal vs Integer: convert integer to Decimal512 for precise comparison.
             if constexpr (is_decimal_field<T> && is_integer<U>)
-                return l < DecimalField<Decimal256>(Decimal256(r), 0);
+                return l < DecimalField<Decimal512>(Decimal512(r), 0);
 
             if constexpr (is_integer<T> && is_decimal_field<U>)
-                return DecimalField<Decimal256>(Decimal256(l), 0) < r;
+                return DecimalField<Decimal512>(Decimal512(l), 0) < r;
 
             if constexpr (std::is_same_v<T, String> && is_arithmetic_v<U>)
             {
@@ -289,6 +289,8 @@ bool accurateEquals(const Field & left, const Field & right)
                 return decimalFieldEquals(left.safeGet<DecimalField<Decimal128>>(), right.safeGet<DecimalField<Decimal128>>());
             case Field::Types::Decimal256:
                 return decimalFieldEquals(left.safeGet<DecimalField<Decimal256>>(), right.safeGet<DecimalField<Decimal256>>());
+            case Field::Types::Decimal512:
+                return decimalFieldEquals(left.safeGet<DecimalField<Decimal512>>(), right.safeGet<DecimalField<Decimal512>>());
             default:
                 break;
         }
@@ -348,6 +350,8 @@ bool accurateLess(const Field & left, const Field & right)
                 return decimalFieldLess(left.safeGet<DecimalField<Decimal128>>(), right.safeGet<DecimalField<Decimal128>>());
             case Field::Types::Decimal256:
                 return decimalFieldLess(left.safeGet<DecimalField<Decimal256>>(), right.safeGet<DecimalField<Decimal256>>());
+            case Field::Types::Decimal512:
+                return decimalFieldLess(left.safeGet<DecimalField<Decimal512>>(), right.safeGet<DecimalField<Decimal512>>());
             default:
                 break;
         }
@@ -405,6 +409,8 @@ bool accurateLessOrEqual(const Field & left, const Field & right)
                 return decimalFieldLessOrEqual(left.safeGet<DecimalField<Decimal128>>(), right.safeGet<DecimalField<Decimal128>>());
             case Field::Types::Decimal256:
                 return decimalFieldLessOrEqual(left.safeGet<DecimalField<Decimal256>>(), right.safeGet<DecimalField<Decimal256>>());
+            case Field::Types::Decimal512:
+                return decimalFieldLessOrEqual(left.safeGet<DecimalField<Decimal512>>(), right.safeGet<DecimalField<Decimal512>>());
             default:
                 break;
         }

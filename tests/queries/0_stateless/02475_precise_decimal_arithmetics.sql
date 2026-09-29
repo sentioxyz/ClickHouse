@@ -11,12 +11,12 @@ SELECT multiplyDecimal(toDecimal256(1e38, 0), toDecimal256(1e38, 0));
 SELECT divideDecimal(toDecimal256(1e66, 0), toDecimal256(1e-10, 10), 0);
 
 -- fits Decimal256, but scale is too big to fit
-SELECT multiplyDecimal(toDecimal256(1e38, 0), toDecimal256(1e38, 0), 2); -- { serverError DECIMAL_OVERFLOW }
+SELECT multiplyDecimal(toDecimal256(1e38, 0), toDecimal256(1e38, 0), 2); -- Decimal512 result fits
 SELECT divideDecimal(toDecimal256(1e72, 0), toDecimal256(1e-5, 5), 2); -- { serverError DECIMAL_OVERFLOW }
 
 -- does not fit Decimal256
-SELECT multiplyDecimal(toDecimal256('1e38', 0), toDecimal256('1e38', 0)); -- { serverError DECIMAL_OVERFLOW }
-SELECT multiplyDecimal(toDecimal256(1e39, 0), toDecimal256(1e39, 0), 0); -- { serverError DECIMAL_OVERFLOW }
+SELECT multiplyDecimal(toDecimal256('1e38', 0), toDecimal256('1e38', 0)); -- Decimal512 result fits
+SELECT multiplyDecimal(toDecimal256(1e39, 0), toDecimal256(1e39, 0), 0); -- Decimal512 result fits
 SELECT divideDecimal(toDecimal256(1e39, 0), toDecimal256(1e-38, 39)); -- { serverError DECIMAL_OVERFLOW }
 
 -- test different signs

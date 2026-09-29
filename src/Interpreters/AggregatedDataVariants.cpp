@@ -463,6 +463,8 @@ AggregatedDataVariants::Type AggregatedDataVariants::chooseMethod(
             return Type::keys128;
         if (size_of_field == 32)
             return Type::keys256;
+        if (size_of_field == 64)
+            return Type::keys512;
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32.");
     }
 
@@ -494,6 +496,8 @@ AggregatedDataVariants::Type AggregatedDataVariants::chooseMethod(
             return Type::keys128;
         if (keys_bytes <= 32)
             return Type::keys256;
+        if (keys_bytes <= 64)
+            return Type::keys512;
     }
 
     /// If single string key - will use hash table with 16-byte packed string references. Strings that do not fit
