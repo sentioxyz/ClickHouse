@@ -1,0 +1,6 @@
+Int512	UInt512	Decimal(154, 2)	-7	9	-1.25
+030161016201633837399A
+0	-7	Int512	true
+1	9	UInt512	false
+2	-1.25	Decimal(154, 2)	true
+0101713A
