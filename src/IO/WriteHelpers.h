@@ -1273,25 +1273,30 @@ void writeDecimalFractional(const T & x, UInt32 scale, WriteBuffer & ostr, bool 
     /// the generic code below has room for 256-bit values (77 digits) only.
     if constexpr (std::is_same_v<T, Int512> || std::is_same_v<T, UInt512>)
     {
-        if (x <= std::numeric_limits<UInt32>::max())
+        /// The narrower implementations write at most `std::numeric_limits<UInt256>::digits10` (77) digits; a Decimal512
+        /// scale can be up to 154, and then even a small fractional part needs the 512-bit digit loop below.
+        if (scale <= std::numeric_limits<UInt256>::digits10)
         {
-            writeDecimalFractional(static_cast<UInt32>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
-            return;
-        }
-        if (x <= std::numeric_limits<UInt64>::max())
-        {
-            writeDecimalFractional(static_cast<UInt64>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
-            return;
-        }
-        if (x <= std::numeric_limits<UInt128>::max())
-        {
-            writeDecimalFractional(static_cast<UInt128>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
-            return;
-        }
-        if (x <= std::numeric_limits<UInt256>::max())
-        {
-            writeDecimalFractional(static_cast<UInt256>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
-            return;
+            if (x <= std::numeric_limits<UInt32>::max())
+            {
+                writeDecimalFractional(static_cast<UInt32>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+                return;
+            }
+            if (x <= std::numeric_limits<UInt64>::max())
+            {
+                writeDecimalFractional(static_cast<UInt64>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+                return;
+            }
+            if (x <= std::numeric_limits<UInt128>::max())
+            {
+                writeDecimalFractional(static_cast<UInt128>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+                return;
+            }
+            if (x <= std::numeric_limits<UInt256>::max())
+            {
+                writeDecimalFractional(static_cast<UInt256>(x), scale, ostr, trailing_zeros, fixed_fractional_length, fractional_length);
+                return;
+            }
         }
 
         /// `writeFixedDigits` has UInt256 as its widest overload in 26.8. Keep the full Int512 value
@@ -1353,8 +1358,12 @@ void writeDecimalFractional(const T & x, UInt32 scale, WriteBuffer & ostr, bool 
         }
     }
 
-    constexpr size_t max_digits = std::numeric_limits<UInt256>::digits10;
-    chassert(scale <= max_digits);
+    /// The value has at most `max_value_digits` digits here (the Decimal512 scales above it take the 512-bit loop), but a
+    /// fixed fractional length can be up to 154 (`toDecimalString` accepts `std::numeric_limits<UInt512>::digits10`
+    /// digits for any Decimal), so the buffer is as wide as in 26.3.
+    constexpr size_t max_value_digits = std::numeric_limits<UInt256>::digits10;
+    constexpr size_t max_digits = std::numeric_limits<UInt512>::digits10;
+    chassert(scale <= max_value_digits);
     chassert(fractional_length <= max_digits);
     /// Rounding to a narrower field is the caller's job, because a carry out of the fractional part
     /// belongs to the whole part, which has already been written by then.
@@ -1407,14 +1416,24 @@ void writeText(Decimal<T> x, UInt32 scale, WriteBuffer & ostr, bool trailing_zer
         /// of them is at least five, so this is the same rounding the fractional part alone used to do, and it
         /// takes one division rather than two - which matters, because a division of a `wide::integer` is slow.
         const T half = DecimalUtils::scaleMultiplier<T>(scale - fractional_length - 1) * 5;
-        const T divisor = half * 2;
-
-        T value = x.value / divisor;
-        const T dropped = x.value - value * divisor;
-        if (dropped >= half)
-            ++value;
-        else if (dropped <= -half)
-            --value;
+        T value{};
+        if (!DecimalUtils::scaleMultiplierFits<T>(scale - fractional_length))
+        {
+            /// Decimal512 at scale 154 rounded to no fractional digits: the divisor 10^154 does not fit Int512 (half * 2
+            /// would wrap to a negative number). Every Int512 value is below 10^154 in magnitude, so the quotient is 0
+            /// and only the rounding can move it.
+            value = x.value >= half ? T(1) : (x.value <= -half ? T(-1) : T(0));
+        }
+        else
+        {
+            const T divisor = half * 2;
+            value = x.value / divisor;
+            const T dropped = x.value - value * divisor;
+            if (dropped >= half)
+                ++value;
+            else if (dropped <= -half)
+                --value;
+        }
 
         rounded = Decimal<T>(value);
         rounded_scale = fractional_length;
