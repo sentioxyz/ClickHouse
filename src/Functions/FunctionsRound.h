@@ -4,6 +4,7 @@
 #include <DataTypes/getLeastSupertype.h>
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/DataTypesDecimal.h>
+#include <Core/DecimalFunctions.h>
 #include <Core/callOnTypeIndex.h>
 #include <Columns/ColumnVector.h>
 #include <Common/intExp10.h>
