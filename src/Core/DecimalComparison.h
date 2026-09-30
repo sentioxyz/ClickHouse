@@ -207,7 +207,10 @@ public:
     {
         Shift shift = getScales<A, B>(col_left.type, col_right.type);
 
-        if constexpr (std::is_same_v<A, B>)
+        /// Decimal512 (`CompareInt` is Int512) keeps the fused kernels for mixed-type pairs too: only they decide a scaled
+        /// operand outside Int512, the scale multiplier 10^154 and a UInt512 operand above Int512 exactly (`applyWide`),
+        /// where the shared conversions of `applyMixed` raise DECIMAL_OVERFLOW or compare wrapped values.
+        if constexpr (std::is_same_v<A, B> || std::is_same_v<CompareInt, Int512>)
         {
             /// Same-type pairs are the hot case (e.g. `DateTime64` vs `DateTime64`):
             /// keep the fused convert-and-compare kernels.
