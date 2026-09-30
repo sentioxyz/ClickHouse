@@ -130,6 +130,8 @@ T randomInteger(pcg64 & rng)
         return T({rng(), rng()});
     else if constexpr (sizeof(T) == 32)
         return T({rng(), rng(), rng(), rng()});
+    else if constexpr (sizeof(T) == 64)
+        return T({rng(), rng(), rng(), rng(), rng(), rng(), rng(), rng()});
     else
         static_assert(false, "unexpected sizeof(T)");
 }
@@ -768,6 +770,18 @@ ColumnPtr fillColumnWithRandomData(
             /// Generate numbers from range [-10^P + 1, 10^P - 1]
             Int256 range = common::exp10_i256(decimal_type.getPrecision());
             fillRandomDecimals<Int256>(reinterpret_cast<char *>(data.data()), limit, range, rng, fuzzy);
+            return column;
+        }
+        case TypeIndex::Decimal512:
+        {
+            const auto & decimal_type = assert_cast<const DataTypeDecimal<Decimal512> &>(*type);
+            auto column = type->createColumn();
+            auto & column_concrete = typeid_cast<ColumnDecimal<Decimal512> &>(*column);
+            auto & data = column_concrete.getData();
+            data.resize(limit);
+            /// Generate numbers from range [-10^P + 1, 10^P - 1]
+            Int512 range = common::exp10_i512(decimal_type.getPrecision());
+            fillRandomDecimals<Int512>(reinterpret_cast<char *>(data.data()), limit, range, rng, fuzzy);
             return column;
         }
         case TypeIndex::FixedString:
