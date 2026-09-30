@@ -92,6 +92,7 @@ SELECT less(CAST('123.25' AS Decimal(154, 2)), toInt64('123')), equals(CAST('123
 SELECT less(materialize(CAST('123.25' AS Decimal(154, 2))), toInt64('123')), equals(materialize(CAST('123.25' AS Decimal(154, 2))), toInt64('123')), greater(materialize(CAST('123.25' AS Decimal(154, 2))), toInt64('123')) SETTINGS decimal_check_overflow = 0;
 SELECT less(CAST('123.25' AS Decimal(154, 2)), materialize(toInt64('123'))), equals(CAST('123.25' AS Decimal(154, 2)), materialize(toInt64('123'))), greater(CAST('123.25' AS Decimal(154, 2)), materialize(toInt64('123'))) SETTINGS decimal_check_overflow = 0;
 SELECT less(materialize(CAST('123.25' AS Decimal(154, 2))), materialize(toInt64('123'))), equals(materialize(CAST('123.25' AS Decimal(154, 2))), materialize(toInt64('123'))), greater(materialize(CAST('123.25' AS Decimal(154, 2))), materialize(toInt64('123'))) SETTINGS decimal_check_overflow = 0;
--- 64-bit and 256-bit decimals keep the upstream rule: a scale-up overflow is DECIMAL_OVERFLOW
+-- Decimal64 keeps the upstream rule: a scale-up overflow is DECIMAL_OVERFLOW. (Decimal128/Decimal256 do not check it at
+-- all upstream - mulOverflow of Int128/Int256 always returns false, KD-D512-MUL-OVERFLOW - so they are not asserted here.)
 SELECT less(toDecimal64('0.5', 17), toInt64(1000)); -- { serverError DECIMAL_OVERFLOW }
-SELECT less(materialize(toDecimal256('0.5', 70)), toInt64(10000000)); -- { serverError DECIMAL_OVERFLOW }
+SELECT less(materialize(toDecimal64('0.5', 17)), toInt64(1000)); -- { serverError DECIMAL_OVERFLOW }

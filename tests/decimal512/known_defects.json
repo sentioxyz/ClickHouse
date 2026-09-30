@@ -2584,7 +2584,7 @@
       "match": [
         {
           "suite": "fork-stateless",
-          "test": "04097_join_reorder_type_changes"
+          "test": "04095_join_reorder_type_changes"
         }
       ],
       "fixed_by": "0c519c9b991 (26.3-lts-decimal512, 2026-09-25; backport of upstream #102516)",
