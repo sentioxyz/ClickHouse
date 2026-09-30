@@ -2285,10 +2285,10 @@ static bool orcUnionBranchMatchesType(const orc::Type * orc_branch_type, const D
             return which.isStringOrFixedString();
         case orc::TypeKind::BINARY:
             return which.isStringOrFixedString() || which.isIPv6() || which.isInt128() || which.isUInt128() || which.isInt256()
-                || which.isUInt256() || which.isDecimal256();
+                || which.isUInt256() || which.isDecimal256() || which.isInt512() || which.isUInt512() || which.isDecimal512();
         case orc::TypeKind::CHAR:
             return which.isStringOrFixedString() || which.isInt128() || which.isUInt128() || which.isInt256() || which.isUInt256()
-                || which.isDecimal256();
+                || which.isDecimal256() || which.isInt512() || which.isUInt512() || which.isDecimal512();
         case orc::TypeKind::LIST:
             return which.isArray() && orc_branch_type->getSubtypeCount() == 1
                 && orcUnionBranchMatchesType(

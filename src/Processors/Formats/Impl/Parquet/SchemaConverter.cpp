@@ -1267,6 +1267,14 @@ void SchemaConverter::processPrimitiveColumn(
             const bool requested_wide_integer =
                 requested_type == TypeIndex::Int128 || requested_type == TypeIndex::UInt128
                 || requested_type == TypeIndex::Int256 || requested_type == TypeIndex::UInt256;
+            /// (U)Int512 targets are read by the generic decimal path below, which is exact for scale 0 but would drop the
+            /// fractional digits of a nonzero scale: reject it as for the narrower wide integers.
+            if ((requested_type == TypeIndex::Int512 || requested_type == TypeIndex::UInt512) && scale != 0)
+                throw Exception(
+                    ErrorCodes::INCORRECT_DATA,
+                    "Parquet Decimal with nonzero scale {} cannot be read directly as {}",
+                    scale,
+                    type_hint->getName());
             if (requested_wide_integer)
             {
                 if (scale != 0)

@@ -516,8 +516,8 @@ MutableColumnPtr reinterpretFixedStringLeaf(const ColumnFixedString & fixed, con
         width = 16;
     else if (which.isInt256() || which.isUInt256())
         width = 32;
-    else if (which.isDecimal512())
-        width = sizeof(Decimal512);
+    else if (which.isInt512() || which.isUInt512() || which.isDecimal512())
+        width = 64;
     else
         return nullptr;
 
@@ -530,6 +530,8 @@ MutableColumnPtr reinterpretFixedStringLeaf(const ColumnFixedString & fixed, con
         case TypeIndex::Int128: copy(assert_cast<ColumnVector<Int128> &>(*out).getData()); break;
         case TypeIndex::UInt128: copy(assert_cast<ColumnVector<UInt128> &>(*out).getData()); break;
         case TypeIndex::Int256: copy(assert_cast<ColumnVector<Int256> &>(*out).getData()); break;
+        case TypeIndex::Int512: copy(assert_cast<ColumnVector<Int512> &>(*out).getData()); break;
+        case TypeIndex::UInt512: copy(assert_cast<ColumnVector<UInt512> &>(*out).getData()); break;
         case TypeIndex::Decimal512: copy(assert_cast<ColumnDecimal<Decimal512> &>(*out).getData()); break;
         default: copy(assert_cast<ColumnVector<UInt256> &>(*out).getData()); break;
     }
@@ -550,8 +552,8 @@ MutableColumnPtr reinterpretStringLeaf(const ColumnString & str, const NullMap *
         width = 16;
     else if (which.isInt256() || which.isUInt256())
         width = 32;
-    else if (which.isDecimal512())
-        width = sizeof(Decimal512);
+    else if (which.isInt512() || which.isUInt512() || which.isDecimal512())
+        width = 64;
     else
         return nullptr;
 
@@ -674,7 +676,7 @@ std::pair<ColumnPtr, DataTypePtr> reinterpretRawBytes(
     const WhichDataType which(to_no_null);
     const bool raw_target = which.isUUID() || which.isIPv6()
         || which.isInt128() || which.isUInt128() || which.isInt256() || which.isUInt256()
-        || which.isDecimal512();
+        || which.isInt512() || which.isUInt512() || which.isDecimal512();
     if (!raw_target)
         return {col, from_type};
 
