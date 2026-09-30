@@ -233,8 +233,10 @@ template struct AggregationMethodKeysFixed<AggregatedDataWithKeys256VoidTwoLevel
 template struct AggregationMethodKeysFixed<AggregatedDataWithKeys512VoidTwoLevel, true>;
 template struct AggregationMethodKeysFixed<AggregatedDataWithKeys128, false, true>;
 template struct AggregationMethodKeysFixed<AggregatedDataWithKeys256, false, true>;
+template struct AggregationMethodKeysFixed<AggregatedDataWithKeys512, false, true>;
 template struct AggregationMethodKeysFixed<AggregatedDataWithKeys128TwoLevel, false, true>;
 template struct AggregationMethodKeysFixed<AggregatedDataWithKeys256TwoLevel, false, true>;
+template struct AggregationMethodKeysFixed<AggregatedDataWithKeys512TwoLevel, false, true>;
 
 
 template <typename TData, bool nullable, bool prealloc>

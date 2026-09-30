@@ -448,6 +448,8 @@ AggregatedDataVariants::Type AggregatedDataVariants::chooseMethod(
                 return Type::low_cardinality_keys128;
             if (size_of_field == 32)
                 return Type::low_cardinality_keys256;
+            if (size_of_field == 64)
+                return Type::low_cardinality_keys512;
             throw Exception(ErrorCodes::LOGICAL_ERROR, "LowCardinality numeric column has sizeOfField not in 1, 2, 4, 8, 16, 32.");
         }
 
@@ -484,6 +486,8 @@ AggregatedDataVariants::Type AggregatedDataVariants::chooseMethod(
                 return Type::low_cardinality_keys128;
             if (keys_bytes <= 32)
                 return Type::low_cardinality_keys256;
+            if (keys_bytes <= 64)
+                return Type::low_cardinality_keys512;
         }
 
         if (keys_bytes <= 2)

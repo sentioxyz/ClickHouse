@@ -202,8 +202,10 @@ struct AggregatedDataVariants : private boost::noncopyable
 
     std::unique_ptr<AggregationMethodKeysFixed<AggregatedDataWithKeys128, false, true>>      low_cardinality_keys128;
     std::unique_ptr<AggregationMethodKeysFixed<AggregatedDataWithKeys256, false, true>>      low_cardinality_keys256;
+    std::unique_ptr<AggregationMethodKeysFixed<AggregatedDataWithKeys512, false, true>>      low_cardinality_keys512;
     std::unique_ptr<AggregationMethodKeysFixed<AggregatedDataWithKeys128TwoLevel, false, true>> low_cardinality_keys128_two_level;
     std::unique_ptr<AggregationMethodKeysFixed<AggregatedDataWithKeys256TwoLevel, false, true>> low_cardinality_keys256_two_level;
+    std::unique_ptr<AggregationMethodKeysFixed<AggregatedDataWithKeys512TwoLevel, false, true>> low_cardinality_keys512_two_level;
 
     /// In this and similar macros, the option without_key is not considered.
     #define APPLY_FOR_AGGREGATED_VARIANTS(M) \
@@ -315,12 +317,14 @@ struct AggregatedDataVariants : private boost::noncopyable
         M(low_cardinality_key64, false) \
         M(low_cardinality_keys128, false) \
         M(low_cardinality_keys256, false) \
+        M(low_cardinality_keys512, false) \
         M(low_cardinality_key_string, false) \
         M(low_cardinality_key_fixed_string, false) \
         M(low_cardinality_key32_two_level, true) \
         M(low_cardinality_key64_two_level, true) \
         M(low_cardinality_keys128_two_level, true) \
         M(low_cardinality_keys256_two_level, true) \
+        M(low_cardinality_keys512_two_level, true) \
         M(low_cardinality_key_string_two_level, true) \
         M(low_cardinality_key_fixed_string_two_level, true) \
 
@@ -365,6 +369,7 @@ struct AggregatedDataVariants : private boost::noncopyable
         M(low_cardinality_key64) \
         M(low_cardinality_keys128) \
         M(low_cardinality_keys256) \
+        M(low_cardinality_keys512) \
         M(low_cardinality_key_string) \
         M(low_cardinality_key_fixed_string) \
 
@@ -450,6 +455,7 @@ struct AggregatedDataVariants : private boost::noncopyable
         M(low_cardinality_key64_two_level) \
         M(low_cardinality_keys128_two_level) \
         M(low_cardinality_keys256_two_level) \
+        M(low_cardinality_keys512_two_level) \
         M(low_cardinality_key_string_two_level) \
         M(low_cardinality_key_fixed_string_two_level) \
 
@@ -460,12 +466,14 @@ struct AggregatedDataVariants : private boost::noncopyable
         M(low_cardinality_key64) \
         M(low_cardinality_keys128) \
         M(low_cardinality_keys256) \
+        M(low_cardinality_keys512) \
         M(low_cardinality_key_string) \
         M(low_cardinality_key_fixed_string) \
         M(low_cardinality_key32_two_level) \
         M(low_cardinality_key64_two_level) \
         M(low_cardinality_keys128_two_level) \
         M(low_cardinality_keys256_two_level) \
+        M(low_cardinality_keys512_two_level) \
         M(low_cardinality_key_string_two_level) \
         M(low_cardinality_key_fixed_string_two_level)
 
