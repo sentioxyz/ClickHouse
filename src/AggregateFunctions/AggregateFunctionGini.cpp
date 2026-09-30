@@ -217,6 +217,7 @@ AggregateFunctionPtr createAggregateFunctionGini(const std::string & name, const
     if (which.idx == TypeIndex::Decimal64) return std::make_shared<AggregateFunctionGini<Decimal64>>(argument_type);
     if (which.idx == TypeIndex::Decimal128) return std::make_shared<AggregateFunctionGini<Decimal128>>(argument_type);
     if (which.idx == TypeIndex::Decimal256) return std::make_shared<AggregateFunctionGini<Decimal256>>(argument_type);
+    if (which.idx == TypeIndex::Decimal512) return std::make_shared<AggregateFunctionGini<Decimal512>>(argument_type);
 
     throw Exception(ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
                     "Illegal type {} of argument of aggregate function {}, must be a number",

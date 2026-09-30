@@ -2209,7 +2209,8 @@ struct ConvertImpl
                 || std::is_same_v<FromDataType, DataTypeInt32>
                 || std::is_same_v<FromDataType, DataTypeInt64>
                 || std::is_same_v<FromDataType, DataTypeInt128>
-                || std::is_same_v<FromDataType, DataTypeInt256>)
+                || std::is_same_v<FromDataType, DataTypeInt256>
+                || std::is_same_v<FromDataType, DataTypeInt512>)
             && (std::is_same_v<ToDataType, DataTypeDateTime64> || std::is_same_v<ToDataType, DataTypeTime64>))
         {
             if constexpr (std::is_same_v<ToDataType, DataTypeDateTime64>)
@@ -2228,7 +2229,8 @@ struct ConvertImpl
         }
         else if constexpr ((std::is_same_v<FromDataType, DataTypeUInt64>
                 || std::is_same_v<FromDataType, DataTypeUInt128>
-                || std::is_same_v<FromDataType, DataTypeUInt256>)
+                || std::is_same_v<FromDataType, DataTypeUInt256>
+                || std::is_same_v<FromDataType, DataTypeUInt512>)
             && (std::is_same_v<ToDataType, DataTypeDateTime64> || std::is_same_v<ToDataType, DataTypeTime64>))
         {
             if constexpr (std::is_same_v<ToDataType, DataTypeDateTime64>)

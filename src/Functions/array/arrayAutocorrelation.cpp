@@ -339,6 +339,8 @@ public:
             return executeWithConstArray<UInt128>(single_array, col_max_lag, input_rows_count);
         else if (checkColumn<ColumnVector<UInt256>>(nested))
             return executeWithConstArray<UInt256>(single_array, col_max_lag, input_rows_count);
+        else if (checkColumn<ColumnVector<UInt512>>(nested))
+            return executeWithConstArray<UInt512>(single_array, col_max_lag, input_rows_count);
         else if (checkColumn<ColumnVector<Int8>>(nested))
             return executeWithConstArray<Int8>(single_array, col_max_lag, input_rows_count);
         else if (checkColumn<ColumnVector<Int16>>(nested))
@@ -351,6 +353,8 @@ public:
             return executeWithConstArray<Int128>(single_array, col_max_lag, input_rows_count);
         else if (checkColumn<ColumnVector<Int256>>(nested))
             return executeWithConstArray<Int256>(single_array, col_max_lag, input_rows_count);
+        else if (checkColumn<ColumnVector<Int512>>(nested))
+            return executeWithConstArray<Int512>(single_array, col_max_lag, input_rows_count);
         else if (checkColumn<ColumnVector<Float32>>(nested))
             return executeWithConstArray<Float32>(single_array, col_max_lag, input_rows_count);
         else if (checkColumn<ColumnVector<Float64>>(nested))
@@ -363,6 +367,8 @@ public:
             return executeWithConstDecimalArray<Decimal128>(single_array, col_max_lag, input_rows_count);
         else if (checkColumn<ColumnDecimal<Decimal256>>(nested))
             return executeWithConstDecimalArray<Decimal256>(single_array, col_max_lag, input_rows_count);
+        else if (checkColumn<ColumnDecimal<Decimal512>>(nested))
+            return executeWithConstDecimalArray<Decimal512>(single_array, col_max_lag, input_rows_count);
 
         throw Exception(
             ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
@@ -396,6 +402,8 @@ public:
             return executeWithType<UInt128>(col_array, col_max_lag);
         else if (checkColumn<ColumnVector<UInt256>>(nested))
             return executeWithType<UInt256>(col_array, col_max_lag);
+        else if (checkColumn<ColumnVector<UInt512>>(nested))
+            return executeWithType<UInt512>(col_array, col_max_lag);
         else if (checkColumn<ColumnVector<Int8>>(nested))
             return executeWithType<Int8>(col_array, col_max_lag);
         else if (checkColumn<ColumnVector<Int16>>(nested))
@@ -408,6 +416,8 @@ public:
             return executeWithType<Int128>(col_array, col_max_lag);
         else if (checkColumn<ColumnVector<Int256>>(nested))
             return executeWithType<Int256>(col_array, col_max_lag);
+        else if (checkColumn<ColumnVector<Int512>>(nested))
+            return executeWithType<Int512>(col_array, col_max_lag);
         else if (checkColumn<ColumnVector<Float32>>(nested))
             return executeWithType<Float32>(col_array, col_max_lag);
         else if (checkColumn<ColumnVector<Float64>>(nested))
@@ -420,6 +430,8 @@ public:
             return executeWithDecimalType<Decimal128>(col_array, col_max_lag);
         else if (checkColumn<ColumnDecimal<Decimal256>>(nested))
             return executeWithDecimalType<Decimal256>(col_array, col_max_lag);
+        else if (checkColumn<ColumnDecimal<Decimal512>>(nested))
+            return executeWithDecimalType<Decimal512>(col_array, col_max_lag);
 
         throw Exception(
             ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,

@@ -74,12 +74,14 @@ public:
             || (res = executeType<UInt64>(arguments, input_rows_count))
             || (res = executeType<UInt128>(arguments, input_rows_count))
             || (res = executeType<UInt256>(arguments, input_rows_count))
+            || (res = executeType<UInt512>(arguments, input_rows_count))
             || (res = executeType<Int8>(arguments, input_rows_count))
             || (res = executeType<Int16>(arguments, input_rows_count))
             || (res = executeType<Int32>(arguments, input_rows_count))
             || (res = executeType<Int64>(arguments, input_rows_count))
             || (res = executeType<Int128>(arguments, input_rows_count))
-            || (res = executeType<Int256>(arguments, input_rows_count))))
+            || (res = executeType<Int256>(arguments, input_rows_count))
+            || (res = executeType<Int512>(arguments, input_rows_count))))
             throw Exception(ErrorCodes::ILLEGAL_COLUMN, "Illegal column {} of argument of function {}",
                             arguments[0].column->getName(), getName());
 
@@ -211,12 +213,14 @@ public:
             tryExecute<UInt64>(in_column, out_column) ||
             tryExecute<UInt128>(in_column, out_column) ||
             tryExecute<UInt256>(in_column, out_column) ||
+            tryExecute<UInt512>(in_column, out_column) ||
             tryExecute<Int8>(in_column, out_column) ||
             tryExecute<Int16>(in_column, out_column) ||
             tryExecute<Int32>(in_column, out_column) ||
             tryExecute<Int64>(in_column, out_column) ||
             tryExecute<Int128>(in_column, out_column) ||
-            tryExecute<Int256>(in_column, out_column))
+            tryExecute<Int256>(in_column, out_column) ||
+            tryExecute<Int512>(in_column, out_column))
             return out_column;
 
         throw Exception(ErrorCodes::ILLEGAL_COLUMN, "Illegal column {} of first argument of function {}",
@@ -325,12 +329,14 @@ public:
               || (result_column = executeType<UInt64>(in_column, input_rows_count))
               || (result_column = executeType<UInt128>(in_column, input_rows_count))
               || (result_column = executeType<UInt256>(in_column, input_rows_count))
+              || (result_column = executeType<UInt512>(in_column, input_rows_count))
               || (result_column = executeType<Int8>(in_column, input_rows_count))
               || (result_column = executeType<Int16>(in_column, input_rows_count))
               || (result_column = executeType<Int32>(in_column, input_rows_count))
               || (result_column = executeType<Int64>(in_column, input_rows_count))
               || (result_column = executeType<Int128>(in_column, input_rows_count))
-              || (result_column = executeType<Int256>(in_column, input_rows_count))))
+              || (result_column = executeType<Int256>(in_column, input_rows_count))
+              || (result_column = executeType<Int512>(in_column, input_rows_count))))
         {
             throw Exception(ErrorCodes::ILLEGAL_COLUMN,
                             "Illegal column {} of first argument of function {}",

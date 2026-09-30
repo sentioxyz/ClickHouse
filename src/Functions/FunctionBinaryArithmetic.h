@@ -4031,8 +4031,9 @@ public:
     static bool intDivRangeCrossesSignedWrap(const DataTypePtr & arg_type, const Field & left_point, const Field & right_point)
     {
         const size_t width_bytes = arg_type->getSizeOfValueInMemory();
-        // `D = 2^(8 * width_bytes - 1)` is the first unsigned value that reinterprets as negative.
-        const UInt256 wrap_point = UInt256(1) << (8 * width_bytes - 1);
+        // `D = 2^(8 * width_bytes - 1)` is the first unsigned value that reinterprets as negative. UInt512, so that the
+        // 64-byte types are covered too: `UInt256(1) << 511` is 0.
+        const UInt512 wrap_point = UInt512(1) << (8 * width_bytes - 1);
         const Field wrap_field(wrap_point);
 
         // left_point < D: a null left bound is -inf over the unsigned domain (== 0 < D), so it crosses.
@@ -4059,7 +4060,7 @@ public:
         if (arg_type->getSizeOfValueInMemory() > divisor_type->getSizeOfValueInMemory())
             return false;
         const size_t divisor_width_bytes = divisor_type->getSizeOfValueInMemory();
-        const Field wrap_field(UInt256(1) << (8 * divisor_width_bytes - 1));
+        const Field wrap_field(UInt512(1) << (8 * divisor_width_bytes - 1)); /// UInt512: 2^511 for a UInt512 divisor
         return accurateLessOrEqual(wrap_field, constant);
     }
 
@@ -4075,7 +4076,7 @@ public:
         if (!isUInt(dividend_type) || !isInt(divisor_type))
             return false;
         const size_t width_bytes = dividend_type->getSizeOfValueInMemory();
-        const Field wrap_field(UInt256(1) << (8 * width_bytes - 1));
+        const Field wrap_field(UInt512(1) << (8 * width_bytes - 1)); /// UInt512: 2^511 for a UInt512 dividend
         return accurateLessOrEqual(wrap_field, constant);
     }
 
