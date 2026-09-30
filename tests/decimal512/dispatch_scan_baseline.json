@@ -2326,5 +2326,1525 @@
  "src/Interpreters/Aggregator.cpp|type-256-without-512|if (std::tuple_size_v<KeysNullMap<UInt256>> + keys_bytes <= 32)": {
   "decision": "reviewed: not a gap - since 1086e1eb2c3 GROUP BY deliberately stops at nullable_keys256 for nullable fixed keys, as upstream does: nullable keys that do not fit 32 bytes with their null bitmap use nullable_prealloc_serialized/nullable_serialized, which measured faster than the 64-byte nullable_keys512 packing and give results equal to official 26.8.8.8 (evidence/fix_ci_20260925/perf_nullable_serialized/)",
   "evidence": "1086e1eb2c3; CAND8 release gate 2026-09-25 (dispatch-scan listed this site as the only new candidate)"
+ },
+ "src/AggregateFunctions/AggregateFunctionAvg.h|type-256-without-512|Int256 num;": {
+  "decision": "reviewed: not a gap - avgResultToValueExact runs only when the avg result type is Date/Date32/DateTime/Time/DateTime64/Time64, whose numerators are at most Decimal128 (16 bytes), so this Int256 fallback never receives a 512-bit value. avg over (U)Int512/Decimal512 has a Float64 result and never enters this path.",
+  "evidence": "src/AggregateFunctions/AggregateFunctionAvg.h:130; src/AggregateFunctions/AggregateFunctionAvg.h:274; src/AggregateFunctions/AggregateFunctionAvg.h:283-298; src/AggregateFunctions/AggregateFunctionAvg.h:435-439; src/AggregateFunctions/AggregateFunctionAvg.cpp:51-86 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionAvg.h|type-256-without-512|return ValueType(divideRoundHalfToEvenClamped<ResultNativeType>(num, Int256(denominator)));": {
+  "decision": "reviewed: not a gap - avgResultToValueExact runs only when the avg result type is Date/Date32/DateTime/Time/DateTime64/Time64, whose numerators are at most Decimal128 (16 bytes), so this Int256 fallback never receives a 512-bit value. avg over (U)Int512/Decimal512 has a Float64 result and never enters this path.",
+  "evidence": "src/AggregateFunctions/AggregateFunctionAvg.h:130; src/AggregateFunctions/AggregateFunctionAvg.h:274; src/AggregateFunctions/AggregateFunctionAvg.h:283-298; src/AggregateFunctions/AggregateFunctionAvg.h:435-439; src/AggregateFunctions/AggregateFunctionAvg.cpp:51-86 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp|type-256-without-512|if (which_key.idx == TypeIndex::UInt256) return dispatchFixedType.operator()<UInt256>();": {
+  "decision": "reviewed: not a gap - 512-bit sort keys are not in the KeyFixed list and fall through to KeyGeneric (Field compare, encodeField/decodeField), which support UInt512/Int512/Decimal512 Fields, so results are correct; only the fixed-width fast path is missing.",
+  "evidence": "src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp:138-158; src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp:519; src/Core/Field.cpp:265; src/Core/Field.cpp:269; src/Core/Field.cpp:285; src/Common/FieldBinaryEncoding.cpp:139-149; src/Common/FieldBinaryEncoding.cpp:343-357 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp|type-256-without-512|if (which_key.idx == TypeIndex::Int256) return dispatchFixedType.operator()<Int256>();": {
+  "decision": "reviewed: not a gap - 512-bit sort keys are not in the KeyFixed list and fall through to KeyGeneric (Field compare, encodeField/decodeField), which support UInt512/Int512/Decimal512 Fields, so results are correct; only the fixed-width fast path is missing.",
+  "evidence": "src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp:138-158; src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp:519; src/Core/Field.cpp:265; src/Core/Field.cpp:269; src/Core/Field.cpp:285; src/Common/FieldBinaryEncoding.cpp:139-149; src/Common/FieldBinaryEncoding.cpp:343-357 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp|type-256-without-512|if (which_key.idx == TypeIndex::Decimal256) return dispatchFixedType.operator()<Decimal256>();": {
+  "decision": "reviewed: not a gap - 512-bit sort keys are not in the KeyFixed list and fall through to KeyGeneric (Field compare, encodeField/decodeField), which support UInt512/Int512/Decimal512 Fields, so results are correct; only the fixed-width fast path is missing.",
+  "evidence": "src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp:138-158; src/AggregateFunctions/AggregateFunctionMergedJSONPatch.cpp:519; src/Core/Field.cpp:265; src/Core/Field.cpp:269; src/Core/Field.cpp:285; src/Common/FieldBinaryEncoding.cpp:139-149; src/Common/FieldBinaryEncoding.cpp:343-357 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantile.cpp|type-256-without-512|{\"(U)Int*\", \"Int128\", \"UInt128\", \"Int256\", \"UInt256\", \"Float*\", \"Decimal*\", \"Date\", \"DateTime\", \"DateTime64\"}}};": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantile.cpp:144-145; src/AggregateFunctions/AggregateFunctionQuantile.cpp:155-160 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileDeterministic.cpp|type-256-without-512|{\"expr\", \"Expression over the column values resulting in numeric data types, `Date` or `DateTime`.\", {\"(U)Int*\", \"Int128\", \"UInt128\", \"Int256\", \"UInt256\", \"Float*\", \"Date\", \"DateTime\"}},": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileDeterministic.cpp:142-143 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileExact.cpp|type-256-without-512|{\"expr\", \"Expression over the column values resulting in numeric data types, `Date`, `DateTime` or `DateTime64`.\", {\"(U)Int*\", \"Int128\", \"UInt128\", \"Int256\", \"UInt256\", \"Float*\", \"Decimal*\", \"Date\", \"": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileExact.cpp:48; src/AggregateFunctions/AggregateFunctionQuantileExact.cpp:55-56 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileExact.cpp|type-256-without-512|FunctionDocumentation::ReturnedValue returned_value = {\"Quantile of the specified level. For numeric data types the output format will be the same as the input format.\", {\"(U)Int*\", \"Int128\", \"UInt128": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileExact.cpp:48; src/AggregateFunctions/AggregateFunctionQuantileExact.cpp:55-56 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileExact.cpp|type-256-without-512|FunctionDocumentation::ReturnedValue returned_value_quantiles = {\"Array of quantiles of the specified levels in the same order as the levels were specified. For numeric data types the output format ma": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileExact.cpp:48; src/AggregateFunctions/AggregateFunctionQuantileExact.cpp:55-56 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp|type-256-without-512|{\"expr\", \"Expression over the column values resulting in numeric data types, `Date`, `DateTime` or `DateTime64`.\", {\"(U)Int*\", \"Int128\", \"UInt128\", \"Int256\", \"UInt256\", \"Float*\", \"Decimal*\", \"Date\", \"": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp:427; src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp:434-435 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp|type-256-without-512|FunctionDocumentation::ReturnedValue returned_value = {\"Quantile of the specified level. For numeric data types the output format matches the input format.\", {\"(U)Int*\", \"Int128\", \"UInt128\", \"Int256\",": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp:427; src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp:434-435 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp|type-256-without-512|FunctionDocumentation::ReturnedValue returned_value_quantiles = {\"Array of quantiles of the specified levels in the same order as the levels were specified. For numeric data types the output format ma": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp:427; src/AggregateFunctions/AggregateFunctionQuantileExactWeighted.cpp:434-435 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileGK.cpp|type-256-without-512|{\"expr\", \"Expression over the column values resulting in numeric data types, `Date`, `DateTime` or `DateTime64`.\", {\"(U)Int*\", \"Int128\", \"UInt128\", \"Int256\", \"UInt256\", \"Float*\", \"Decimal*\", \"Date\", \"": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileGK.cpp:542; src/AggregateFunctions/AggregateFunctionQuantileGK.cpp:549-550 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileGK.cpp|type-256-without-512|FunctionDocumentation::ReturnedValue returned_value = {\"Returns the quantile of the specified level and accuracy. For numeric data types the output format matches the input format.\", {\"(U)Int*\", \"Int1": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileGK.cpp:542; src/AggregateFunctions/AggregateFunctionQuantileGK.cpp:549-550 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileGK.cpp|type-256-without-512|FunctionDocumentation::ReturnedValue returned_value_quantiles = {\"Array of quantiles of the specified levels in the same order as the levels were specified. For numeric data types the output format ma": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileGK.cpp:542; src/AggregateFunctions/AggregateFunctionQuantileGK.cpp:549-550 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp|type-256-without-512|{\"expr\", \"Expression over the column values resulting in numeric data types, `Date`, `DateTime` or `DateTime64`.\", {\"(U)Int*\", \"Int128\", \"UInt128\", \"Int256\", \"UInt256\", \"Float*\", \"Decimal*\", \"Date\", \"": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp:347; src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp:354-355 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp|type-256-without-512|FunctionDocumentation::ReturnedValue returned_value = {\"Quantile of the specified level. For numeric data types the output format matches the input format.\", {\"(U)Int*\", \"Int128\", \"UInt128\", \"Int256\",": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp:347; src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp:354-355 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp|type-256-without-512|FunctionDocumentation::ReturnedValue returned_value_quantiles = {\"Array of quantiles of the specified levels in the same order as the levels were specified. For numeric data types the output format ma": {
+  "decision": "reviewed: not a gap - FunctionDocumentation type list only, not a data path; the factory dispatches the 512-bit types at the cited lines. The explicit Int128..UInt256 wording is new upstream text (26.3 docs listed only (U)Int*).",
+  "evidence": "src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp:347; src/AggregateFunctions/AggregateFunctionQuantileInterpolatedWeighted.cpp:354-355 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Client/BuzzHouse/Generator/SQLExpression.cpp|type-256-without-512|il->set_integers(rg.nextBool() ? Integers::Int128 : Integers::Int256);": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Client/BuzzHouse/Generator/SQLExpression.cpp:221 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Client/BuzzHouse/Generator/SQLExpression.cpp|type-256-without-512|il->set_integers(rg.nextBool() ? Integers::UInt128 : Integers::UInt256);": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Client/BuzzHouse/Generator/SQLExpression.cpp:233 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Client/BuzzHouse/Generator/SQLTypes.cpp|size-32-without-64|case 32: return fmt::format(\"INT {}\", is_unsigned ? \" UNSIGNED\" : \"\");": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Client/BuzzHouse/Generator/SQLTypes.cpp:158 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Client/BuzzHouse/Generator/SQLTypes.cpp|size-32-without-64|case 32: return \"INTEGER\";": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Client/BuzzHouse/Generator/SQLTypes.cpp:169 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Client/BuzzHouse/Generator/SQLTypes.cpp|type-256-without-512|case 6: return std::make_tuple(std::make_unique<IntType>(256, true), Integers::UInt256);": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Client/BuzzHouse/Generator/SQLTypes.cpp:1635 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Client/BuzzHouse/Generator/SQLTypes.cpp|type-256-without-512|case 12: return std::make_tuple(std::make_unique<IntType>(256, false), Integers::Int256);": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Client/BuzzHouse/Generator/SQLTypes.cpp:1641 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Client/TerminalMarkdownRenderer.cpp|type-256-without-512|| `fixed(32)` | [Int256/UInt256](/reference/data-types/int-uint) | `fixed(32)` |": {
+  "decision": "reviewed: not a gap - Line is inside an embedded Markdown documentation string (Avro type-mapping table) rendered by the client; not a data path.",
+  "evidence": "src/Client/TerminalMarkdownRenderer.cpp:260-287 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Columns/ColumnQBit.cpp|size-32-without-64|const char * element_name = element_size == 8 ? \"Int8\" : element_size == 16 ? \"BFloat16\" : element_size == 32 ? \"Float32\" : \"Float64\";": {
+  "decision": "reviewed: not a gap - element_size is the QBit element width in bits (Int8/BFloat16/Float32/Float64), not a 32-byte value size; QBit elements can never be 512-bit.",
+  "evidence": "src/Columns/ColumnQBit.cpp:38-45; local/26.3-release:src/Columns/ColumnQBit.cpp:37-40 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_column_vector.cpp|type-256-without-512|testFilter<Int256>();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_column_vector.cpp:151 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|UInt256 makeWide256(size_t i)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1016 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|UInt256 v = 0;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1018 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|v |= UInt256(0x1111111111111111ULL + i);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1019 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|v |= UInt256(0x2222222222222222ULL ^ i) << 64;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1020 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|v |= UInt256(0x3333333333333333ULL + i) << 128;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1021 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|v |= UInt256(0x9E3779B97F4A7C15ULL ^ i) << 192;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1022 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|TEST(ComputeHashInto, ColumnVectorUInt256WideFold)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1051 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|auto col = ColumnUInt256::create();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1054 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|EXPECT_GT(countUnique(out), n * 99 / 100) << \"UInt256: too many hash collisions (folding bug?)\";": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1060 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|auto materialized = ColumnUInt256::create();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1065 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|auto one = ColumnUInt256::create();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1068 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|<< \"Materialized UInt256 and ColumnConst(UInt256) of the same value must compose identically\";": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1072 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|TEST(ComputeHashInto, ColumnDecimal256WideFold)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1100 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|auto col = ColumnDecimal<Decimal256>::create(0, 4);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1103 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|col->insert(DecimalField<Decimal256>(Decimal256(static_cast<Int256>(makeWide256(i))), 4));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1105 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|EXPECT_GT(countUnique(out), n * 99 / 100) << \"Decimal256: too many hash collisions (folding bug?)\";": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1109 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|const auto repr = Decimal256(static_cast<Int256>(makeWide256(42)));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1114 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|auto materialized = ColumnDecimal<Decimal256>::create(0, 4);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1115 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|materialized->insert(DecimalField<Decimal256>(repr, 4));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1117 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|auto one = ColumnDecimal<Decimal256>::create(0, 4);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1118 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|one->insert(DecimalField<Decimal256>(repr, 4));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1119 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_compute_hash_into.cpp|type-256-without-512|<< \"Materialized Decimal256 and ColumnConst(Decimal256) of the same value must compose identically\";": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_compute_hash_into.cpp:1122 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_low_cardinality.cpp|type-256-without-512|testLowCardinalityNumberInsert<UInt256>(std::make_shared<DataTypeUInt256>());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_low_cardinality.cpp:39 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_low_cardinality.cpp|type-256-without-512|testLowCardinalityNumberInsert<Int256>(std::make_shared<DataTypeInt256>());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Columns/tests/gtest_low_cardinality.cpp:46 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Columns/validateColumnType.cpp|type-256-without-512|else if (const auto * c256 = typeid_cast<const ColumnDecimal<Decimal256> *>(&col))": {
+  "decision": "reviewed: not a gap - decimalScaleMatches returns true (never rejects) for a Decimal512 column and is only reached with strict_decimal_scale=true, which only the gtest property fuzzer passes; production callers use the scale-blind default. At most a fuzzer coverage hole for scale-divergent Decimal512 columns.",
+  "evidence": "src/Columns/validateColumnType.cpp:50-52; src/Columns/validateColumnType.cpp:73; src/Columns/validateColumnType.h:14-19; src/Functions/tests/gtest_functions_stress.cpp:1699 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/FieldVisitorToCastedLiteral.cpp|type-256-without-512|String FieldVisitorToCastedLiteral::operator() (const UInt256 & x) const": {
+  "decision": "reviewed: not a gap - The UInt512 overload follows at lines 83-86 (outside the 3-line window). The inverse parser lacks the 512 names (see parseFieldFromCastedLiteral.cpp sites).",
+  "evidence": "src/Common/FieldVisitorToCastedLiteral.cpp:83-86 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/FieldVisitorToCastedLiteral.cpp|type-256-without-512|String FieldVisitorToCastedLiteral::operator() (const Int256 & x) const": {
+  "decision": "reviewed: not a gap - The Int512 overload follows at lines 98-101.",
+  "evidence": "src/Common/FieldVisitorToCastedLiteral.cpp:98-101 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/FieldVisitorToCastedLiteral.cpp|type-256-without-512|String FieldVisitorToCastedLiteral::operator() (const DecimalField<Decimal256> & x) const": {
+  "decision": "reviewed: not a gap - The DecimalField<Decimal512> overload follows at lines 138-141.",
+  "evidence": "src/Common/FieldVisitorToCastedLiteral.cpp:138-141 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/FieldVisitorToCastedLiteral.cpp|type-256-without-512|String FieldVisitorToCastedLiteral::operator() (const Decimal256 & x, UInt32 scale) const": {
+  "decision": "reviewed: not a gap - The (Decimal512, scale) overload follows at lines 163-166.",
+  "evidence": "src/Common/FieldVisitorToCastedLiteral.cpp:163-166 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/Primality.h|type-256-without-512|concept is_big_uint = is_any_of<T, UInt128, UInt256>;": {
+  "decision": "reviewed: limitation (clean error), deferred - isProbablePrime(UInt512) raises ILLEGAL_COLUMN (the 26.8 function supports up to UInt256; Primality.h needs a 512-bit integer backend); new in 26.8, not a 26.3 regression (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Common/Primality.h:28 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Common/Primality.h|type-256-without-512|static_assert(std::is_same_v<T, UInt128> || std::is_same_v<T, UInt256>);": {
+  "decision": "reviewed: limitation (clean error), deferred - isProbablePrime(UInt512) raises ILLEGAL_COLUMN (the 26.8 function supports up to UInt256; Primality.h needs a 512-bit integer backend); new in 26.8, not a 26.3 regression (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Common/Primality.h:135 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Common/Primality.h|type-256-without-512|if constexpr (std::is_same_v<T, UInt128> || std::is_same_v<T, UInt256>)": {
+  "decision": "reviewed: limitation (clean error), deferred - isProbablePrime(UInt512) raises ILLEGAL_COLUMN (the 26.8 function supports up to UInt256; Primality.h needs a 512-bit integer backend); new in 26.8, not a 26.3 regression (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Common/Primality.h:174 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|case Field::Types::Int256: return toString(f.safeGet<Int256>());": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:302 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|case Field::Types::UInt256: return toString(f.safeGet<UInt256>());": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:303 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|case Field::Types::Decimal256: return decimalFieldToString<Decimal256>(f);": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:307 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|const Int256 wide_mantissa = fuzz_rand() % 2 == 0": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:426 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|? Int256(mantissa)": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:427 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|: Int256(mantissa) * Int256(1000000000000000000LL) * Int256(1000000000000000000LL);": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:428 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|return DecimalField<Decimal256>(wide_mantissa, scales[fuzz_rand() % std::size(scales)]);": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:429 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|case 5: return std::numeric_limits<Int256>::min();": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:539 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|case 6: return std::numeric_limits<Int256>::max();": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:540 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|default: return std::numeric_limits<UInt256>::max();": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:541 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|else if (type == Field::Types::Int128 || type == Field::Types::UInt128 || type == Field::Types::Int256 || type == Field::Types::UInt256)": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:597 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512||| type == Field::Types::Decimal256)": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:607 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|child = makeASTFunction(fuzz_rand() % 2 == 0 ? \"toUInt128\" : \"toUInt256\", make_intrusive<ASTLiteral>(l->value.safeGet<UInt64>()));": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:3762 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|child = makeASTFunction(fuzz_rand() % 2 == 0 ? \"toInt128\" : \"toInt256\", make_intrusive<ASTLiteral>(l->value.safeGet<Int64>()));": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:3766 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|\"toUInt256\",": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:3879 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|\"toDecimal256OrNull\",": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:4938 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|\"toDecimal256OrZero\",": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:4939 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|\"toDecimal256OrDefault\"},": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:4940 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|\"toInt128OrZero\", \"toInt128OrDefault\", \"toInt256\", \"toInt256OrNull\", \"toInt256OrZero\", \"toInt256OrDefault\",": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:4945 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|\"toUInt128OrZero\", \"toUInt128OrDefault\", \"toUInt256\", \"toUInt256OrNull\", \"toUInt256OrZero\", \"toUInt256OrDefault\"},": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:4949 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|\"reinterpretAsUInt256\",": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:4975 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzer.cpp|type-256-without-512|\"reinterpretAsInt256\",": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzer.cpp:4981 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzerDataTypes.cpp|type-256-without-512|FUZZ_DECIMAL(Decimal256)": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzerDataTypes.cpp:367 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzerDataTypes.cpp|type-256-without-512|TypeIndex::UInt64, TypeIndex::UInt128, TypeIndex::UInt256,": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzerDataTypes.cpp:555 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzerDataTypes.cpp|type-256-without-512|TypeIndex::Int64, TypeIndex::Int128, TypeIndex::Int256,": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzerDataTypes.cpp:557 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzerDataTypes.cpp|type-256-without-512|TypeIndex::Decimal64, TypeIndex::Decimal128, TypeIndex::Decimal256,": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzerDataTypes.cpp:562 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/QueryFuzzerDataTypes.cpp|type-256-without-512|DISPATCH(Decimal256)": {
+  "decision": "reviewed: not a gap - type list of a query fuzzer (QueryFuzzer, BuzzHouse): decides which random types the fuzzer generates, not how a query executes; the 512-bit types are only not generated (fuzz coverage)",
+  "evidence": "src/Common/QueryFuzzerDataTypes.cpp:625 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/findExtreme.cpp|type-256-without-512|INSTANTIATION_VALUE(Int256)": {
+  "decision": "reviewed: not a gap - Upstream added value-only fast paths for 128/256-bit types; 512-bit types are excluded by the concepts and every caller has a generic scalar fallback with the same result. 26.3 excluded all wide types the same way.",
+  "evidence": "src/Common/findExtreme.h:13-24; src/AggregateFunctions/SingleValueData.cpp:370-380; src/Functions/array/arrayAggregation.cpp:249-281; src/Columns/ColumnVector.cpp:1212-1240; local/26.3-release:src/Common/findExtreme.h:14-16 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/findExtreme.cpp|type-256-without-512|INSTANTIATION_VALUE(UInt256)": {
+  "decision": "reviewed: not a gap - UInt512 uses the generic fallbacks (SingleValueDataFixed loops, arrayMin/arrayMax compareAt loop, ColumnVector::getExtremes loop); results identical.",
+  "evidence": "src/AggregateFunctions/SingleValueData.cpp:390-400; src/AggregateFunctions/SingleValueData.cpp:415-444; src/Functions/array/arrayAggregation.cpp:249-281 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/findExtreme.cpp|type-256-without-512|INSTANTIATION_VALUE(Decimal256)": {
+  "decision": "reviewed: not a gap - Decimal512 uses the generic fallbacks in SingleValueDataFixed (instantiated for Decimal512 via FOR_SINGLE_VALUE_NUMERIC_TYPES) and arrayMin/arrayMax; results identical.",
+  "evidence": "src/AggregateFunctions/SingleValueData.h:60-82; src/AggregateFunctions/SingleValueData.cpp:459-488; src/Functions/array/arrayAggregation.cpp:249-281 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/findExtreme.h|type-256-without-512|= (is_any_of<T, Int8, Int16, Int32, Int64, Int128, Int256, UInt8, UInt16, UInt32, UInt64, UInt128, UInt256, Float32, Float64>);": {
+  "decision": "reviewed: not a gap - Concept for the SIMD fast path; excluding Int512/UInt512 only routes them to the correct generic loops in all callers.",
+  "evidence": "src/Common/findExtreme.h:13-24; src/AggregateFunctions/SingleValueData.cpp:376-380; src/Columns/ColumnVector.cpp:496-517; local/26.3-release:src/Common/findExtreme.h:14 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/findExtreme.h|type-256-without-512|concept underlying_has_find_extreme_implementation = (is_any_of<T, Decimal32, Decimal64, Decimal128, Decimal256, DateTime64>);": {
+  "decision": "reviewed: not a gap - Concept for the decimal fast path; Decimal512 goes to the correct generic loops.",
+  "evidence": "src/Common/findExtreme.h:16-24; src/AggregateFunctions/SingleValueData.cpp:396-400; local/26.3-release:src/Common/findExtreme.h:16 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/findExtreme.h|type-256-without-512|EXTERN_INSTANTIATION_VALUE(Int256)": {
+  "decision": "reviewed: not a gap - extern template declaration matching the fast-path concept; nothing calls findExtreme* with 512-bit types.",
+  "evidence": "src/Common/findExtreme.h:58-86; src/Common/findExtreme.cpp:327-332 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/findExtreme.h|type-256-without-512|EXTERN_INSTANTIATION_VALUE(UInt256)": {
+  "decision": "reviewed: not a gap - extern template declaration matching the concept; UInt512 uses the generic fallbacks.",
+  "evidence": "src/Common/findExtreme.h:58-86 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/findExtreme.h|type-256-without-512|EXTERN_INSTANTIATION_VALUE(Decimal256)": {
+  "decision": "reviewed: not a gap - extern template declaration matching the concept; Decimal512 uses the generic fallbacks.",
+  "evidence": "src/Common/findExtreme.h:58-86 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|ASSERT_EQ(callItoa(std::numeric_limits<UInt256>::max()),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:156 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|ASSERT_EQ(callItoa(std::numeric_limits<Int256>::min()),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:158 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|UInt256 above_uint128 = UInt256(std::numeric_limits<UInt128>::max()) + 1;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:164 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|std::vector<UInt256> values{0, 1, 9, 10};": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:177 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|UInt256 power = 1;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:179 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|values.push_back(std::numeric_limits<UInt256>::max());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:187 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|values.push_back(UInt256(std::numeric_limits<UInt128>::max()));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:188 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|values.push_back(UInt256(std::numeric_limits<UInt64>::max()));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:189 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|UInt256 value = 0;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:199 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|value = (value << 64) + UInt256(next());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:201 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|for (const UInt256 & value : values)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:208 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|ASSERT_EQ(callItoa(Int256(value)), referenceItoa(Int256(value))) << implementation;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:211 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|UInt128 narrow{value.items[UInt256::_impl::little(0)], value.items[UInt256::_impl::little(1)]};": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:213 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|ASSERT_EQ(callWriteFixedDigits(UInt256(value), width), referenceFixedDigits(UInt256(value), width))": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:273 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|UInt256 huge = (UInt256(std::numeric_limits<UInt128>::max()) << 64) + 12345;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:277 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|ASSERT_EQ(callWriteFixedDigits(std::numeric_limits<UInt256>::max(), width),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:279 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_itoa.cpp|type-256-without-512|referenceFixedDigits(std::numeric_limits<UInt256>::max(), width)) << implementation << \", width \" << width;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_itoa.cpp:280 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|checkComparisonAgainstWiderOracle<Int128, Int256>({": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:262 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|checkComparisonAgainstWiderOracle<UInt128, UInt256>({": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:283 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert((Int256(1) << 192) > (Int256(1) << 128));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:297 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert((Int256(1) << 128) > Int256(0));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:298 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert(std::numeric_limits<Int256>::min() < (Int256(1) << 128));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:299 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert((UInt256(1) << 255) > (UInt256(1) << 192));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:300 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|const Int256 min = std::numeric_limits<Int256>::min();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:303 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|const Int256 max = std::numeric_limits<Int256>::max();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:304 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|const Int256 limb2 = Int256(1) << 128;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:305 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|const Int256 limb3 = Int256(1) << 192;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:306 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|checkStrictlyAscending<Int256>({": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:308 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|const UInt256 max = std::numeric_limits<UInt256>::max();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:331 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|const UInt256 limb2 = UInt256(1) << 128;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:332 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|const UInt256 limb3 = UInt256(1) << 192;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:333 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|const UInt256 top_bit = UInt256(1) << 255;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:334 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|checkStrictlyAscending<UInt256>({": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:336 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert(UInt256(0) / UInt256(7) == UInt256(0));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:473 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert(UInt256(7) / UInt256(8) == UInt256(0));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:474 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert(UInt256(7) % UInt256(8) == UInt256(7));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:475 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert((UInt256(1) << 200) % UInt256(1000000000000000000ULL) == UInt256(993782792835301376ULL));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:476 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert((UInt256(1) << 200) / UInt256(1000000000000000000ULL) % UInt256(1000000000000000000ULL)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:477 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|== UInt256(92341162602522202ULL));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:478 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert((UInt256(1) << 200) % ((UInt256(1) << 70) | UInt256(1)) == UInt256(1152921504606846976ULL));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:480 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert(Int256(-1000000007) / Int256(3) == Int256(-333333335));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:481 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|static_assert(Int256(-1000000007) % Int256(3) == Int256(-2));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:482 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|UInt256 two_pow_200 = UInt256(1) << 200;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:488 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString(two_pow_200 / UInt256(1000000000000000000ULL)), \"1606938044258990275541962092341162602522202\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:489 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString(two_pow_200 % UInt256(1000000000000000000ULL)), \"993782792835301376\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:490 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString(parse<UInt256>(\"10000000000000000000000000000000000000000000000000000000000000000000000000000\")": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:493 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|/ parse<UInt256>(\"100000000000000000000000000000000000000\")),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:494 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString(std::numeric_limits<UInt256>::max() / parse<UInt256>(\"340282366920938463463374607431768211457\")),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:498 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString(std::numeric_limits<UInt256>::max() % parse<UInt256>(\"340282366920938463463374607431768211457\")), \"0\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:500 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|/ parse<UInt256>(\"1361129467683753853853498429727072858169\")),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:504 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|% parse<UInt256>(\"1361129467683753853853498429727072858169\")),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:507 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString((UInt256(1) << 255) / UInt256(18446744073709551615ULL)),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:511 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString((UInt256(1) << 255) % UInt256(18446744073709551615ULL)), \"9223372036854775808\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:513 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString(parse<Int256>(\"-1000000000000000000000000000000000000000000000000000000000000\") / Int256(7)),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:516 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_EQ(toString(parse<Int256>(\"-1000000000000000000000000000000000000000000000000000000000000\") % Int256(7)), \"-1\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:518 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|UInt256 a = randomOfWidth<UInt256>(rng, bits_a);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:599 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|UInt256 b = randomOfWidth<UInt256>(rng, bits_b);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:600 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|if (b != UInt256(0))": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:601 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|Int256 signed_a = static_cast<Int256>(a);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:606 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|Int256 signed_b = static_cast<Int256>(b);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:607 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|if (signed_b != Int256(0) && !(signed_a == std::numeric_limits<Int256>::min() && signed_b == Int256(-1)))": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:608 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|std::vector<UInt256> values;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:620 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|values.push_back(UInt256(1));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:621 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|values.push_back(UInt256(2));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:622 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|values.push_back(std::numeric_limits<UInt256>::max());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:623 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|UInt256 x = UInt256(1) << bit;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:626 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|values.push_back(x - UInt256(1));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:630 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|values.push_back(x + UInt256(1));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:631 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|UInt256 power_of_ten = 1;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:636 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|for (const UInt256 & a : values)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:643 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|for (const UInt256 & b : values)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:644 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_ANY_THROW(std::ignore = std::numeric_limits<UInt256>::max() / UInt256(0));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:649 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Common/tests/gtest_wide_integer.cpp|type-256-without-512|EXPECT_ANY_THROW(std::ignore = std::numeric_limits<UInt256>::max() % UInt256(0));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Common/tests/gtest_wide_integer.cpp:650 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Compression/LZ4_decompress_faster.cpp|size-32-without-64|if constexpr (block_size == 32)": {
+  "decision": "reviewed: not a gap - block_size is the LZ4 match-copy granularity (8/16/32 bytes), unrelated to value types.",
+  "evidence": "src/Compression/LZ4_decompress_faster.cpp:31-45; src/Compression/LZ4_decompress_faster.cpp:64-86 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Compression/tests/gtest_compression_codec_adaptive.cpp|type-256-without-512|case TypeIndex::Int256: return type(\"Int256\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Compression/tests/gtest_compression_codec_adaptive.cpp:54 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Compression/tests/gtest_compression_codec_adaptive.cpp|type-256-without-512|case TypeIndex::UInt256: return type(\"UInt256\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Compression/tests/gtest_compression_codec_adaptive.cpp:60 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Compression/tests/gtest_compression_codec_adaptive.cpp|type-256-without-512|case TypeIndex::Decimal256: return type(\"Decimal(76, 2)\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Compression/tests/gtest_compression_codec_adaptive.cpp:67 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Compression/tests/gtest_compression_codec_adaptive.cpp|type-256-without-512|for (const auto * name : {\"Int128\", \"UInt256\", \"Decimal(38, 2)\", \"String\", \"Float32\", \"Float64\", \"UUID\"})": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Compression/tests/gtest_compression_codec_adaptive.cpp:151 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Core/ExternalResultDescription.cpp|type-256-without-512|else if (which.isInt256())": {
+  "decision": "reviewed: limitation (clean error), deferred - Int512/UInt512 columns of external sources (PostgreSQL/MySQL/SQLite, dictionary sources) raise UNKNOWN_TYPE: 26.8 added vtInt256, no 512-bit counterpart; Decimal512 is restored (vtDecimal512, b3cd7c1c9bf); 26.3 had no vtInt256 either (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Core/ExternalResultDescription.cpp:87 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/ExternalResultDescription.cpp|type-256-without-512|types.emplace_back(ValueType::vtInt256, is_nullable);": {
+  "decision": "reviewed: limitation (clean error), deferred - Int512/UInt512 columns of external sources (PostgreSQL/MySQL/SQLite, dictionary sources) raise UNKNOWN_TYPE: 26.8 added vtInt256, no 512-bit counterpart; Decimal512 is restored (vtDecimal512, b3cd7c1c9bf); 26.3 had no vtInt256 either (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Core/ExternalResultDescription.cpp:88 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/ExternalResultDescription.h|type-256-without-512|vtInt256,": {
+  "decision": "reviewed: limitation (clean error), deferred - Int512/UInt512 columns of external sources (PostgreSQL/MySQL/SQLite, dictionary sources) raise UNKNOWN_TYPE: 26.8 added vtInt256, no 512-bit counterpart; Decimal512 is restored (vtDecimal512, b3cd7c1c9bf); 26.3 had no vtInt256 either (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Core/ExternalResultDescription.h:24 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/Field.cpp|type-256-without-512|Decimal<Int256> value{};": {
+  "decision": "reviewed: not a gap - readFieldBinary has the Decimal512 case right after (lines 535-542) and UInt512/Int512 cases at 406 and 448.",
+  "evidence": "src/Core/Field.cpp:535-542; src/Core/Field.cpp:406; src/Core/Field.cpp:448; local/26.3-release:src/Core/Field.cpp:536 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Core/FormatFactorySettings.h|type-256-without-512|Write `Int128`, `UInt128`, `Int256`, and `UInt256` values as standards-compliant Parquet `DECIMAL` values in big-endian byte order. The default keeps the legacy unannotated little-endian `FIXED_LEN_BY": {
+  "decision": "reviewed: not a gap - Setting description text. Int512/UInt512 cannot be written to Parquet at all in either version (default UNKNOWN_TYPE; Decimal512 is written as FIXED_LEN_BYTE_ARRAY(64)), so the setting has nothing 512-bit to apply to.",
+  "evidence": "src/Processors/Formats/Impl/Parquet/PrepareForWrite.cpp:497-520; src/Processors/Formats/Impl/Parquet/PrepareForWrite.cpp:531-534 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Core/PostgreSQL/insertPostgreSQLValue.cpp|type-256-without-512|case ExternalResultDescription::ValueType::vtInt256:": {
+  "decision": "reviewed: not a gap after b3cd7c1c9bf - numeric(77..154, s) maps to Decimal512 again (vtDecimal512 path restored); this Int256 path serves numeric(p > 154, 0) only (upstream mapping), wider than any ClickHouse type, and rejects values outside Int256",
+  "evidence": "src/Core/PostgreSQL/insertPostgreSQLValue.cpp:81 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/PostgreSQL/insertPostgreSQLValue.cpp|type-256-without-512|Int256 v = parse<Int256>(value.data(), value.size());": {
+  "decision": "reviewed: not a gap after b3cd7c1c9bf - numeric(77..154, s) maps to Decimal512 again (vtDecimal512 path restored); this Int256 path serves numeric(p > 154, 0) only (upstream mapping), wider than any ClickHouse type, and rejects values outside Int256",
+  "evidence": "src/Core/PostgreSQL/insertPostgreSQLValue.cpp:84 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/PostgreSQL/insertPostgreSQLValue.cpp|type-256-without-512|throw Exception(ErrorCodes::BAD_ARGUMENTS, \"Value '{}' is out of range of Int256\", String(value));": {
+  "decision": "reviewed: not a gap after b3cd7c1c9bf - numeric(77..154, s) maps to Decimal512 again (vtDecimal512 path restored); this Int256 path serves numeric(p > 154, 0) only (upstream mapping), wider than any ClickHouse type, and rejects values outside Int256",
+  "evidence": "src/Core/PostgreSQL/insertPostgreSQLValue.cpp:88 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/PostgreSQL/insertPostgreSQLValue.cpp|type-256-without-512|assert_cast<ColumnInt256 &>(column).insertValue(v);": {
+  "decision": "reviewed: not a gap - Only values that passed the Int256 round-trip check at line 87 reach this insert, so it is correct for the Int256 column; the 512-bit problem is the routing and rejection at lines 81-88 (see 8490e281fc).",
+  "evidence": "src/Core/PostgreSQL/insertPostgreSQLValue.cpp:87-89 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Core/PostgreSQL/insertPostgreSQLValue.cpp|type-256-without-512|else if (which.isInt256())": {
+  "decision": "reviewed: not a gap after b3cd7c1c9bf - numeric(77..154, s) maps to Decimal512 again (vtDecimal512 path restored); this Int256 path serves numeric(p > 154, 0) only (upstream mapping), wider than any ClickHouse type, and rejects values outside Int256",
+  "evidence": "src/Core/PostgreSQL/insertPostgreSQLValue.cpp:260 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/PostgreSQL/insertPostgreSQLValue.cpp|type-256-without-512|Int256 v = parse<Int256>(field.data(), field.size());": {
+  "decision": "reviewed: not a gap after b3cd7c1c9bf - numeric(77..154, s) maps to Decimal512 again (vtDecimal512 path restored); this Int256 path serves numeric(p > 154, 0) only (upstream mapping), wider than any ClickHouse type, and rejects values outside Int256",
+  "evidence": "src/Core/PostgreSQL/insertPostgreSQLValue.cpp:265 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/PostgreSQL/insertPostgreSQLValue.cpp|type-256-without-512|throw Exception(ErrorCodes::BAD_ARGUMENTS, \"Value '{}' is out of range of Int256\", field);": {
+  "decision": "reviewed: not a gap after b3cd7c1c9bf - numeric(77..154, s) maps to Decimal512 again (vtDecimal512 path restored); this Int256 path serves numeric(p > 154, 0) only (upstream mapping), wider than any ClickHouse type, and rejects values outside Int256",
+  "evidence": "src/Core/PostgreSQL/insertPostgreSQLValue.cpp:267 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/PostgreSQLProtocol.h|type-256-without-512|return fmt::format(\"accurateCast({}, 'Decimal256({})')\", quoteString(normalized->first), normalized->second);": {
+  "decision": "reviewed: limitation (clean error), deferred - PostgreSQL wire protocol prepared-statement numeric parameters are cast to Decimal256 (at most 76 digits); new 26.8 code, not a 26.3 regression; Decimal512 result columns are NUMERIC again (b3cd7c1c9bf) (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Core/PostgreSQLProtocol.h:2168 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Core/SettingsChangesHistory.cpp|type-256-without-512|{\"output_format_parquet_wide_integer_as_decimal\", false, false, \"New setting to write `Int128`, `UInt128`, `Int256`, and `UInt256` values as standard Parquet `DECIMAL` values. The previous value keeps": {
+  "decision": "reviewed: not a gap - Settings-history description string; not a data path.",
+  "evidence": "src/Core/SettingsChangesHistory.cpp:136 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Core/tests/gtest_fields_binary_enciding.cpp|type-256-without-512|check(DecimalField<Decimal256>(Int256(4242), 3));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Core/tests/gtest_fields_binary_enciding.cpp:49 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Core/tests/gtest_postgresql_protocol.cpp|type-256-without-512|\"SELECT toTypeName(accurateCast('2.11', 'Decimal256(2)'))\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Core/tests/gtest_postgresql_protocol.cpp:531 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Core/tests/gtest_postgresql_protocol.cpp|type-256-without-512|EXPECT_EQ(bindAndGetStatement(\"SELECT $1\", {1700}, {{\"-5\"}}), \"SELECT accurateCast('-5', 'Decimal256(0)')\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Core/tests/gtest_postgresql_protocol.cpp:532 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Core/tests/gtest_postgresql_protocol.cpp|type-256-without-512|EXPECT_EQ(bindAndGetStatement(\"SELECT $1\", {1700}, {{\"100\"}}), \"SELECT accurateCast('100', 'Decimal256(0)')\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Core/tests/gtest_postgresql_protocol.cpp:533 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Core/tests/gtest_postgresql_protocol.cpp|type-256-without-512|EXPECT_EQ(bindAndGetStatement(\"SELECT $1\", {1700}, {{\"1e2\"}}), \"SELECT accurateCast('100', 'Decimal256(0)')\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Core/tests/gtest_postgresql_protocol.cpp:535 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Core/tests/gtest_postgresql_protocol.cpp|type-256-without-512|EXPECT_EQ(bindAndGetStatement(\"SELECT $1\", {1700}, {{\"-2.5e-3\"}}), \"SELECT accurateCast('-0.0025', 'Decimal256(4)')\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Core/tests/gtest_postgresql_protocol.cpp:536 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Core/tests/gtest_postgresql_protocol.cpp|type-256-without-512|EXPECT_EQ(bindAndGetStatement(\"SELECT $1\", {1700}, {{\".5\"}}), \"SELECT accurateCast('0.5', 'Decimal256(1)')\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Core/tests/gtest_postgresql_protocol.cpp:537 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Core/tests/gtest_postgresql_protocol.cpp|type-256-without-512|EXPECT_EQ(bindAndGetStatement(\"SELECT $1\", {1700}, {{\"5.\"}}), \"SELECT accurateCast('5', 'Decimal256(0)')\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Core/tests/gtest_postgresql_protocol.cpp:538 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.h|type-256-without-512|UInt256 = 0x06,": {
+  "decision": "reviewed: not a gap - Exhaustive enum: UInt512/Int512/Decimal512 are 0x37/0x38/0x39 at lines 78-80 and are encoded/decoded in DataTypesBinaryEncoding.cpp (QBit 0x37 conflict tracked separately).",
+  "evidence": "src/DataTypes/DataTypesBinaryEncoding.h:76-80; src/DataTypes/DataTypesBinaryEncoding.cpp:108-109; src/DataTypes/DataTypesBinaryEncoding.cpp:600-607; local/26.3-release:src/DataTypes/DataTypesBinaryEncoding.cpp:80 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.h|type-256-without-512|Int256 = 0x0C,": {
+  "decision": "reviewed: not a gap - Exhaustive enum; Int512 = 0x38 at line 79, mapped at DataTypesBinaryEncoding.cpp:122-123.",
+  "evidence": "src/DataTypes/DataTypesBinaryEncoding.h:79; src/DataTypes/DataTypesBinaryEncoding.cpp:122-123 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.h|type-256-without-512|Decimal256 = 0x1C,": {
+  "decision": "reviewed: not a gap - Exhaustive enum; Decimal512 = 0x39 at line 80, encoded/decoded at DataTypesBinaryEncoding.cpp:162-163, 389-391, 666-667.",
+  "evidence": "src/DataTypes/DataTypesBinaryEncoding.h:80; src/DataTypes/DataTypesBinaryEncoding.cpp:162-163; src/DataTypes/DataTypesBinaryEncoding.cpp:666-667 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesDecimal.cpp|type-256-without-512|factory.registerDataType(\"Decimal256\", createExact<Decimal256>, DataTypeFactory::Case::Insensitive,": {
+  "decision": "reviewed: not a gap - Decimal512 is registered right after (lines 716-721).",
+  "evidence": "src/DataTypes/DataTypesDecimal.cpp:716-721; local/26.3-release:src/DataTypes/DataTypesDecimal.cpp:687-688 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesDecimal.cpp|type-256-without-512|.syntax = \"Decimal256(S)\",": {
+  "decision": "reviewed: not a gap - Documentation syntax string of the Decimal256 registration; Decimal512 has its own at line 719.",
+  "evidence": "src/DataTypes/DataTypesDecimal.cpp:716-721 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesDecimal.cpp|type-256-without-512|- P from \\[ 39 : 76 \\] - for Decimal256(S)": {
+  "decision": "reviewed: not a gap - Documentation text (stale for the fork: omits Decimal512 and precision up to 154); not a data path.",
+  "evidence": "src/DataTypes/DataTypesDecimal.cpp:724-739 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesDecimal.cpp|type-256-without-512|- Decimal256(S) - (-1 \\* 10^(76 - S), 1 \\* 10^(76 - S))": {
+  "decision": "reviewed: not a gap - Documentation text (value-range table); not a data path.",
+  "evidence": "src/DataTypes/DataTypesDecimal.cpp:740-747 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesDecimal.cpp|type-256-without-512|Because modern CPUs do not support 128-bit and 256-bit integers natively, operations on Decimal128 and Decimal256 are emulated. Thus, Decimal128 and Decimal256 work significantly slower than Decimal32": {
+  "decision": "reviewed: not a gap - Documentation text; not a data path.",
+  "evidence": "src/DataTypes/DataTypesDecimal.cpp:750-755 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesDecimal.cpp|type-256-without-512|- `Decimal256(S1) <op> Decimal<32|64|128>(S2) -> Decimal256(S)`": {
+  "decision": "reviewed: not a gap - Documentation text (result-type rules); not a data path.",
+  "evidence": "src/DataTypes/DataTypesDecimal.cpp:756-770 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesDecimal.cpp|type-256-without-512|Overflow check is not implemented for Decimal128 and Decimal256. In case of overflow incorrect result is returned, no exception is thrown.": {
+  "decision": "reviewed: not a gap - Documentation text (overflow note); not a data path.",
+  "evidence": "src/DataTypes/DataTypesDecimal.cpp:777-783 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesDecimal.cpp|type-256-without-512|.related = {\"Decimal32\", \"Decimal64\", \"Decimal128\", \"Decimal256\"},": {
+  "decision": "reviewed: not a gap - Documentation 'related' list; not a data path.",
+  "evidence": "src/DataTypes/DataTypesDecimal.cpp:838-840 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesNumber.cpp|type-256-without-512|| `Int256` | \\[-57896044618658097711785492504343953926634992332820282019728792003956564819968 : 57896044618658097711785492504343953926634992332820282019728792003956564819967\\] |": {
+  "decision": "reviewed: not a gap - Documentation range table (omits Int512); not a data path.",
+  "evidence": "src/DataTypes/DataTypesNumber.cpp:92-104 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesNumber.cpp|type-256-without-512|| `UInt256` | \\[0 : 115792089237316195423570985008687907853269984665640564039457584007913129639935\\] |": {
+  "decision": "reviewed: not a gap - Documentation range table (omits UInt512); not a data path.",
+  "evidence": "src/DataTypes/DataTypesNumber.cpp:105-115 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesNumber.cpp|type-256-without-512|factory.registerSimpleDataType(\"UInt256\", [] { return DataTypePtr(std::make_shared<DataTypeUInt256>()); }, DataTypeFactory::Case::Sensitive,": {
+  "decision": "reviewed: not a gap - UInt512 is registered at lines 334-339.",
+  "evidence": "src/DataTypes/DataTypesNumber.cpp:334-339; local/26.3-release:src/DataTypes/DataTypesNumber.cpp:66 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/DataTypesNumber.cpp|type-256-without-512|factory.registerSimpleDataType(\"Int256\", [] { return DataTypePtr(std::make_shared<DataTypeInt256>()); }, DataTypeFactory::Case::Sensitive,": {
+  "decision": "reviewed: not a gap - Int512 is registered at lines 353-358.",
+  "evidence": "src/DataTypes/DataTypesNumber.cpp:353-358; local/26.3-release:src/DataTypes/DataTypesNumber.cpp:67 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/convertMySQLDataType.cpp|type-256-without-512|if (precision > 0 && precision <= DataTypeDecimalBase<Decimal256>::maxPrecision())": {
+  "decision": "reviewed: not a gap - MYSQL_FIELD path for query-result metadata from a MySQL server; DECIMAL precision there is capped at 65, so only Decimal32..256 are possible.",
+  "evidence": "src/DataTypes/convertMySQLDataType.cpp:225-237; src/Storages/StorageMySQL.cpp:940 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/DataTypes/tests/gtest_data_types_binary_encoding.cpp|type-256-without-512|check(std::make_shared<DataTypeDecimal256>(3, 6));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/DataTypes/tests/gtest_data_types_binary_encoding.cpp:78 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Databases/PostgreSQL/DatabasePostgreSQL.cpp|type-256-without-512|PostgreSQL `numeric(p, s)` with a precision `p` from 77 to 154 is mapped to `Decimal(p, s)` (`Decimal512`, Sentio fork). `numeric(p, 0)` with a precision `p` greater than 154 is mapped to [`Int256`](/": {
+  "decision": "reviewed: not a gap - documentation of the numeric mapping (b3cd7c1c9bf): Int256 for numeric(p > 154, 0)",
+  "evidence": "src/Databases/PostgreSQL/DatabasePostgreSQL.cpp:728 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Databases/PostgreSQL/fetchPostgreSQLTableStructure.cpp|type-256-without-512|res = std::make_shared<DataTypeInt256>();": {
+  "decision": "reviewed: not a gap after b3cd7c1c9bf - Int256 only for numeric(p > 154, 0) (upstream mapping for precisions no Decimal holds); numeric(77..154, s) maps to Decimal512 as in 26.3",
+  "evidence": "src/Databases/PostgreSQL/fetchPostgreSQLTableStructure.cpp:145 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Databases/SQLite/DatabaseSQLite.cpp|type-256-without-512|- [Decimal32, Decimal64, Decimal128, Decimal256](/reference/data-types/decimal)": {
+  "decision": "reviewed: not a gap - Documentation list. The real SQLite Decimal512 regression is at ExternalResultDescription.cpp:119-126 (26.3 read Decimal512 through SQLiteSource's default branch).",
+  "evidence": "src/Databases/SQLite/DatabaseSQLite.cpp:270-279; src/Processors/Sources/SQLiteSource.cpp:257-283 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionBinaryArithmetic.h|type-256-without-512|: which.isUInt256() ? overflows(std::type_identity<UInt256>{})": {
+  "decision": "reviewed: not a gap - For a (U)Int512 result type the multiply-by-constant overflow check falls to the conservative 'unknown type -> overflow' branch, so k*c is reported non-monotonic. Results stay correct; only primary-key pruning for k*c on 512-bit keys is lost (performance; a force_primary_key=1 query could raise INDEX_NOT_USED).",
+  "evidence": "src/Functions/FunctionBinaryArithmetic.h:3955-3972 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionBinaryArithmetic.h|type-256-without-512|: which.isInt256() ? overflows(std::type_identity<Int256>{})": {
+  "decision": "reviewed: not a gap - For a (U)Int512 result type the multiply-by-constant overflow check falls to the conservative 'unknown type -> overflow' branch, so k*c is reported non-monotonic. Results stay correct; only primary-key pruning for k*c on 512-bit keys is lost (performance; a force_primary_key=1 query could raise INDEX_NOT_USED).",
+  "evidence": "src/Functions/FunctionBinaryArithmetic.h:3955-3972 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionMathUnary.h|type-256-without-512|if constexpr (is_big_int_v<T> || std::is_same_v<T, Decimal256>)": {
+  "decision": "reviewed: not a gap - executeInIterations is instantiated with T = the ColumnVector element type or, for decimal input, with T = ReturnType (Float64) after DecimalUtils::convertTo, so T is never Decimal256/Decimal512 and both branches copy the same Float64 values. The Decimal512 term 26.3 had here was dead code; Decimal512 math is dispatched by callOnBasicType.",
+  "evidence": "src/Functions/FunctionMathUnary.h:108-113; src/Functions/FunctionMathUnary.h:126; src/Functions/FunctionMathUnary.h:144; src/Functions/FunctionMathUnary.h:169; local/26.3-release:src/Functions/FunctionMathUnary.h:104 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsConversion_reg.cpp|type-256-without-512|Converts an input value to a value of type [Int256](/reference/data-types/int-uint).": {
+  "decision": "reviewed: not a gap - Documentation text of toInt256; toInt512 is registered separately.",
+  "evidence": "src/Functions/FunctionsConversion_reg.cpp:685 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsConversion_reg.cpp|type-256-without-512|Supports conversion from `String`, `FixedString`, `Date`, `Date32`, `Time`, `DateTime`, `DateTime64`, or numeric types (`(U)Int8`, `(U)Int16`, `(U)Int32`, `(U)Int64`, `BFloat16`, `Float32`, `Float64`)": {
+  "decision": "reviewed: not a gap - toDateTime32 documentation text; (U)Int512 -> DateTime takes the same generic wrapping path as the (U)Int128/(U)Int256 types it names.",
+  "evidence": "src/Functions/FunctionsConversion_reg.cpp:1313; src/Functions/FunctionsConversion.h:2181-2205 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsConversion_reg.cpp|type-256-without-512|Like [`toUInt256`](#toUInt256), this function converts an input value to a value of type [`UInt256`](/reference/data-types/int-uint) but returns `0` in case of an error.": {
+  "decision": "reviewed: not a gap - Documentation text of toUInt256OrZero; toUInt512OrZero is registered separately.",
+  "evidence": "src/Functions/FunctionsConversion_reg.cpp:1925 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsConversion_reg.cpp|type-256-without-512|If the input value cannot be represented within the bounds of [`UInt256`](/reference/data-types/int-uint), overflow or underflow of the result occurs.": {
+  "decision": "reviewed: not a gap - Documentation text of toUInt256OrZero/toUInt256OrNull; the 512-bit variants are registered separately.",
+  "evidence": "src/Functions/FunctionsConversion_reg.cpp:1925; src/Functions/FunctionsConversion_reg.cpp:3108 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsConversion_reg.cpp|type-256-without-512|Converts an input value to type [Int256](/reference/data-types/int-uint) but returns `0` in case of an error.": {
+  "decision": "reviewed: not a gap - Documentation text of toInt256OrZero; toInt512OrZero is registered separately.",
+  "evidence": "src/Functions/FunctionsConversion_reg.cpp:2193 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsConversion_reg.cpp|type-256-without-512|Like [`toUInt256`](#toUInt256), this function converts an input value to a value of type [`UInt256`](/reference/data-types/int-uint) but returns `NULL` in case of an error.": {
+  "decision": "reviewed: not a gap - Documentation text of toUInt256OrNull; toUInt512OrNull is registered separately.",
+  "evidence": "src/Functions/FunctionsConversion_reg.cpp:3108 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsConversion_reg.cpp|type-256-without-512|Like [`toInt256`](#toInt256), this function converts an input value to a value of type [Int256](/reference/data-types/int-uint) but returns `NULL` in case of an error.": {
+  "decision": "reviewed: not a gap - Documentation text of toInt256OrNull; toInt512OrNull is registered separately.",
+  "evidence": "src/Functions/FunctionsConversion_reg.cpp:3409 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsConversion_reg.cpp|type-256-without-512|If the input value cannot be represented within the bounds of [Int256](/reference/data-types/int-uint), overflow or underflow of the result occurs.": {
+  "decision": "reviewed: not a gap - Documentation text of toInt256OrNull; toInt512OrNull is registered separately.",
+  "evidence": "src/Functions/FunctionsConversion_reg.cpp:3409 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/FunctionsDecimalArithmetics.h|type-256-without-512|throw DB::Exception(ErrorCodes::DECIMAL_OVERFLOW, \"Numeric overflow: result bigger that Decimal256\");": {
+  "decision": "reviewed: not a gap - Error-message text only, and the guard is unreachable (the digit buffer has len1 + len2 slots); the Decimal512 result limit is enforced separately. The 'Decimal256' wording is new upstream text (26.3 said 'Numeric overflow').",
+  "evidence": "src/Functions/FunctionsDecimalArithmetics.h:45-66; src/Functions/multiplyDecimal.cpp:51-52; src/Functions/FunctionsDecimalArithmetics.h:285-289 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayAggregation.cpp|type-256-without-512||| executeMinOrMaxNumeric<UInt256>(mapped, offsets, res_ptr)": {
+  "decision": "reviewed: not a gap - New vectorized arrayMin/arrayMax fast path, constrained by has_find_extreme_implementation (no 512-bit findExtreme); (U)Int512 falls back to the compareAt loop right below with identical results.",
+  "evidence": "src/Functions/array/arrayAggregation.cpp:163-164; src/Functions/array/arrayAggregation.cpp:249-279; src/Common/findExtreme.h:14-15 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayAggregation.cpp|type-256-without-512||| executeMinOrMaxNumeric<Int256>(mapped, offsets, res_ptr)": {
+  "decision": "reviewed: not a gap - New vectorized arrayMin/arrayMax fast path, constrained by has_find_extreme_implementation (no 512-bit findExtreme); (U)Int512 falls back to the compareAt loop right below with identical results.",
+  "evidence": "src/Functions/array/arrayAggregation.cpp:163-164; src/Functions/array/arrayAggregation.cpp:249-279; src/Common/findExtreme.h:14-15 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayCompact.cpp|type-256-without-512|executeType<Decimal256>(mapped, array, res))": {
+  "decision": "reviewed: not a gap - Decimal512 goes to executeGeneric (compareAt on the same column), which gives the same result; moreover, because of the '!(native list) || executeType<Decimal32> || ...' precedence the typed decimal paths are never taken for any decimal, Decimal256 included (same in 26.3, which listed Decimal512).",
+  "evidence": "src/Functions/array/arrayCompact.cpp:138-153; src/Functions/array/arrayCompact.cpp:90-121; local/26.3-release:src/Functions/array/arrayCompact.cpp:152 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayElement.cpp|type-256-without-512||| try_numeric(checkAndGetColumn<ColumnVector<UInt256>>(&inner_data))": {
+  "decision": "reviewed: not a gap - Numeric fast path of the new array-of-indices mode (arr[[i, j]]); unlisted types including (U)Int512 and Decimal512 use the generic insertFrom fallback right below with the same NULL and out-of-bounds semantics.",
+  "evidence": "src/Functions/array/arrayElement.cpp:2242-2362; src/Functions/array/arrayElement.cpp:2363-2420 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayElement.cpp|type-256-without-512||| try_numeric(checkAndGetColumn<ColumnVector<Int256>>(&inner_data))": {
+  "decision": "reviewed: not a gap - Numeric fast path of the new array-of-indices mode (arr[[i, j]]); unlisted types including (U)Int512 and Decimal512 use the generic insertFrom fallback right below with the same NULL and out-of-bounds semantics.",
+  "evidence": "src/Functions/array/arrayElement.cpp:2242-2362; src/Functions/array/arrayElement.cpp:2363-2420 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayElement.cpp|type-256-without-512||| try_numeric(checkAndGetColumn<ColumnDecimal<Decimal256>>(&inner_data))": {
+  "decision": "reviewed: not a gap - Numeric fast path of the new array-of-indices mode (arr[[i, j]]); unlisted types including (U)Int512 and Decimal512 use the generic insertFrom fallback right below with the same NULL and out-of-bounds semantics.",
+  "evidence": "src/Functions/array/arrayElement.cpp:2242-2362; src/Functions/array/arrayElement.cpp:2363-2420 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayTopK.cpp|type-256-without-512|ColumnDecimal<Decimal256>,": {
+  "decision": "reviewed: not a gap - castTypeToEither fast list; unlisted types including Decimal512 and (U)Int512 fall back to GenericLess with the same comparison semantics.",
+  "evidence": "src/Functions/array/arrayTopK.cpp:185-215 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayTranspose.cpp|type-256-without-512||| executeNumber<Int256>(src_data, outer_offsets, inner_offsets, res_data, input_rows_count)": {
+  "decision": "reviewed: not a gap - Typed block-transpose fast path; (U)Int512 and Decimal512 fall to executeGeneric (insertFrom in the same order), so the result is identical.",
+  "evidence": "src/Functions/array/arrayTranspose.cpp:141-173; src/Functions/array/arrayTranspose.cpp:448-472 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayTranspose.cpp|type-256-without-512||| executeNumber<UInt256>(src_data, outer_offsets, inner_offsets, res_data, input_rows_count)": {
+  "decision": "reviewed: not a gap - Typed block-transpose fast path; (U)Int512 and Decimal512 fall to executeGeneric (insertFrom in the same order), so the result is identical.",
+  "evidence": "src/Functions/array/arrayTranspose.cpp:141-173; src/Functions/array/arrayTranspose.cpp:448-472 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/array/arrayTranspose.cpp|type-256-without-512||| executeNumber<Decimal256>(src_data, outer_offsets, inner_offsets, res_data, input_rows_count)": {
+  "decision": "reviewed: not a gap - Typed block-transpose fast path; (U)Int512 and Decimal512 fall to executeGeneric (insertFrom in the same order), so the result is identical.",
+  "evidence": "src/Functions/array/arrayTranspose.cpp:141-173; src/Functions/array/arrayTranspose.cpp:448-472 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/byteSwap.cpp|type-256-without-512|requires std::is_same_v<T, UInt128> || std::is_same_v<T, Int128> || std::is_same_v<T, UInt256> || std::is_same_v<T, Int256>": {
+  "decision": "reviewed: limitation (clean error), deferred - unary arithmetic on (U)Int512 (negate, abs, bitNot, byteSwap, sign) is rejected at analysis time: FunctionUnaryArithmetic::castType has no (U)Int512, in 26.3 and 26.8 alike (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Functions/byteSwap.cpp:22 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Functions/castOrDefault.cpp|type-256-without-512|Like [`toUInt256`](#toUInt256), this function converts an input value to a value of type [UInt256](/reference/data-types/int-uint) but returns the default value in case of an error.": {
+  "decision": "reviewed: not a gap - Documentation/registration of toUInt256OrDefault; toUInt512OrDefault is registered a few lines later.",
+  "evidence": "src/Functions/castOrDefault.cpp:599-601 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/castOrDefault.cpp|type-256-without-512|{ return std::make_shared<FunctionCastOrDefaultTyped>(context, \"toUInt256OrDefault\", std::make_shared<DataTypeUInt256>()); },": {
+  "decision": "reviewed: not a gap - Documentation/registration of toUInt256OrDefault; toUInt512OrDefault is registered a few lines later.",
+  "evidence": "src/Functions/castOrDefault.cpp:599-601 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/castOrDefault.cpp|type-256-without-512|Like [`toInt256`](#toInt256), this function converts an input value to a value of type [Int256](/reference/data-types/int-uint) but returns the default value in case of an error.": {
+  "decision": "reviewed: not a gap - Documentation/registration of toInt256OrDefault; toInt512OrDefault is registered a few lines later.",
+  "evidence": "src/Functions/castOrDefault.cpp:748-750 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/castOrDefault.cpp|type-256-without-512|{ return std::make_shared<FunctionCastOrDefaultTyped>(context, \"toInt256OrDefault\", std::make_shared<DataTypeInt256>()); },": {
+  "decision": "reviewed: not a gap - Documentation/registration of toInt256OrDefault; toInt512OrDefault is registered a few lines later.",
+  "evidence": "src/Functions/castOrDefault.cpp:748-750 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/castOrDefault.cpp|type-256-without-512|Like [`toDecimal256`](#toDecimal256), this function converts an input value to a value of type [Decimal(76, S)](/reference/data-types/decimal) but returns the default value in case of an error.": {
+  "decision": "reviewed: not a gap - Documentation of toDecimal256OrDefault; toDecimal512OrDefault is documented and registered right after.",
+  "evidence": "src/Functions/castOrDefault.cpp:970-991 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/isPrime.cpp|type-256-without-512|For wider unsigned integer types (`UInt128`, `UInt256`), use [`isProbablePrime`](/reference/functions/regular-functions/math-functions#isProbablePrime) instead.": {
+  "decision": "reviewed: not a gap - Documentation text; isPrime accepts only native UInt types, so 256-bit is not supported either.",
+  "evidence": "src/Functions/isPrime.cpp:38-40 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/isProbablePrime.cpp|type-256-without-512|{\"n\", static_cast<FunctionArgumentDescriptor::TypeValidator>(&isUInt), nullptr, \"UInt8/UInt16/UInt32/UInt64/UInt128/UInt256\"},": {
+  "decision": "reviewed: not a gap - Expected-type text used only in error messages; the validator itself is isUInt, which admits UInt512 (so UInt512 reaches the ILLEGAL_COLUMN at line 92).",
+  "evidence": "src/Functions/isProbablePrime.cpp:51; src/DataTypes/IDataType.h:394 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/isProbablePrime.cpp|type-256-without-512|if (!castTypeToEither<ColumnUInt8, ColumnUInt16, ColumnUInt32, ColumnUInt64, ColumnVector<UInt128>, ColumnVector<UInt256>>(": {
+  "decision": "reviewed: limitation (clean error), deferred - isProbablePrime(UInt512) raises ILLEGAL_COLUMN (see Primality.h); new in 26.8 (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Functions/isProbablePrime.cpp:92 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Functions/isProbablePrime.cpp|type-256-without-512|For `UInt128` and `UInt256`, a return value of `1` is probabilistic. The optional `rounds` argument controls": {
+  "decision": "reviewed: not a gap - Documentation text or example; the functional gap is the dispatch at line 92.",
+  "evidence": "src/Functions/isProbablePrime.cpp:92 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/isProbablePrime.cpp|type-256-without-512|= {{\"n\", \"Unsigned integer to test for primality.\", {\"UInt8\", \"UInt16\", \"UInt32\", \"UInt64\", \"UInt128\", \"UInt256\"}},": {
+  "decision": "reviewed: not a gap - Documentation text or example; the functional gap is the dispatch at line 92.",
+  "evidence": "src/Functions/isProbablePrime.cpp:92 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/isProbablePrime.cpp|type-256-without-512|\"Optional positive integer constant in `[1, 256]`. Number of Miller-Rabin rounds for `UInt128`/`UInt256` (ignored for narrower types). \"": {
+  "decision": "reviewed: not a gap - Documentation text or example; the functional gap is the dispatch at line 92.",
+  "evidence": "src/Functions/isProbablePrime.cpp:92 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/isProbablePrime.cpp|type-256-without-512|{\"Curve25519 base field prime `2^255 - 19` (`UInt256`)\",": {
+  "decision": "reviewed: not a gap - Documentation text or example; the functional gap is the dispatch at line 92.",
+  "evidence": "src/Functions/isProbablePrime.cpp:92 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/isProbablePrime.cpp|type-256-without-512|\"SELECT isProbablePrime(toUInt256('57896044618658097711785492504343953926634992332820282019728792003956564819949'))\",": {
+  "decision": "reviewed: not a gap - Documentation text or example; the functional gap is the dispatch at line 92.",
+  "evidence": "src/Functions/isProbablePrime.cpp:92 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/isProbablePrime.cpp|type-256-without-512|\"SELECT isProbablePrime(toUInt256('57896044618658097711785492504343953926634992332820282019728792003956564819949'), 5)\",": {
+  "decision": "reviewed: not a gap - Documentation text or example; the functional gap is the dispatch at line 92.",
+  "evidence": "src/Functions/isProbablePrime.cpp:92 (dispatch_review_r3, subagent functions (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Functions/negate.cpp|type-256-without-512|else if (left.getType() == Field::Types::Int256)": {
+  "decision": "reviewed: limitation (clean error), deferred - unary arithmetic on (U)Int512 is rejected at analysis time (FunctionUnaryArithmetic::castType), in 26.3 and 26.8 alike; this Int256-min monotonicity check is only reachable for supported types (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Functions/negate.cpp:90 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Functions/negate.cpp|type-256-without-512|left_is_type_min = (left.safeGet<Int256>() == std::numeric_limits<Int256>::min());": {
+  "decision": "reviewed: limitation (clean error), deferred - unary arithmetic on (U)Int512 is rejected at analysis time (FunctionUnaryArithmetic::castType), in 26.3 and 26.8 alike; this Int256-min monotonicity check is only reachable for supported types (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Functions/negate.cpp:91 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp|type-256-without-512|TEST(ReinterpretDecimalScale, Decimal256SameWidthDifferentScale)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp:86 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp|type-256-without-512|auto from_type = std::make_shared<DataTypeDecimal<Decimal256>>(76, 50);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp:88 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp|type-256-without-512|auto result = runReinterpret(from_type, makeOneRowDecimal<Decimal256>(50, Int256(789)), \"Decimal256(4)\");": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp:89 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp|type-256-without-512|const auto & col_res = assert_cast<const ColumnDecimal<Decimal256> &>(*result);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp:91 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp|type-256-without-512|EXPECT_EQ(col_res.getData()[0].value, Int256(789));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Functions/tests/gtest_reinterpret_decimal_scale.cpp:93 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/IO/ReadHelpers.h|type-256-without-512|inline void readCSV(UInt256 & x, ReadBuffer & buf) { readCSVSimple(x, buf); }": {
+  "decision": "reviewed: not a gap - The generic readCSV template (requires is_arithmetic_v<T>) covers UInt512 (is_arithmetic is specialised true) and calls the same readCSVSimple; the explicit 128/256 overloads are redundant. 26.3 had explicit 512 overloads with identical behaviour.",
+  "evidence": "src/IO/ReadHelpers.h:1869-1881; base/base/extended_types.h:71-72; local/26.3-release:src/IO/ReadHelpers.h:1843 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/IO/ReadHelpers.h|type-256-without-512|inline bool tryReadCSV(UInt256 & x, ReadBuffer & buf) { return readCSVSimple<UInt256, bool>(x, buf); }": {
+  "decision": "reviewed: not a gap - The generic tryReadCSV template covers UInt512 via readCSVSimple<T, bool>; no behavioural difference.",
+  "evidence": "src/IO/ReadHelpers.h:1876-1881; base/base/extended_types.h:72 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/IO/ReadHelpers.h|type-256-without-512|inline void readCSV(Int256 & x, ReadBuffer & buf) { readCSVSimple(x, buf); }": {
+  "decision": "reviewed: not a gap - The generic readCSV template covers Int512 (is_arithmetic<Int512> is true).",
+  "evidence": "src/IO/ReadHelpers.h:1869-1874; base/base/extended_types.h:71; local/26.3-release:src/IO/ReadHelpers.h:1849 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/IO/ReadHelpers.h|type-256-without-512|inline bool tryReadCSV(Int256 & x, ReadBuffer & buf) { return readCSVSimple<Int256, bool>(x, buf); }": {
+  "decision": "reviewed: not a gap - The generic tryReadCSV template covers Int512.",
+  "evidence": "src/IO/ReadHelpers.h:1876-1881; base/base/extended_types.h:71 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/IO/WriteHelpers.h|type-256-without-512|if (scale <= std::numeric_limits<UInt256>::digits10)": {
+  "decision": "reviewed: fixed in 6a2cbc7bb7a - the <=256-bit digit writer is reached only by values of at most 256 bits at scales up to 77; Decimal512 scales above 77 and the magnitude of -2^511 take the 512-bit loop, and the buffer holds 154 digits",
+  "evidence": "src/IO/WriteHelpers.h:1278 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/IO/WriteHelpers.h|type-256-without-512|writeFixedDigits(static_cast<UInt256>(x), scale, buf);": {
+  "decision": "reviewed: fixed in 6a2cbc7bb7a - the <=256-bit digit writer is reached only by values of at most 256 bits at scales up to 77; Decimal512 scales above 77 and the magnitude of -2^511 take the 512-bit loop, and the buffer holds 154 digits",
+  "evidence": "src/IO/WriteHelpers.h:1378 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Interpreters/AggregatedDataVariants.cpp|type-256-without-512|if (std::tuple_size_v<KeysNullMap<UInt256>> + keys_bytes <= 32)": {
+  "decision": "reviewed: not a gap - By design: nullable fixed keys are packed only into 16/32-byte blobs; 33-64-byte nullable keys use nullable_(prealloc_)serialized, exactly as 26.3 (whose comment says nullable_keys512 was slower).",
+  "evidence": "src/Interpreters/AggregatedDataVariants.cpp:392-400; src/Interpreters/AggregatedDataVariants.cpp:423-427; local/26.3-release:src/Interpreters/Aggregator.cpp:847-857 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/HashJoin/HashJoin.cpp|type-256-without-512||| target_which.isInt256() || target_which.isUInt256()": {
+  "decision": "reviewed: not a gap - Performance heuristic for replacing a runtime filter with a shared fixed-hash-table filter; it only runs when the build key is a <=64-bit fixed hash map, which a 512-bit common key type cannot produce, and probeFixedHashMap passes every row for non-native columns, so results are unaffected.",
+  "evidence": "src/Interpreters/HashJoin/HashJoin.cpp:2227-2234; src/Interpreters/HashJoin/HashJoin.cpp:2169-2190; src/Interpreters/HashJoin/HashJoin.cpp:2384-2393 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/WasmModuleManager.cpp|type-256-without-512|static UInt256 calculateHash(std::string_view data [[maybe_unused]])": {
+  "decision": "reviewed: not a gap - UInt256 is a 32-byte container for the SHA-256 digest of a WebAssembly module, not a SQL value.",
+  "evidence": "src/Interpreters/WasmModuleManager.cpp:68-77 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/WasmModuleManager.cpp|type-256-without-512|static std::string hashToHex(const UInt256 & hash)": {
+  "decision": "reviewed: not a gap - Hex formatting of the SHA-256 digest; not a data type path.",
+  "evidence": "src/Interpreters/WasmModuleManager.cpp:79-88 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/WasmModuleManager.cpp|type-256-without-512|UInt256 existing_hash = it->second.hash;": {
+  "decision": "reviewed: not a gap - Compares stored module digests; not a data type path.",
+  "evidence": "src/Interpreters/WasmModuleManager.cpp:168-180 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/WasmModuleManager.cpp|type-256-without-512|std::pair<std::shared_ptr<WasmModule>, UInt256> WasmModuleManager::getModule(std::string_view module_name, FuelMode fuel_mode)": {
+  "decision": "reviewed: not a gap - getModule returns the module digest; not a data type path.",
+  "evidence": "src/Interpreters/WasmModuleManager.cpp:220-251 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/WasmModuleManager.cpp|type-256-without-512|UInt256 local_hash = calculateHash(wasm_code);": {
+  "decision": "reviewed: not a gap - Local SHA-256 digest of module code; not a data type path.",
+  "evidence": "src/Interpreters/WasmModuleManager.cpp:250-260 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/WasmModuleManager.h|type-256-without-512|std::pair<ModulePtr, UInt256> getModule(std::string_view module_name, WebAssembly::FuelMode fuel_mode);": {
+  "decision": "reviewed: not a gap - Signature returning the module digest (UInt256); not a data type path.",
+  "evidence": "src/Interpreters/WasmModuleManager.h:31-35; local/26.3-release:src/Interpreters/WasmModuleManager.h:31 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/WasmModuleManager.h|type-256-without-512|UInt256 hash{};": {
+  "decision": "reviewed: not a gap - Stored module digest field; not a data type path.",
+  "evidence": "src/Interpreters/WasmModuleManager.h:62; local/26.3-release:src/Interpreters/WasmModuleManager.h:58 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/convertFieldToType.cpp|type-256-without-512|else if (from.getType() == Field::Types::UInt256)": {
+  "decision": "reviewed: not a gap - UInt512/Int512 Fields are handled at lines 198-201 (and Decimal512 at 212-213).",
+  "evidence": "src/Interpreters/convertFieldToType.cpp:198-201; src/Interpreters/convertFieldToType.cpp:212-213; local/26.3-release:src/Interpreters/convertFieldToType.cpp:155-157 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Interpreters/tests/gtest_actions_dag_partial_result_type_drift.cpp|type-256-without-512|Block drifted_header = headerWith(\"n\", std::make_shared<DataTypeInt256>());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Interpreters/tests/gtest_actions_dag_partial_result_type_drift.cpp:73 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Interpreters/tests/gtest_actions_dag_partial_result_type_drift.cpp|type-256-without-512|auto drifted_type = std::make_shared<DataTypeArray>(std::make_shared<DataTypeInt256>());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Interpreters/tests/gtest_actions_dag_partial_result_type_drift.cpp:158 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Interpreters/tests/gtest_actions_dag_partial_result_type_drift.cpp|type-256-without-512|Block drifted_header = headerWith(\"c\", std::make_shared<DataTypeInt256>());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Interpreters/tests/gtest_actions_dag_partial_result_type_drift.cpp:232 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Interpreters/tests/gtest_actions_dag_partial_result_type_drift.cpp|type-256-without-512|auto drifted_type = std::make_shared<DataTypeInt256>();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Interpreters/tests/gtest_actions_dag_partial_result_type_drift.cpp:279 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Parsers/makeASTForLogicalFunction.cpp|type-256-without-512|case Field::Types::UInt256:": {
+  "decision": "reviewed: not a gap - tryGetLiteralBool returns false (not a constant bool) for other Field types, which is conservative, and ASTLiterals with UInt512 Fields are never produced by the parser (no 512 in src/Parsers); callers are row-policy constant folding. 26.3 used a generic try/catch conversion.",
+  "evidence": "src/Parsers/makeASTForLogicalFunction.cpp:79-98; src/Access/EnabledRowPolicies.cpp:13; src/Access/RowPolicyCache.cpp:58; local/26.3-release:src/Parsers/makeASTForLogicalFunction.cpp:70-86 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Parsers/makeASTForLogicalFunction.cpp|type-256-without-512|case Field::Types::Int256:": {
+  "decision": "reviewed: not a gap - Same switch; an Int512 literal cannot reach it and would only lose a row-policy constant-fold.",
+  "evidence": "src/Parsers/makeASTForLogicalFunction.cpp:79-98 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Parsers/parseFieldFromCastedLiteral.cpp|type-256-without-512|if (tryParseDecimalTypeName(type_name, \"Decimal256\", scale))": {
+  "decision": "reviewed: limitation (clean error), deferred - CAST-typed literal parameters of AggregateFunction types ('Int512', 'UInt512', 'Decimal512(S)') are rejected (BAD_ARGUMENTS); new 26.8 code, server-generated type names never use these casts (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Parsers/parseFieldFromCastedLiteral.cpp:80 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Parsers/parseFieldFromCastedLiteral.cpp|type-256-without-512|return convertFieldTo<Decimal256>(literal_value, scale);": {
+  "decision": "reviewed: limitation (clean error), deferred - CAST-typed literal parameters of AggregateFunction types ('Int512', 'UInt512', 'Decimal512(S)') are rejected (BAD_ARGUMENTS); new 26.8 code, server-generated type names never use these casts (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Parsers/parseFieldFromCastedLiteral.cpp:81 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Parsers/parseFieldFromCastedLiteral.cpp|type-256-without-512|if (type_name == \"Int256\")": {
+  "decision": "reviewed: limitation (clean error), deferred - CAST-typed literal parameters of AggregateFunction types ('Int512', 'UInt512', 'Decimal512(S)') are rejected (BAD_ARGUMENTS); new 26.8 code, server-generated type names never use these casts (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Parsers/parseFieldFromCastedLiteral.cpp:98 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Parsers/parseFieldFromCastedLiteral.cpp|type-256-without-512|return convertFieldTo<Int256>(literal_value);": {
+  "decision": "reviewed: limitation (clean error), deferred - CAST-typed literal parameters of AggregateFunction types ('Int512', 'UInt512', 'Decimal512(S)') are rejected (BAD_ARGUMENTS); new 26.8 code, server-generated type names never use these casts (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Parsers/parseFieldFromCastedLiteral.cpp:99 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Parsers/parseFieldFromCastedLiteral.cpp|type-256-without-512|if (type_name == \"UInt256\")": {
+  "decision": "reviewed: limitation (clean error), deferred - CAST-typed literal parameters of AggregateFunction types ('Int512', 'UInt512', 'Decimal512(S)') are rejected (BAD_ARGUMENTS); new 26.8 code, server-generated type names never use these casts (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Parsers/parseFieldFromCastedLiteral.cpp:100 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Parsers/parseFieldFromCastedLiteral.cpp|type-256-without-512|return convertFieldTo<UInt256>(literal_value);": {
+  "decision": "reviewed: limitation (clean error), deferred - CAST-typed literal parameters of AggregateFunction types ('Int512', 'UInt512', 'Decimal512(S)') are rejected (BAD_ARGUMENTS); new 26.8 code, server-generated type names never use these casts (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Parsers/parseFieldFromCastedLiteral.cpp:101 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/ArrowIPCBlockInputFormat.cpp|type-256-without-512|| `DECIMAL256` | [Decimal256](/reference/data-types/decimal) | `DECIMAL256` |": {
+  "decision": "reviewed: not a gap - Format documentation table (Markdown in the in-source Arrow docs), not on a data path; Decimal512 has no Arrow DECIMAL type and is written as Binary (see 8440abe0cb).",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/ArrowIPCBlockInputFormat.cpp:1150; local/26.3-release:docs/en/interfaces/formats/Arrow/Arrow.md:44 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/ArrowIPCBlockInputFormat.cpp|type-256-without-512|| `FIXED_SIZE_BINARY`, `BINARY` | [Int128/UInt128/Int256/UInt256](/reference/data-types/int-uint) | `FIXED_SIZE_BINARY` |": {
+  "decision": "reviewed: not a gap - Documentation only; the Int512/UInt512 reader omission it mirrors is tracked at 486d5c5d59 and 51c9859d50.",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/ArrowIPCBlockInputFormat.cpp:1156; local/26.3-release:docs/en/interfaces/formats/Arrow/Arrow.md:50 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/RecordBatchDecoder.cpp|type-256-without-512|case TypeIndex::Decimal256: fill_decimal.template operator()<Decimal256>(sizeof(Decimal256)); break;": {
+  "decision": "reviewed: not a gap - The decoded column type comes from the Arrow field (SchemaConverter.cpp:1045, createDecimal) and Arrow decimals are validated to at most 256 bits (SchemaConverter.cpp:159-164), so a Decimal512 here only arises from a non-standard precision > 76 and is rejected by the default at line 411 (INCORRECT_DATA). Reading a standard decimal256 into a Decimal512 column decodes Decimal256 and castColumn widens it exactly.",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/RecordBatchDecoder.cpp:387-412; src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:159-164; src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:1045; src/Processors/Formats/Impl/ArrowIPC/RecordBatchDecoder.cpp:312-314 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp|type-256-without-512|case TypeIndex::Decimal32: case TypeIndex::Decimal64: case TypeIndex::Decimal128: case TypeIndex::Decimal256:": {
+  "decision": "reviewed: not a gap - Arrow decimals stop at 256 bits, so Decimal512 is deliberately absent: it reaches the default branch and, with output_format_arrow_unsupported_types_as_binary=1 (the default), is written losslessly as Binary with its 64 raw bytes and read back by ArrowIPCBlockInputFormat.cpp:553-554 (test 10303), or rejected with a clear NOT_IMPLEMENTED when the setting is 0. Representation change to note: 26.3 wrote Decimal512 as FixedSizeBinary(64) regardless of that setting.",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:498-511; src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:514-538; src/Core/FormatFactorySettings.h:1502; src/Processors/Formats/Impl/ArrowIPC/ArrowIPCBlockInputFormat.cpp:553-554; local/26.3-release:src/Processors/Formats/Impl/CHColumnToArrowColumn.cpp:886-895 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp|type-256-without-512|const size_t arrow_width = which.idx == TypeIndex::Decimal256 ? 32 : 16;": {
+  "decision": "reviewed: not a gap - Reached only for Decimal32..Decimal256 (case list at line 324); Decimal512 takes the binary fallback, so no 512-bit value is narrowed to 32 bytes.",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:324-352; src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:498-505 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp|type-256-without-512|default: emit(assert_cast<const ColumnDecimal<Decimal256> &>(column)); break;": {
+  "decision": "reviewed: not a gap - This inner default is reachable only for Decimal256 because the enclosing case list (line 324) names exactly the four smaller decimals; Decimal512 never reaches it.",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:324-350 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp|type-256-without-512|case TypeIndex::Int256: appendFixedWidth<ColumnVector<Int256>>(*this, column, num_rows); return;": {
+  "decision": "reviewed: not a gap - Int512/UInt512 have no case here and take the default binary fallback (64 raw bytes, lines 498-505; schema Binary at SchemaConverter.cpp:746-755), which is lossless, or a clear NOT_IMPLEMENTED with output_format_arrow_unsupported_types_as_binary=0. The Int512 round-trip failure is on the reader side (486d5c5d59, 51c9859d50).",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:443-447; src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:498-538; src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:746-760; src/Core/FormatFactorySettings.h:1502 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp|type-256-without-512|case TypeIndex::UInt256: appendFixedWidth<ColumnVector<UInt256>>(*this, column, num_rows); return;": {
+  "decision": "reviewed: not a gap - Same as 12ccc09fc8: UInt512 is written losslessly as 64-byte Binary by the default fallback (or clearly rejected when the fallback setting is off).",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:447; src/Processors/Formats/Impl/ArrowIPC/RecordBatchEncoder.cpp:498-538 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp|type-256-without-512|case TypeIndex::Decimal32: case TypeIndex::Decimal64: case TypeIndex::Decimal128: case TypeIndex::Decimal256:": {
+  "decision": "reviewed: not a gap - Schema side of 8440abe0cb: Decimal512 falls to the default and is declared as Arrow Binary (lines 746-755), consistent with the encoder; Arrow's Decimal type allows bit widths only up to 256, so there is no 512-bit mapping to add.",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:620-627; src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:746-760; src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:159-164 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp|type-256-without-512|const int bit_width = which.idx == TypeIndex::Decimal256 ? 256 : 128;": {
+  "decision": "reviewed: not a gap - Reached only for Decimal32..Decimal256 (case list at line 620); no 512-bit value is ever declared as a 256-bit Arrow decimal.",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:620-627 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp|type-256-without-512|case TypeIndex::Int256:": {
+  "decision": "reviewed: not a gap - Schema side of 12ccc09fc8: Int512/UInt512 fall to the default and are declared as Arrow Binary, consistent with the encoder's 64-byte values; the missing piece is the reader (486d5c5d59).",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:684-695; src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:746-760 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp|type-256-without-512|case TypeIndex::UInt256:": {
+  "decision": "reviewed: not a gap - Same as 958a5d683d (UInt512 is declared as Binary by the default branch).",
+  "evidence": "src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:691-695; src/Processors/Formats/Impl/ArrowIPC/SchemaConverter.cpp:746-755 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp|type-256-without-512|| [Decimal256](/reference/data-types/decimal) | `\\x05` binary, `\\x00` binary subtype, size = 32 |": {
+  "decision": "reviewed: not a gap - Format documentation table, not on a data path; BSON actually reads and writes Decimal512 as 64-byte binary (BSONEachRowRowInputFormat.cpp:650-653, BSONEachRowRowOutputFormat.cpp:172-174, 393-395), the table just omits it.",
+  "evidence": "src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp:1152; src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp:650-653; local/26.3-release:docs/en/interfaces/formats/BSONEachRow.md:40 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp|type-256-without-512|| [Int256/UInt256](/reference/data-types/int-uint) | `\\x05` binary, `\\x00` binary subtype, size = 32 |": {
+  "decision": "reviewed: not a gap - Documentation only. Note that Int512/UInt512 are not implemented in BSON in 26.8 or 26.3 (readField has no case, lines 600-619) although BSONEachRowRowInputFormat.h:42 claims them.",
+  "evidence": "src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp:1154; src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp:600-619; src/Processors/Formats/Impl/BSONEachRowRowInputFormat.h:42; local/26.3-release:docs/en/interfaces/formats/BSONEachRow.md:42 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp|type-256-without-512|Big integers and decimals such as `Int128`/`UInt128`/`Int256`/`UInt256`/`Decimal128`/`Decimal256` can be parsed from a BSON Binary value with the `\\x00` binary subtype.": {
+  "decision": "reviewed: not a gap - Documentation only (same note as 6a3668b8cd).",
+  "evidence": "src/Processors/Formats/Impl/BSONEachRowRowInputFormat.cpp:1188; local/26.3-release:docs/en/interfaces/formats/BSONEachRow.md:76 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/BinaryRowInputFormat.cpp|type-256-without-512|### (U)Int8, (U)Int16, (U)Int32, (U)Int64, (U)Int128, (U)Int256 {#integer-types}": {
+  "decision": "reviewed: not a gap - RowBinary format documentation heading, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/BinaryRowInputFormat.cpp:283; local/26.3-release:docs/en/interfaces/formats/RowBinary/RowBinary.md:54 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/BinaryRowInputFormat.cpp|type-256-without-512|All integer types are encoded with an appropriate number of bytes as **little-endian**. Signed types (`Int8` through `Int256`) use **two's complement** representation. Most languages support extractin": {
+  "decision": "reviewed: not a gap - RowBinary documentation text, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/BinaryRowInputFormat.cpp:285; local/26.3-release:docs/en/interfaces/formats/RowBinary/RowBinary.md:56 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/BinaryRowInputFormat.cpp|type-256-without-512|### Decimal32, Decimal64, Decimal128, Decimal256 {#decimal}": {
+  "decision": "reviewed: not a gap - RowBinary documentation heading, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/BinaryRowInputFormat.cpp:331; local/26.3-release:docs/en/interfaces/formats/RowBinary/RowBinary.md:102 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/BinaryRowInputFormat.cpp|type-256-without-512|- `Decimal256` - 32 bytes, or `Int256`.": {
+  "decision": "reviewed: not a gap - RowBinary documentation list item, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/BinaryRowInputFormat.cpp:338; local/26.3-release:docs/en/interfaces/formats/RowBinary/RowBinary.md:109 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/CapnProtoRowInputFormat.cpp|type-256-without-512|| `DATA` | [Int128/UInt128/Int256/UInt256](/reference/data-types/int-uint) | `DATA` |": {
+  "decision": "reviewed: not a gap - CapnProto documentation table, not on a data path; the real CapnProto 512-bit gap is in CapnProtoSerializer.cpp (270e8f3490).",
+  "evidence": "src/Processors/Formats/Impl/CapnProtoRowInputFormat.cpp:210; local/26.3-release:docs/en/interfaces/formats/CapnProto.md:50 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/CapnProtoRowInputFormat.cpp|type-256-without-512|| `DATA` | [Decimal128/Decimal256](/reference/data-types/decimal) | `DATA` |": {
+  "decision": "reviewed: not a gap - Documentation only; the real Decimal512 gap is at CapnProtoSerializer.cpp:1472 (669dbea9e9).",
+  "evidence": "src/Processors/Formats/Impl/CapnProtoRowInputFormat.cpp:211; local/26.3-release:docs/en/interfaces/formats/CapnProto.md:51 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp|type-256-without-512|case TypeIndex::Decimal256:": {
+  "decision": "reviewed: not a gap - Decimal256 is listed only to get a precision-specific message; Decimal512 is rejected upfront by the default branch (lines 153-155) and per value by SerializationDecimal::serializeTextHive (precision > 38), so 512-bit types are refused exactly like 256-bit ones.",
+  "evidence": "src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp:130-136; src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp:153-155; src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp:166-167; src/DataTypes/Serializations/SerializationDecimal.cpp:57-65 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp|type-256-without-512|numbers. The wide numeric types `Int128`, `UInt128`, `Int256` and `UInt256`": {
+  "decision": "reviewed: not a gap - HiveText documentation text; the 512-bit integers are rejected like the 256-bit ones by the default branch (lines 153-155).",
+  "evidence": "src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp:369; src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp:153-155 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp|type-256-without-512|`Decimal256`) exceed the maximum precision of Hive `DECIMAL` and are rejected.": {
+  "decision": "reviewed: not a gap - Documentation only; Decimal512 is rejected like Decimal256 (see ddd0852bb6).",
+  "evidence": "src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp:373; src/Processors/Formats/Impl/HiveTextRowOutputFormat.cpp:153-155 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/MsgPackRowInputFormat.cpp|type-256-without-512|| `bin 8` | [`(U)Int128`/`(U)Int256`](/reference/data-types/int-uint) | `bin 8` |": {
+  "decision": "reviewed: not a gap - MsgPack documentation table, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/MsgPackRowInputFormat.cpp:826; local/26.3-release:docs/en/interfaces/formats/MsgPack.md:40 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/MsgPackRowInputFormat.cpp|type-256-without-512|| `bin 8` | [`Decimal128`/`Decimal256`](/reference/data-types/decimal) | `bin 8 ` |": {
+  "decision": "reviewed: not a gap - Documentation only; the real Decimal512 MsgPack gaps are e380c12bd4 and 3e888e3297.",
+  "evidence": "src/Processors/Formats/Impl/MsgPackRowInputFormat.cpp:829; local/26.3-release:docs/en/interfaces/formats/MsgPack.md:43 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/NativeFormat.cpp|type-256-without-512|- (U)Int8, (U)Int16, (U)Int32, (U)Int64, (U)Int128, (U)Int256": {
+  "decision": "reviewed: not a gap - Native format documentation list, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/NativeFormat.cpp:267-285 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/NativeORCBlockInputFormat.cpp|type-256-without-512|| `Binary` | [Int128/UInt128/Int256/UInt256](/reference/data-types/int-uint) | `Binary` |": {
+  "decision": "reviewed: not a gap - ORC documentation table; the non-union ORC path does read and write Int512/UInt512 as binary (lines 2750-2752, ORCBlockOutputFormat.cpp:201-204).",
+  "evidence": "src/Processors/Formats/Impl/NativeORCBlockInputFormat.cpp:3114; local/26.3-release:docs/en/interfaces/formats/ORC.md:42 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/NativeORCBlockInputFormat.cpp|type-256-without-512|| `Binary` | [Decimal256](/reference/data-types/decimal) | `Binary` |": {
+  "decision": "reviewed: not a gap - Documentation only; Decimal512 is read and written as binary in the non-union path (lines 2756-2757, ORCBlockOutputFormat.cpp:204, 590-592).",
+  "evidence": "src/Processors/Formats/Impl/NativeORCBlockInputFormat.cpp:3115; local/26.3-release:docs/en/interfaces/formats/ORC.md:43 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.cpp|type-256-without-512|using Unsigned = std::conditional_t<sizeof(T) == sizeof(UInt128), UInt128, UInt256>;": {
+  "decision": "reviewed: not a gap - convertBigEndianDecimalWideInteger is instantiated only for Int128/UInt128/Int256/UInt256 (lines 1908-1911, 1939-1942) and Int512/UInt512 targets use the generic DECIMAL path, so no 512-bit type reaches it. Latent hazard: instantiating it for a 64-byte T would select UInt256 here and write 8 limbs into a 4-limb value (stack out-of-bounds write and truncation), so this conditional must change with any Int512/UInt512 support.",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.cpp:1821-1880; src/Processors/Formats/Impl/Parquet/Decoding.cpp:1908-1911; src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1267-1270 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.cpp|type-256-without-512|template struct BigEndianDecimalWideIntegerConverter<Int256>;": {
+  "decision": "reviewed: not a gap - Explicit instantiation for the 26.8 wide-integer-as-decimal reader, which SchemaConverter.cpp:1267-1269 selects only for the four 128/256-bit types; Int512/UInt512 targets are decoded by BigEndianDecimalFixedSizeConverter<Int512> / BigEndianDecimalStringConverter<Int512> (SchemaConverter.cpp:1394-1398, 1422-1426) and castColumn.",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.cpp:1908-1911; src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1267-1270; src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1394-1398 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.cpp|type-256-without-512|template struct BigEndianDecimalWideIntegerConverter<UInt256>;": {
+  "decision": "reviewed: not a gap - Same as 1ad3384a24 (UInt256 instantiation; no 512-bit type is routed to this converter).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.cpp:1908-1911; src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1267-1270 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.cpp|type-256-without-512|template struct BigEndianDecimalWideIntegerStringConverter<Int256>;": {
+  "decision": "reviewed: not a gap - BYTE_ARRAY counterpart of 1ad3384a24; only the four 128/256-bit targets use it, Int512/UInt512 use BigEndianDecimalStringConverter<Int512> (SchemaConverter.cpp:1422-1426).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.cpp:1939-1942; src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1422-1426 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.cpp|type-256-without-512|template struct BigEndianDecimalWideIntegerStringConverter<UInt256>;": {
+  "decision": "reviewed: not a gap - Same as 34f2bb4d49 (UInt256 instantiation).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.cpp:1939-1942 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.h|type-256-without-512|extern template struct BigEndianDecimalWideIntegerConverter<Int256>;": {
+  "decision": "reviewed: not a gap - Extern template declaration matching Decoding.cpp:1908-1911; not a dispatch, and no 512-bit type is routed to this converter (see f7aedddfe8).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.h:345-364 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.h|type-256-without-512|extern template struct BigEndianDecimalWideIntegerConverter<UInt256>;": {
+  "decision": "reviewed: not a gap - Extern template declaration (UInt256), same as 459c1af907.",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.h:361-364 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.h|type-256-without-512|extern template struct BigEndianDecimalWideIntegerStringConverter<Int256>;": {
+  "decision": "reviewed: not a gap - Extern template declaration for the BYTE_ARRAY wide-integer converter, same reasoning as 459c1af907.",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.h:366-379 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/Decoding.h|type-256-without-512|extern template struct BigEndianDecimalWideIntegerStringConverter<UInt256>;": {
+  "decision": "reviewed: not a gap - Extern template declaration (UInt256), same as 4ba2c806ad.",
+  "evidence": "src/Processors/Formats/Impl/Parquet/Decoding.h:376-379 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/PrepareForWrite.cpp|type-256-without-512|case TypeIndex::UInt256:": {
+  "decision": "reviewed: limitation (clean error), deferred - (U)Int512 columns cannot be written to Parquet (UNKNOWN_TYPE), as in 26.3; Decimal512 is supported (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Processors/Formats/Impl/Parquet/PrepareForWrite.cpp:503 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Processors/Formats/Impl/Parquet/PrepareForWrite.cpp|type-256-without-512|case TypeIndex::Int256:": {
+  "decision": "reviewed: limitation (clean error), deferred - (U)Int512 columns cannot be written to Parquet (UNKNOWN_TYPE), as in 26.3; Decimal512 is supported (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Processors/Formats/Impl/Parquet/PrepareForWrite.cpp:515 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp|type-256-without-512|const bool requested_signed = requested_type == TypeIndex::Int128 || requested_type == TypeIndex::Int256;": {
+  "decision": "reviewed: not a gap - Inside the requested_wide_integer block, which only the four 128/256-bit types enter; Int512/UInt512 never reach it (see dc33efd1f8), and adding them to that list would also need max precision 154/155 here.",
+  "evidence": "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1267-1288 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp|type-256-without-512|case TypeIndex::Int256:": {
+  "decision": "reviewed: not a gap - Dispatch inside the requested_wide_integer block (only the four 128/256-bit types, UNREACHABLE default at lines 1340-1341); Int512/UInt512 targets use the generic decimal path (lines 1348-1438).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1314-1342; src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1348-1438 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp|type-256-without-512|out_decoder.fixed_size_converter = std::make_shared<BigEndianDecimalWideIntegerConverter<Int256>>(input_size);": {
+  "decision": "reviewed: not a gap - Same as ba89e8f124 (Int256 converter choice inside the 128/256-only block).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1328-1333 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp|type-256-without-512|out_decoder.string_converter = std::make_shared<BigEndianDecimalWideIntegerStringConverter<Int256>>();": {
+  "decision": "reviewed: not a gap - Same as ba89e8f124 (BYTE_ARRAY Int256 converter choice).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1328-1333 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp|type-256-without-512|case TypeIndex::UInt256:": {
+  "decision": "reviewed: not a gap - Same as ba89e8f124 (UInt256 case inside the 128/256-only block).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1334-1341 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp|type-256-without-512|out_decoder.fixed_size_converter = std::make_shared<BigEndianDecimalWideIntegerConverter<UInt256>>(input_size);": {
+  "decision": "reviewed: not a gap - Same as ba89e8f124 (UInt256 converter choice).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1334-1339 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp|type-256-without-512|out_decoder.string_converter = std::make_shared<BigEndianDecimalWideIntegerStringConverter<UInt256>>();": {
+  "decision": "reviewed: not a gap - Same as ba89e8f124 (BYTE_ARRAY UInt256 converter choice).",
+  "evidence": "src/Processors/Formats/Impl/Parquet/SchemaConverter.cpp:1334-1339 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp|type-256-without-512|| [Int128/UInt128/Int256/UInt256](/reference/data-types/int-uint) | `FIXED_LEN_BYTE_ARRAY` (16/32 bytes, little-endian) |": {
+  "decision": "reviewed: not a gap - Parquet documentation table; Decimal512 is written as FIXED_LEN_BYTE_ARRAY(64) (PrepareForWrite.cpp:528-531) and Int512/UInt512 are not writable (be2357e46e).",
+  "evidence": "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp:467; local/26.3-release:docs/en/interfaces/formats/Parquet/Parquet.md:59 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp|type-256-without-512|By default, ClickHouse writes `Int128`, `UInt128`, `Int256`, and `UInt256` as unannotated `FIXED_LEN_BYTE_ARRAY(16/32)` values in little-endian order. This legacy representation remains the default so": {
+  "decision": "reviewed: not a gap - Documentation of the new wide-integer-as-decimal option, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp:477-492 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp|type-256-without-512|| `UInt256` | `DECIMAL(78, 0)` | `FIXED_LEN_BYTE_ARRAY(33)` | A zero sign byte followed by the 32-byte unsigned value in big-endian order |": {
+  "decision": "reviewed: not a gap - Documentation table row, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp:483-488 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp|type-256-without-512|| `Int256` | `DECIMAL(77, 0)` | `FIXED_LEN_BYTE_ARRAY(33)` | The 32-byte two's-complement value in big-endian order, sign-extended to 33 bytes |": {
+  "decision": "reviewed: not a gap - Documentation table row, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp:483-488 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp|type-256-without-512|The decimal representation provides numeric ordering for standard Parquet column-chunk statistics and page indexes, which lets ClickHouse use row-group and page min/max pruning. ClickHouse reads both ": {
+  "decision": "reviewed: not a gap - Documentation paragraph, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp:490 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp|type-256-without-512|| `output_format_parquet_wide_integer_as_decimal` | Write `Int128`, `UInt128`, `Int256`, and `UInt256` as standard big-endian Parquet `DECIMAL` values instead of legacy little-endian fixed byte arrays": {
+  "decision": "reviewed: not a gap - Settings documentation row, not on a data path.",
+  "evidence": "src/Processors/Formats/Impl/ParquetV3BlockInputFormat.cpp:590 (dispatch_review_r3, subagent formats (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Processors/tests/gtest_write_parquet_page_index.cpp|type-256-without-512|std::make_shared<DataTypeUInt256>(),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Processors/tests/gtest_write_parquet_page_index.cpp:179 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Processors/tests/gtest_write_parquet_page_index.cpp|type-256-without-512|std::make_shared<DataTypeInt256>(),": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Processors/tests/gtest_write_parquet_page_index.cpp:181 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Processors/tests/gtest_write_parquet_page_index.cpp|type-256-without-512|auto u256 = ColumnUInt256::create();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Processors/tests/gtest_write_parquet_page_index.cpp:194 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Processors/tests/gtest_write_parquet_page_index.cpp|type-256-without-512|u256->insertValue(std::numeric_limits<UInt256>::max());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Processors/tests/gtest_write_parquet_page_index.cpp:197 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Processors/tests/gtest_write_parquet_page_index.cpp|type-256-without-512|auto i256 = ColumnInt256::create();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Processors/tests/gtest_write_parquet_page_index.cpp:204 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Processors/tests/gtest_write_parquet_page_index.cpp|type-256-without-512|i256->insertValue(std::numeric_limits<Int256>::min());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Processors/tests/gtest_write_parquet_page_index.cpp:205 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Processors/tests/gtest_write_parquet_page_index.cpp|type-256-without-512|i256->insertValue(std::numeric_limits<Int256>::max());": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Processors/tests/gtest_write_parquet_page_index.cpp:207 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Server/TCPHandler.cpp|size-32-without-64|chassert(calculated_hash.size() == 32);": {
+  "decision": "reviewed: not a gap - Checks the SHA-256 digest length (32 bytes) for interserver authentication; unrelated to value types.",
+  "evidence": "src/Server/TCPHandler.cpp:2661-2662; local/26.3-release:src/Server/TCPHandler.cpp:2314 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|TEST(UniqueKeyEncoding, Int256Ordering)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:743 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|auto col = ColumnInt256::create();": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:745 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|col->insert(Field(Int256(std::numeric_limits<Int64>::min())));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:746 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|col->insert(Field(Int256(-1)));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:747 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|col->insert(Field(Int256(0)));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:748 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|col->insert(Field(Int256(1)));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:749 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|col->insert(Field(Int256(std::numeric_limits<Int64>::max())));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:750 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|EXPECT_TRUE(agrees(cols, i, i + 1)) << \"Int256 adjacent pair \" << i;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:754 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|TEST(UniqueKeyEncoding, Decimal256Ordering)": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:773 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|auto col = ColumnDecimal<Decimal256>::create(0, /*scale=*/4);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:775 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|col->insert(DecimalField<Decimal256>(Decimal256(raw), 4));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:777 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp|type-256-without-512|EXPECT_TRUE(agrees(cols, i, i + 1)) << \"Decimal256 adjacent pair \" << i;": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/MergeTree/UniqueKey/tests/gtest_unique_key_encoding.cpp:781 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/IcebergWrites.cpp|type-256-without-512|case TypeIndex::Decimal256:": {
+  "decision": "reviewed: limitation (clean error), deferred - Decimal512 in Iceberg tables (write, partition values, pruning) is unsupported; the Iceberg spec defines decimal(P <= 38), Decimal256 is already a ClickHouse extension; new 26.8 code (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/IcebergWrites.cpp:139 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/IcebergWrites.cpp|type-256-without-512|return dumpDecimalValue<Decimal256>(field);": {
+  "decision": "reviewed: not a gap - dumpDecimalValue is only reached for types canDumpIcebergStats accepts (filterWritableStatistics, partition summary), so a Decimal512 bound is omitted, which readers treat as unknown; no error or wrong value.",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/IcebergWrites.cpp:299-315; src/Storages/ObjectStorage/DataLakes/Iceberg/IcebergWrites.cpp:802-804 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/IcebergWrites.cpp|type-256-without-512|return makeDecimalFixedDatum<Decimal256>(partition_values[i], value_schema);": {
+  "decision": "reviewed: limitation (clean error), deferred - Decimal512 in Iceberg tables (write, partition values, pruning) is unsupported; the Iceberg spec defines decimal(P <= 38), Decimal256 is already a ClickHouse extension; new 26.8 code (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/IcebergWrites.cpp:665 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/ManifestFileIterator.cpp|type-256-without-512|if (DB::checkDecimal<DB::Decimal256>(*non_nullable_type))": {
+  "decision": "reviewed: not a gap - For a Decimal512 column the bound deserializer returns std::nullopt (bound unknown), so manifest min/max pruning is disabled for it; results stay correct.",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/ManifestFileIterator.cpp:124-139 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/ManifestFileIterator.cpp|type-256-without-512|return deserializeDecimalBound<DB::Decimal256>(str, scale, lower_bound, compensate_rounding);": {
+  "decision": "reviewed: not a gap - Same conservative nullopt fallback for Decimal512 bounds.",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/ManifestFileIterator.cpp:136-139 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/ManifestFilesPruning.cpp|type-256-without-512|if (checkDecimal<Decimal256>(type))": {
+  "decision": "reviewed: limitation (clean error), deferred - Decimal512 in Iceberg tables (write, partition values, pruning) is unsupported; the Iceberg spec defines decimal(P <= 38), Decimal256 is already a ClickHouse extension; new 26.8 code (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/ManifestFilesPruning.cpp:186 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/ManifestFilesPruning.cpp|type-256-without-512|return decodePartitionDecimal<Decimal256>(bytes, type);": {
+  "decision": "reviewed: limitation (clean error), deferred - Decimal512 in Iceberg tables (write, partition values, pruning) is unsupported; the Iceberg spec defines decimal(P <= 38), Decimal256 is already a ClickHouse extension; new 26.8 code (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/ManifestFilesPruning.cpp:187 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/Utils.cpp|type-256-without-512|UInt256 max_value = 1;": {
+  "decision": "reviewed: limitation (clean error), deferred - Decimal512 in Iceberg tables (write, partition values, pruning) is unsupported; the Iceberg spec defines decimal(P <= 38), Decimal256 is already a ClickHouse extension; new 26.8 code (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/Utils.cpp:567 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/Utils.cpp|type-256-without-512|while (bytes < sizeof(UInt256) && (max_value >> (8 * bytes - 1)) != 0)": {
+  "decision": "reviewed: limitation (clean error), deferred - Decimal512 in Iceberg tables (write, partition values, pruning) is unsupported; the Iceberg spec defines decimal(P <= 38), Decimal256 is already a ClickHouse extension; new 26.8 code (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/Utils.cpp:573 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/ObjectStorage/DataLakes/Iceberg/Utils.cpp|type-256-without-512|case TypeIndex::Decimal256:": {
+  "decision": "reviewed: limitation (clean error), deferred - Decimal512 in Iceberg tables (write, partition values, pruning) is unsupported; the Iceberg spec defines decimal(P <= 38), Decimal256 is already a ClickHouse extension; new 26.8 code (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Storages/ObjectStorage/DataLakes/Iceberg/Utils.cpp:608 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/Statistics/Statistics.cpp|type-256-without-512|using type = UInt256;": {
+  "decision": "reviewed: not a gap - WiderIntType gives 128-bit types a 256-bit subtraction type; 256- and 512-bit types intentionally use the Float64 fallback. Only a selectivity estimate, never a query result.",
+  "evidence": "src/Storages/Statistics/Statistics.cpp:83-111; src/Storages/Statistics/Statistics.cpp:138-160 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Storages/Statistics/Statistics.cpp|type-256-without-512|using type = Int256;": {
+  "decision": "reviewed: not a gap - Same by-design estimate helper; Int512 uses the Float64 fallback like Int256.",
+  "evidence": "src/Storages/Statistics/Statistics.cpp:107-111; src/Storages/Statistics/Statistics.cpp:147-160 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Storages/Statistics/tests/gtest_stats.cpp|type-256-without-512|auto decimal256_type = std::make_shared<DataTypeDecimal256>(20, 0);": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/Statistics/tests/gtest_stats.cpp:493 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/Statistics/tests/gtest_stats.cpp|type-256-without-512|col->insert(DecimalField<Decimal256>(Decimal256(static_cast<Int256>(i)), 0));": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/Statistics/tests/gtest_stats.cpp:498 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/Statistics/tests/gtest_stats.cpp|type-256-without-512|FAIL() << \"expected LOGICAL_ERROR on Int64/Decimal256 value-type mismatch\";": {
+  "decision": "reviewed: not a gap - unit-test (gtest) source under a tests/ directory: compiled only with ENABLE_TESTS=ON; this Release build has ENABLE_TESTS=OFF (build_release/CMakeCache.txt), so the line is not in the clickhouse binary",
+  "evidence": "src/Storages/Statistics/tests/gtest_stats.cpp:549 (dispatch_review_r3, rule (executor), 2026-09-30)"
+ },
+ "src/Storages/StorageGenerateRandom.cpp|type-256-without-512|fillBufferWithRandomNumbers<UInt256>(reinterpret_cast<char *>(column->getData().data()), limit, rng, fuzzy);": {
+  "decision": "reviewed: limitation (clean error), deferred - generateRandom for (U)Int512 columns is NOT_IMPLEMENTED, as in 26.3; Decimal512 is restored (b3cd7c1c9bf) (26.8-validation.zh-CN.md 10.8)",
+  "evidence": "src/Storages/StorageGenerateRandom.cpp:659 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/StorageGenerateRandom.cpp|type-256-without-512|fillRandomDecimals<Int256>(reinterpret_cast<char *>(data.data()), limit, range, rng, fuzzy);": {
+  "decision": "reviewed: not a gap - the Decimal256 case; the restored Decimal512 case follows at 775-784 (b3cd7c1c9bf)",
+  "evidence": "src/Storages/StorageGenerateRandom.cpp:772 at b3cd7c1c9bf; dispatch_review_r3 (merged review + round-5 fixes), 2026-09-30"
+ },
+ "src/Storages/StoragePostgreSQL.cpp|type-256-without-512|const auto & type = typeid_cast<const DataTypeDecimal<Decimal256> *>(nested.get());": {
+  "decision": "reviewed: not a gap - createNested is dead code: no caller exists in 26.8 (only its definition at line 434) nor in 26.3; the PostgreSQL sink serializes values via the type's own text serialization.",
+  "evidence": "src/Storages/StoragePostgreSQL.cpp:434-489; src/Storages/StoragePostgreSQL.cpp:411-432; local/26.3-release:src/Storages/StoragePostgreSQL.cpp:439-442 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Storages/StoragePostgreSQL.cpp|type-256-without-512|nested_column = ColumnDecimal<Decimal256>::create(0, type->getScale());": {
+  "decision": "reviewed: not a gap - Same dead createNested function (26.3 had a Decimal512 branch there, equally unused).",
+  "evidence": "src/Storages/StoragePostgreSQL.cpp:434-489 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Storages/StorageSQLite.cpp|type-256-without-512|- [Decimal32, Decimal64, Decimal128, Decimal256](/reference/data-types/decimal)": {
+  "decision": "reviewed: not a gap - Documentation list. The actual SQLite Decimal512 regression is in ExternalResultDescription.cpp:119-126.",
+  "evidence": "src/Storages/StorageSQLite.cpp:312-323; src/Core/ExternalResultDescription.cpp:119-126 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
  }
 }

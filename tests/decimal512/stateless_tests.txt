@@ -251,3 +251,9 @@ blockchain_decimal512_type_conversion
 10322_map_key_lookup_512    # a239f566458: typed Map key lookup and value extraction of the 512-bit types
 10323_decimal512_mixed_type_compare    # 2ee128ec1a2: mixed-type Decimal512 comparisons (m80154)
 10324_decimal512_int512_min_scale154_text    # the Int512 minimum at scale 154 printed through the 512-bit digit writer (m90817, m92741, 10316)
+10325_decimal512_wide_scale_text    # 6a2cbc7bb7a: Decimal512 scales 78..154 and toDecimalString with 154 digits (writer buffer)
+10326_int512_26_8_functions    # 722f6042060: intDiv monotonicity, Time64/DateTime64, bitmask, gini, arrayAutocorrelation
+10327_decimal512_26_8_readers    # c2b24a1db7a: ArrowIPC, native ORC, Parquet readers
+10328_decimal512_26_3_function_parity    # c1ac031710f: functions restored from 1f0fb3353cd
+10329_decimal512_26_3_core_parity    # 67ea6a3f089: low_cardinality_keys512, getMostSubtype, array fast paths
+10330_decimal512_26_3_format_parity    # b3cd7c1c9bf: MsgPack, CapnProto, Protobuf, generateRandom
