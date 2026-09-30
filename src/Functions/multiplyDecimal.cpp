@@ -60,8 +60,8 @@ struct MultiplyDecimalsImpl
 REGISTER_FUNCTION(MultiplyDecimals)
 {
     FunctionDocumentation::Description description = R"(
-Performs multiplication on two decimals. Result value will be of type [Decimal256](/reference/data-types/decimal).
-Result scale can be explicitly specified by `result_scale` argument (const Integer in range `[0, 76]`). If not specified, the result scale is the max scale of given arguments.
+Performs multiplication on two decimals. Result value will be of type [Decimal512](/reference/data-types/decimal).
+Result scale can be explicitly specified by `result_scale` argument (const Integer in range `[0, 154]`). If not specified, the result scale is the max scale of given arguments.
 
 :::note
 These functions work significantly slower than usual `multiply`.
@@ -74,7 +74,7 @@ In case you don't really need controlled precision and/or need fast computation,
         {"b", "Second value.", {"Decimal"}},
         {"result_scale", "Scale of result.", {"(U)Int*"}}
     };
-    FunctionDocumentation::ReturnedValue returned_value = {"The result of multiplication with the given scale. Type:", {"Decimal256"}};
+    FunctionDocumentation::ReturnedValue returned_value = {"The result of multiplication with the given scale. Type:", {"Decimal512"}};
     FunctionDocumentation::Examples examples = {
         {"Usage example", "SELECT multiplyDecimal(toDecimal256(-12, 0), toDecimal32(-2.1, 1), 1)", "25.2"},
         {"Difference with regular multiplication", R"(

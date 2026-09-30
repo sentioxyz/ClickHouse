@@ -75,7 +75,7 @@ public:
 
         WhichDataType which(type);
 
-        if ((which.isInteger() && !which.isNativeInteger()) || which.isDecimal256())
+        if ((which.isInteger() && !which.isNativeInteger()) || which.isDecimal256() || which.isDecimal512())
             throw Exception(
                 ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
                 "Type `{}` is not supported by icebergHash: the Iceberg specification only defines hashing "
