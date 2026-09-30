@@ -250,3 +250,4 @@ blockchain_decimal512_type_conversion
 10311_decimal512_binary_type_index_compat
 10322_map_key_lookup_512    # a239f566458: typed Map key lookup and value extraction of the 512-bit types
 10323_decimal512_mixed_type_compare    # 2ee128ec1a2: mixed-type Decimal512 comparisons (m80154)
+10324_decimal512_int512_min_scale154_text    # the Int512 minimum at scale 154 printed through the 512-bit digit writer (m90817, m92741, 10316)

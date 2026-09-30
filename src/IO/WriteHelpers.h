@@ -1269,7 +1269,9 @@ void writeDecimalFractional(const T & x, UInt32 scale, WriteBuffer & ostr, bool 
 {
     /// If it's big integer, but the number of digits is small,
     /// use the implementation for smaller integers for more efficient arithmetic.
-    if constexpr (std::is_same_v<T, Int512>)
+    /// UInt512 comes from `writeText` for the magnitude of -2^511 at scale 154: it needs the 512-bit digit loop too,
+    /// the generic code below has room for 256-bit values (77 digits) only.
+    if constexpr (std::is_same_v<T, Int512> || std::is_same_v<T, UInt512>)
     {
         if (x <= std::numeric_limits<UInt32>::max())
         {
