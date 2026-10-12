@@ -45,6 +45,7 @@ namespace ErrorCodes
 {
     extern const int UNSUPPORTED_METHOD;
     extern const int INCORRECT_DATA;
+    extern const int SUPPORT_IS_DISABLED;
 }
 
 namespace Setting
@@ -709,29 +710,14 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             return std::make_shared<DataTypeQBit>(element_type, dimension, dimension);
         }
         case BinaryTypeIndex::QBitWithStride:
-        {
-            auto element_type = decodeDataTypeImpl(buf, complexity, max_complexity);
-            size_t dimension = 0;
-            readVarUInt(dimension, buf);
-            size_t stride = 0;
-            readVarUInt(stride, buf);
-            /// A strided QBit expands a tiny header into `element_size * (dimension / stride)` hidden FixedString
-            /// streams, which the DataTypeQBit constructor materializes eagerly (it builds the nested Tuple via
-            /// getDefaultSerialization). Charge those hidden streams to the complexity budget *before* constructing the
-            /// type, so a small header cannot force the wide nested type to be materialized under the default budget.
-            /// Only a well-formed strided header with a supported element type and at most MAX_STRIDE_GROUPS groups
-            /// reaches that materialization (this also keeps `element_size * num_strides` well within size_t); every
-            /// other header is rejected by the constructor before it allocates the wide type, so fall through to it for
-            /// the precise validation error in those cases.
-            if (DataTypeQBit::isSupportedElementType(element_type) && stride != 0 && dimension % stride == 0
-                && dimension / stride <= DataTypeQBit::MAX_STRIDE_GROUPS)
-            {
-                complexity += 8 * element_type->getSizeOfValueInMemory() * (dimension / stride);
-                if (max_complexity > 0 && complexity > max_complexity)
-                    throw Exception(ErrorCodes::INCORRECT_DATA, "Binary type decoding complexity limit exceeded: {} > {} (adjust input_format_binary_max_type_complexity)", complexity, max_complexity);
-            }
-            return std::make_shared<DataTypeQBit>(element_type, dimension, stride);
-        }
+            /// The first release of this fork disables QBit with an explicit stride (see DataTypeQBit). Reject the index itself,
+            /// before the element type, dimension or stride is read or any type is constructed, so an empty, truncated or crafted
+            /// payload and even a canonical stride == dimension payload are refused the same way. 0x36 (non-strided QBit) and
+            /// 0x37/0x38/0x39 (UInt512/Int512/Decimal512) are unchanged. Upstream encodes strided QBit as 0x37, which this fork
+            /// decodes as UInt512: that cannot be detected here and is not covered by this check.
+            throw Exception(
+                ErrorCodes::SUPPORT_IS_DISABLED,
+                "Binary type index QBitWithStride (0x3A) is not supported: strided QBit is disabled in the first release of this fork");
         case BinaryTypeIndex::Set:
             return std::make_shared<DataTypeSet>();
         case BinaryTypeIndex::Interval:

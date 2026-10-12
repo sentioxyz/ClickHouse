@@ -19,6 +19,7 @@ namespace ErrorCodes
 extern const int BAD_ARGUMENTS;
 extern const int ILLEGAL_TYPE_OF_ARGUMENT;
 extern const int NUMBER_OF_ARGUMENTS_DOESNT_MATCH;
+extern const int SUPPORT_IS_DISABLED;
 extern const int UNEXPECTED_AST_STRUCTURE;
 }
 
@@ -39,6 +40,17 @@ DataTypeQBit::DataTypeQBit(const DataTypePtr & element_type_, const size_t dimen
             ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
             "QBit data type only supports Int8, BFloat16, Float32, or Float64 as element type. Got: {}",
             element_type_->getName());
+
+    /// The first release of this fork disables QBit with an explicit stride (stride != dimension); see also the QBitWithStride
+    /// (0x3A) entry in DataTypesBinaryEncoding.cpp. Reject it here, before any hidden Tuple/FixedString nested type is
+    /// materialized. The canonical non-strided QBit (stride == dimension) and the element and dimension checks are unchanged.
+    if (stride != dimension)
+        throw Exception(
+            ErrorCodes::SUPPORT_IS_DISABLED,
+            "QBit with an explicit stride (dimension {}, stride {}) is disabled in the first release of this fork: strided QBit "
+            "is not supported. Use QBit(element_type, dimension) without a stride",
+            dimension,
+            stride);
 
     if (stride == 0 || stride > dimension || dimension % stride != 0)
         throw Exception(
@@ -197,7 +209,7 @@ column_name QBit(element_type, dimension[, stride])
 
 * `element_type` – the type of each vector element. The allowed types are `Int8`, `BFloat16`, `Float32` and `Float64`
 * `dimension` – the number of elements in each vector
-* `stride` – optional. The number of dimensions stored together in one group of streams. When omitted it defaults to `dimension` (a single group). When provided, `dimension` must be a multiple of `stride`, and, when `stride` is smaller than `dimension`, `stride` must be a multiple of 8. The `dimension` dimensions are split into `dimension / stride` contiguous groups, and each group's bit planes are stored in separate streams. This lets a search over the first `D` dimensions (with `D` a multiple of `stride`) read only the streams of the groups that cover those dimensions, which is useful for Matryoshka embeddings.
+* `stride` – optional. Disabled in the first release of this fork: a `stride` different from `dimension` is rejected with `SUPPORT_IS_DISABLED`, only `stride == dimension` (the same as omitting it) is accepted. The number of dimensions stored together in one group of streams. When omitted it defaults to `dimension` (a single group). When provided, `dimension` must be a multiple of `stride`, and, when `stride` is smaller than `dimension`, `stride` must be a multiple of 8. The `dimension` dimensions are split into `dimension / stride` contiguous groups, and each group's bit planes are stored in separate streams. This lets a search over the first `D` dimensions (with `D` a multiple of `stride`) read only the streams of the groups that cover those dimensions, which is useful for Matryoshka embeddings.
 
 ## Creating QBit {#creating-qbit}
 
