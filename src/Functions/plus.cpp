@@ -19,6 +19,22 @@ FormatSettings::DateTimeOverflowBehavior getDateTimeOverflowBehavior(ContextPtr 
     return default_date_time_overflow_behavior;
 }
 
+/// Overflow check of the checked `plus` with an `Int512` result (`Decimal512`): from the sign bits of x, y and the wrapped sum instead of
+/// the range formula of `common::addOverflow`. The wrapped sum is computed in unsigned 512-bit arithmetic: the two's-complement bits
+/// `common::addIgnoreOverflow` yields, without its signed `_BitInt(512)` addition, whose overflow is undefined. Overflow iff x and y have
+/// the same sign and the wrapped sum has the other sign. x and y are copies, so a res that aliases an operand cannot change them before
+/// their sign bits are read; `big(0)` is the most significant limb on either endianness. Covered by the stateless test
+/// 10333_decimal512_plus_int512_overflow (scale 0, scale 1 and 0 to 154 with true overflow and fitting cancellation, Nullable).
+static bool addOverflowInt512SignBits(Int512 x, Int512 y, Int512 & res)
+{
+    constexpr unsigned top_limb = Int512::_impl::big(0);
+    const UInt64 x_top = x.items[top_limb];
+    const UInt64 y_top = y.items[top_limb];
+    res = static_cast<Int512>(static_cast<UInt512>(x) + static_cast<UInt512>(y));
+    const UInt64 r_top = res.items[top_limb];
+    return ((x_top ^ r_top) & (y_top ^ r_top) & (UInt64(1) << 63)) != 0;
+}
+
 template <typename A, typename B>
 struct PlusImpl
 {
@@ -46,7 +62,10 @@ struct PlusImpl
     template <typename Result = ResultType>
     static bool apply(A a, B b, Result & c)
     {
-        return common::addOverflow(static_cast<Result>(a), b, c);
+        if constexpr (std::is_same_v<Result, Int512>)
+            return addOverflowInt512SignBits(static_cast<Result>(a), b, c);
+        else
+            return common::addOverflow(static_cast<Result>(a), b, c);
     }
 
 #if USE_EMBEDDED_COMPILER
