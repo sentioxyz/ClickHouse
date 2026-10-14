@@ -403,6 +403,7 @@ BlockIO InterpreterAlterQuery::execute()
 BlockIO InterpreterAlterQuery::executeToTable(const ASTAlterQuery & alter)
 {
     ASTSelectWithUnionQuery * modify_query = nullptr;
+    bool registers_binary_type_origin = false;
 
     for (auto & child : alter.command_list->children)
     {
@@ -411,7 +412,14 @@ BlockIO InterpreterAlterQuery::executeToTable(const ASTAlterQuery & alter)
             InterpreterCreateQuery::processSQLSecurityOption(getContext(), command_ast->sql_security->as<ASTSQLSecurity &>());
         else if (command_ast->type == ASTAlterCommand::MODIFY_QUERY)
             modify_query = command_ast->select->as<ASTSelectWithUnionQuery>();
+        else if (command_ast->type == ASTAlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN)
+            registers_binary_type_origin = true;
     }
+
+    /// The registration of a stored binary type origin is a privileged statement of its own: it is refused together with anything else
+    /// before it reaches other hosts or replicas, and AlterCommands::validate checks it again where it is applied.
+    if (registers_binary_type_origin && alter.command_list->children.size() != 1)
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "MODIFY SENTIO BINARY TYPE ORIGIN cannot be combined with other commands");
 
     BlockIO res;
     const auto & settings = getContext()->getSettingsRef();
@@ -894,6 +902,12 @@ AccessRightsElements InterpreterAlterQuery::getRequiredAccessForCommand(
         case ASTAlterCommand::EXECUTE_COMMAND:
         {
             required_access.emplace_back(AccessType::ALTER_EXECUTE, database, table);
+            break;
+        }
+        case ASTAlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN:
+        {
+            /// A grant of its own, outside the ALTER hierarchy: no other grant implies the registration of a stored binary type origin.
+            required_access.emplace_back(AccessType::SENTIO_REGISTER_BINARY_TYPE_ORIGIN, database, table);
             break;
         }
     }

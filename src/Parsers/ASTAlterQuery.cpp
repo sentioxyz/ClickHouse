@@ -134,6 +134,8 @@ void ASTAlterCommand::writeJSON(WriteBuffer & out) const
         w.writeString("execute_command_name", execute_command_name);
     if (!remove_property.empty())
         w.writeString("remove_property", remove_property);
+    if (type == ASTAlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN)
+        w.writeString("binary_type_origin", binary_type_origin);
 
     w.writeChild("col_decl", col_decl);
     w.writeChild("column", column);
@@ -207,6 +209,7 @@ void ASTAlterCommand::readJSON(const Poco::JSON::Object & json)
     snapshot_name = r.getString("snapshot_name");
     execute_command_name = r.getString("execute_command_name");
     remove_property = r.getString("remove_property");
+    binary_type_origin = r.getString("binary_type_origin");
 
     /// `order_by`, `sample_by`, `predicate`, `ttl`, `settings_resets`, `execute_args` and similar
     /// are arbitrary expressions/lists with no single parser-produced node type, so they are
@@ -583,6 +586,13 @@ void ASTAlterCommand::readJSON(const Poco::JSON::Object & json)
             break;
         case ASTAlterCommand::MODIFY_SQL_SECURITY:
             require(sql_security, "sql_security");
+            break;
+        case ASTAlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN:
+            /// `writeJSON` always emits the origin of this command, also an empty one.
+            if (!r.has("binary_type_origin"))
+                throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                    "Missing required 'binary_type_origin' field for ALTER command of type 'MODIFY_SENTIO_BINARY_TYPE_ORIGIN' "
+                    "during AST JSON deserialization");
             break;
         default:
             break;
@@ -1127,6 +1137,10 @@ void ASTAlterCommand::formatImpl(WriteBuffer & ostr, const FormatSettings & sett
         if (execute_args)
             execute_args->format(ostr, settings, state, frame);
         ostr << ")";
+    }
+    else if (type == ASTAlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN)
+    {
+        ostr << "MODIFY SENTIO BINARY TYPE ORIGIN " << quoteString(binary_type_origin);
     }
     else
         throw Exception(ErrorCodes::UNEXPECTED_AST_STRUCTURE, "Unexpected type of ALTER");

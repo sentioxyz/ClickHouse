@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <Storages/IStorage_fwd.h>
 #include <Storages/StorageInMemoryMetadata.h>
 #include <Storages/MutationCommands.h>
@@ -64,6 +65,7 @@ struct AlterCommand
         COMMENT_TABLE,
         REMOVE_SAMPLE_BY,
         MODIFY_SQL_SECURITY,
+        MODIFY_SENTIO_BINARY_TYPE_ORIGIN,
     };
 
     /// Which property user wants to remove from column
@@ -167,6 +169,10 @@ struct AlterCommand
     /// For MODIFY_SQL_SECURITY
     ASTPtr sql_security = nullptr;
 
+    /// For MODIFY_SENTIO_BINARY_TYPE_ORIGIN: the stored binary type origin to register (Storages/StoredBinaryTypeOrigin.h). It is stored
+    /// with the data of the table, not in its metadata, so `apply` leaves the metadata as it is.
+    BinaryTypeOrigin binary_type_origin = BinaryTypeOrigin::Unknown;
+
     /// For MODIFY_REFRESH
     ASTPtr refresh = nullptr;
 
@@ -250,6 +256,10 @@ public:
 
     /// All commands modify comments only.
     bool isCommentAlter() const;
+
+    /// The commands register the stored binary type origin of the table: MODIFY SENTIO BINARY TYPE ORIGIN, which `validate` allows only
+    /// as the only command.
+    bool isStoredBinaryTypeOriginRegistration() const;
 
     /// Return mutation commands which some storages may execute as part of
     /// alter. If alter can be performed as pure metadata update, than result is

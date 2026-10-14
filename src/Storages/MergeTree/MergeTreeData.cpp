@@ -391,6 +391,7 @@ namespace ErrorCodes
     extern const int ILLEGAL_TYPE_OF_COLUMN_FOR_FILTER;
     extern const int CORRUPTED_DATA;
     extern const int INCORRECT_DATA;
+    extern const int TABLE_IS_READ_ONLY;
     extern const int BAD_TYPE_OF_FIELD;
     extern const int BAD_ARGUMENTS;
     extern const int INVALID_PARTITION_VALUE;
@@ -707,6 +708,31 @@ String MergeTreeData::describeStoredBinaryTypeOrigin() const
     if (stored_binary_type_origin_conflict.load())
         return fmt::format("unknown ({} in conflict with the replicated metadata)", getBinaryTypeOriginName(stored_binary_type_origin.load()));
     return String(getBinaryTypeOriginName(stored_binary_type_origin.load()));
+}
+
+void MergeTreeData::checkStoredBinaryTypeOriginCanBeRegistered(BinaryTypeOrigin origin) const
+{
+    if (origin != BinaryTypeOrigin::SentioLegacyV0)
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "Only sentio_legacy_v0 can be registered as the stored binary type origin of a table, not {}",
+                        getBinaryTypeOriginName(origin));
+    if (getStorageID().uuid == UUIDHelpers::Nil)
+        throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                        "Table {} has no UUID (its database has the Ordinary engine): it cannot have a stored binary type origin record, so its "
+                        "origin cannot be registered", getStorageID().getNameForLogs());
+    if (!hasUnsetStoredBinaryTypeOrigin())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                        "Table {} has the stored binary type origin {}: only the origin of a table that has none can be registered",
+                        getStorageID().getNameForLogs(), describeStoredBinaryTypeOrigin());
+}
+
+void MergeTreeData::registerStoredBinaryTypeOrigin(BinaryTypeOrigin origin)
+{
+    std::lock_guard admission_lock(stored_binary_type_origin_admission_mutex);
+    checkStoredBinaryTypeOriginCanBeRegistered(origin);
+    if (!persistStoredBinaryTypeOrigin(origin))
+        throw Exception(ErrorCodes::TABLE_IS_READ_ONLY, "Table {} has no writable disk for its stored binary type origin record",
+                        getStorageID().getNameForLogs());
+    LOG_INFO(log, "Registered the stored binary type origin {} of table {}", getBinaryTypeOriginName(origin), getStorageID().getNameForLogs());
 }
 
 DataPartsLock::DataPartsLock(SharedMutex & data_parts_mutex_, const MergeTreeData * data_)
@@ -5202,6 +5228,13 @@ Names expressionSourceColumns(const ASTPtr & ast, const ColumnsDescription & col
 
 void MergeTreeData::checkAlterIsPossible(const AlterCommands & commands, ContextPtr local_context) const
 {
+    /// The registration of the stored binary type origin changes nothing else, and AlterCommands::validate allows it only alone.
+    if (commands.isStoredBinaryTypeOriginRegistration())
+    {
+        checkStoredBinaryTypeOriginCanBeRegistered(commands.front().binary_type_origin);
+        return;
+    }
+
     /// Reject schema-changing ALTER while a streaming query holds a subscription on this storage.
     if (subscription_manager.hasSome())
     {
@@ -7339,6 +7372,18 @@ void MergeTreeData::forcefullyMovePartToDetachedAndRemoveFromMemory(const MergeT
 }
 
 
+void MergeTreeData::movePartToDetachedCarryingStoredBinaryTypeOrigin(const DataPartPtr & part)
+{
+    /// The origin the part is read with in this table, before it leaves it. A part with a record has it in its directory already, and an
+    /// Unknown origin says nothing about its data.
+    const auto origin = part->stored_binary_type_origin ? BinaryTypeOrigin::Unknown : part->getBinaryTypeOriginForReading();
+    forcefullyMovePartToDetachedAndRemoveFromMemory(part);
+    if (origin != BinaryTypeOrigin::Unknown)
+        part->writeStoredBinaryTypeOriginRecord(
+            asMutableDeletingPart(part)->getDataPartStorage(), origin, getContext()->getWriteSettings(),
+            (*getSettings())[MergeTreeSetting::fsync_part_directory]);
+}
+
 bool MergeTreeData::tryRemovePartImmediately(DataPartPtr && part)
 {
     DataPartPtr part_to_delete;
@@ -8089,18 +8134,50 @@ bool MergeTreeData::admitStoredBinaryTypeOriginOfRawPart(IMergeTreeDataPart & pa
     if (!part.is_raw_import || part.getParentPart())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Part {} was not loaded as a raw import", part.name);
 
-    if (!part.stored_binary_type_origin && !hasUnsetStoredBinaryTypeOrigin())
+    if (!part.stored_binary_type_origin)
     {
-        if (getStoredBinaryTypeOrigin() == BinaryTypeOrigin::SentioLegacyV0)
-            return false;
+        /// The origin the part would be read with: that of the table, or, while the table has none, that of its replicated metadata,
+        /// which a registration that this replica has not applied yet sets first.
+        auto origin = getStoredBinaryTypeOrigin();
+        const bool unset = hasUnsetStoredBinaryTypeOrigin();
+        std::optional<int32_t> replicated_metadata_version;
+        if (unset)
+        {
+            if (const auto replicated = getReplicatedStoredBinaryTypeOrigin())
+            {
+                origin = replicated->first;
+                replicated_metadata_version = replicated->second;
+            }
+        }
 
-        /// The origin of the table does not apply to the part when it is loaded again, after a restart or on a replica that fetches it.
-        part.writeAndLoadStoredBinaryTypeOriginRecord(
-            BinaryTypeOrigin::Unknown, getContext()->getWriteSettings(), (*getSettings())[MergeTreeSetting::fsync_part_directory]);
+        if (unset && origin == BinaryTypeOrigin::Unknown)
+        {
+            part.admitted_for_unset_stored_binary_type_origin = true;
+            part.unset_stored_binary_type_origin_metadata_version = replicated_metadata_version;
+        }
+        else if (origin == BinaryTypeOrigin::SentioLegacyV0)
+        {
+            return false;
+        }
+        else
+        {
+            /// The origin of the table does not apply to the part when it is loaded again, after a restart or on a replica that fetches it.
+            part.writeAndLoadStoredBinaryTypeOriginRecord(
+                BinaryTypeOrigin::Unknown, getContext()->getWriteSettings(), (*getSettings())[MergeTreeSetting::fsync_part_directory]);
+        }
     }
 
     part.is_raw_import = false;
     return true;
+}
+
+void MergeTreeData::checkUnsetStoredBinaryTypeOriginAdmission(const IMergeTreeDataPart & part) const
+{
+    if (part.admitted_for_unset_stored_binary_type_origin && !hasUnsetStoredBinaryTypeOrigin())
+        throw Exception(ErrorCodes::INCORRECT_DATA,
+                        "Cannot attach part {} to table {}: it was admitted while the table had no stored binary type origin, and now the "
+                        "table has the stored binary type origin {}. Attach it again",
+                        part.name, getStorageID().getNameForLogs(), describeStoredBinaryTypeOrigin());
 }
 
 void MergeTreeData::unregisterFromMergeSelection(const MergeTreeSettingsPtr & settings)

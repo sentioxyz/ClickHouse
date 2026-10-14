@@ -92,6 +92,7 @@ namespace ErrorCodes
     extern const int PART_IS_TEMPORARILY_LOCKED;
     extern const int LOGICAL_ERROR;
     extern const int TABLE_IS_READ_ONLY;
+    extern const int INCORRECT_DATA;
     extern const int QUERY_WAS_CANCELLED;
 }
 
@@ -986,6 +987,16 @@ std::vector<DeduplicationHash> ReplicatedMergeTreeSink::commitPart(
 
         storage.getCommitPartOps(ops, part, block_id_pathes);
 
+        /// A raw part admitted for the unset stored binary type origin of the table is committed only at the version of the replicated
+        /// metadata at its admission: a registration since then would cover it (MergeTreeData::admitStoredBinaryTypeOriginOfRawPart).
+        std::optional<size_t> unset_origin_check_op_idx;
+        if (is_attach && part->unset_stored_binary_type_origin_metadata_version)
+        {
+            unset_origin_check_op_idx = ops.size();
+            ops.emplace_back(zkutil::makeCheckRequest(
+                fs::path(storage.zookeeper_path) / "metadata", *part->unset_stored_binary_type_origin_metadata_version));
+        }
+
         /// It's important to create it outside of lock scope because
         /// otherwise it can lock parts in destructor and deadlock is possible.
         MergeTreeData::Transaction transaction(storage, NO_TRANSACTION_RAW); /// If you can not add a part to ZK, we'll remove it back from the working set.
@@ -1169,6 +1180,12 @@ std::vector<DeduplicationHash> ReplicatedMergeTreeSink::commitPart(
         }
 
         transaction.rollback();
+
+        if (multi_code == Coordination::Error::ZBADVERSION && failed_op_idx == unset_origin_check_op_idx)
+            throw Exception(ErrorCodes::INCORRECT_DATA,
+                            "Cannot attach part {} to table {}: it was admitted while the table had no stored binary type origin, and the "
+                            "replicated metadata of the table has changed since then (a registration or another ALTER). Attach it again",
+                            part->name, storage.getStorageID().getNameForLogs());
 
         if (!Coordination::isUserError(multi_code))
             throw Exception(

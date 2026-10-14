@@ -73,6 +73,7 @@ bool ParserAlterCommand::parseImpl(Pos & pos, ASTPtr & node, Expected & expected
     ParserKeyword s_clear_projection(Keyword::CLEAR_PROJECTION);
     ParserKeyword s_materialize_projection(Keyword::MATERIALIZE_PROJECTION);
     ParserKeyword s_modify_comment(Keyword::MODIFY_COMMENT);
+    ParserKeyword s_modify_sentio_binary_type_origin(Keyword::MODIFY_SENTIO_BINARY_TYPE_ORIGIN);
 
     ParserKeyword s_add(Keyword::ADD);
     ParserKeyword s_drop(Keyword::DROP);
@@ -1059,6 +1060,15 @@ bool ParserAlterCommand::parseImpl(Pos & pos, ASTPtr & node, Expected & expected
                     return false;
 
                 command->type = ASTAlterCommand::MODIFY_COMMENT;
+            }
+            else if (s_modify_sentio_binary_type_origin.ignore(pos, expected))
+            {
+                ASTPtr origin_literal;
+                if (!parser_string_literal.parse(pos, origin_literal, expected))
+                    return false;
+
+                command->binary_type_origin = origin_literal->as<ASTLiteral &>().value.safeGet<String>();
+                command->type = ASTAlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN;
             }
             else if (s_apply_deleted_mask.ignore(pos, expected))
             {

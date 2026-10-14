@@ -446,6 +446,8 @@ enum class AccessType : uint8_t
     M(DISK, "", GLOBAL, ALL) \
     M(SOURCES, "", GLOBAL, ALL) \
     \
+    M(SENTIO_REGISTER_BINARY_TYPE_ORIGIN, "", TABLE, ALL) /* allows to execute ALTER TABLE ... MODIFY SENTIO BINARY TYPE ORIGIN; not part of ALTER */\
+    \
     /* Consts */ \
     M(ALL, "ALL PRIVILEGES", GROUP, NONE) /* full access */ \
     M(NONE, "USAGE, NO PRIVILEGES", GROUP, NONE) /* no access */

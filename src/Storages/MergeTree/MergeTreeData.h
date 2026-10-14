@@ -975,6 +975,9 @@ public:
     /// NOTE: This method is safe to use only for parts which nobody else holds (like on server start or for parts which was not committed).
     /// For active parts it's unsafe because this method modifies fields of part (rename) while some other thread can try to read it.
     void forcefullyMovePartToDetachedAndRemoveFromMemory(const DataPartPtr & part, const String & prefix = "");
+    /// The same for a part of the table that is attached again from detached/ as a raw part (SYSTEM RESTORE REPLICA): it carries the
+    /// stored binary type origin it was read with in this table in a part record, as a detached part does (makeCloneInDetached).
+    void movePartToDetachedCarryingStoredBinaryTypeOrigin(const DataPartPtr & part);
 
     /// This method should not be here, but async loading of Outdated parts is implemented in MergeTreeData
     virtual void forcefullyRemoveBrokenOutdatedPartFromZooKeeperBeforeDetaching(const String & /*part_name*/) {}
@@ -1617,12 +1620,29 @@ protected:
     /// Admits the stored binary type origin of a part that came into this table as raw files and was loaded as a raw import
     /// (IMergeTreeDataPart::is_raw_import), so that from now on it is read exactly as it will be when it is loaded again:
     ///  - with a valid record of its own, with the origin of that record;
-    ///  - without one, in a table with an unset origin (hasUnsetStoredBinaryTypeOrigin), with the origin of the table, like the parts it
-    ///    has already;
-    ///  - without one, in a table with the stored origin SentioLegacyV0: not admitted (returns false and changes nothing), since nothing
-    ///    proves that its data has that origin;
+    ///  - without one, in a table with an unset origin (hasUnsetStoredBinaryTypeOrigin) whose replicated metadata has none either, with
+    ///    the origin of the table, like the parts it has already. It is admitted for the unset origin, which its commit checks again
+    ///    (checkUnsetStoredBinaryTypeOriginAdmission);
+    ///  - without one, in a table with the stored origin SentioLegacyV0, or with an unset one whose replicated metadata has it already:
+    ///    not admitted (returns false and changes nothing), since nothing proves that its data has that origin;
     ///  - without one, in any other table: with Unknown, from a part record of the Unknown origin written into its directory.
     bool admitStoredBinaryTypeOriginOfRawPart(IMergeTreeDataPart & part) const;
+
+    /// For a replicated table: the stored binary type origin that its metadata in ZooKeeper holds, and the version of that metadata.
+    /// Nothing for a table that is not replicated.
+    virtual std::optional<std::pair<BinaryTypeOrigin, int32_t>> getReplicatedStoredBinaryTypeOrigin() const { return {}; }
+
+    /// Throws if `part` was admitted for the unset stored binary type origin of the table and the table has an origin now. Called before
+    /// the parts are committed, with stored_binary_type_origin_admission_mutex held shared until they are.
+    void checkUnsetStoredBinaryTypeOriginAdmission(const IMergeTreeDataPart & part) const;
+
+    /// Throws unless `origin` can be registered as the stored binary type origin of the table: it is SentioLegacyV0, and the table has a
+    /// UUID and no stored origin yet (hasUnsetStoredBinaryTypeOrigin).
+    void checkStoredBinaryTypeOriginCanBeRegistered(BinaryTypeOrigin origin) const;
+
+    /// The registration (ALTER TABLE ... MODIFY SENTIO BINARY TYPE ORIGIN) of a table that is not replicated: writes the table record
+    /// with stored_binary_type_origin_admission_mutex held exclusively.
+    void registerStoredBinaryTypeOrigin(BinaryTypeOrigin origin);
 
     void unregisterFromMergeSelection(const MergeTreeSettingsPtr & settings);
 
@@ -1726,6 +1746,9 @@ protected:
     /// The local record conflicts with the stored origin the replicated metadata holds for the table: neither is applied implicitly, the
     /// record is kept, and the table is read as Unknown until the conflict is resolved (StorageReplicatedMergeTree).
     std::atomic<bool> stored_binary_type_origin_conflict{false};
+    /// Held exclusively while the registration is applied, and shared from the check until the commit of raw parts admitted for the
+    /// unset origin: the registration covers exactly the parts that the table has when it is applied, never one admitted meanwhile.
+    mutable SharedMutex stored_binary_type_origin_admission_mutex;
 
     static const MergeTreePartInfo & dataPartPtrToInfo(const DataPartPtr & part)
     {

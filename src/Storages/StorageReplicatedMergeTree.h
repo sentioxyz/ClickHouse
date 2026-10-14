@@ -702,6 +702,8 @@ private:
     /// table is never replaced.
     void reconcileStoredBinaryTypeOrigin(BinaryTypeOrigin origin, std::string_view source);
 
+    std::optional<std::pair<BinaryTypeOrigin, int32_t>> getReplicatedStoredBinaryTypeOrigin() const override;
+
     /// Execute alter of table metadata. Set replica/metadata and replica/columns
     /// nodes in zookeeper and also changes in memory metadata.
     /// New metadata and columns values stored in entry.

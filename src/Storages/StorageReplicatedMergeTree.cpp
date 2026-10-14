@@ -6818,12 +6818,17 @@ void StorageReplicatedMergeTree::reconcileStoredBinaryTypeOrigin(BinaryTypeOrigi
             }
             return;
         case StoredBinaryTypeOriginReconciliation::ApplyRegistration:
+        {
+            /// Raw parts admitted for the unset origin and not committed yet are refused at their commit (MergeTreeData::
+            /// stored_binary_type_origin_admission_mutex).
+            std::lock_guard admission_lock(stored_binary_type_origin_admission_mutex);
             LOG_INFO(log, "Applying the registration of the stored binary type origin {} of table {} from the {}", getBinaryTypeOriginName(origin),
                      getStorageID().getNameForLogs(), source);
             /// Without a writable disk there is no local record: ZooKeeper alone keeps the origin.
             if (!persistStoredBinaryTypeOrigin(origin))
                 stored_binary_type_origin = origin;
             return;
+        }
         case StoredBinaryTypeOriginReconciliation::Conflict:
             LOG_ERROR(log, "The stored binary type origin {} of table {} conflicts with {} in the {}. Neither is applied implicitly: the local "
                       "record and the data are kept, and the table is read as Unknown until the conflict is resolved",
@@ -6836,6 +6841,13 @@ void StorageReplicatedMergeTree::reconcileStoredBinaryTypeOrigin(BinaryTypeOrigi
                       getStorageID().getNameForLogs(), source, getBinaryTypeOriginName(origin));
             return;
     }
+}
+
+std::optional<std::pair<BinaryTypeOrigin, int32_t>> StorageReplicatedMergeTree::getReplicatedStoredBinaryTypeOrigin() const
+{
+    Coordination::Stat stat;
+    const String metadata = getZooKeeper()->get(fs::path(zookeeper_path) / "metadata", &stat);
+    return std::pair{ReplicatedMergeTreeTableMetadata::parseRaw(metadata).binary_type_origin, stat.version};
 }
 
 bool StorageReplicatedMergeTree::executeMetadataAlter(const StorageReplicatedMergeTree::LogEntry & entry)
@@ -7122,6 +7134,18 @@ void StorageReplicatedMergeTree::alter(
         /// applied last.
         future_metadata_in_zk.binary_type_origin
             = ReplicatedMergeTreeTableMetadata::parseRaw(zookeeper->get(fs::path(zookeeper_path) / "metadata")).binary_type_origin;
+        if (commands.isStoredBinaryTypeOriginRegistration())
+        {
+            /// The registration goes from the unset origin to the registered one with this ALTER_METADATA entry, and every replica applies
+            /// it with the entry (reconcileStoredBinaryTypeOrigin). A concurrent registration or ALTER changes the metadata version first
+            /// and makes the set request below fail.
+            if (future_metadata_in_zk.binary_type_origin != BinaryTypeOrigin::Unknown)
+                throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                                "Table {} has the stored binary type origin {} in its replicated metadata: only the origin of a table that has "
+                                "none can be registered",
+                                getStorageID().getNameForLogs(), getBinaryTypeOriginName(future_metadata_in_zk.binary_type_origin));
+            future_metadata_in_zk.binary_type_origin = commands.front().binary_type_origin;
+        }
         if (ast_to_str(future_metadata.sorting_key.definition_ast) != ast_to_str(current_metadata->sorting_key.definition_ast))
         {
             /// We serialize definition_ast as list, because code which apply ALTER (setTableStructure) expect serialized non empty expression
@@ -7456,7 +7480,8 @@ void StorageReplicatedMergeTree::restoreMetadataInZooKeeper(
         {
             active_parts_names.push_back(part->name);
             max_parts_metadata_version = std::max(max_parts_metadata_version, part->getMetadataVersion());
-            forcefullyMovePartToDetachedAndRemoveFromMemory(part);
+            /// It is attached again below as a raw part from detached/.
+            movePartToDetachedCarryingStoredBinaryTypeOrigin(part);
         }
         else
         {
@@ -7634,6 +7659,13 @@ PartitionCommandsResultInfo StorageReplicatedMergeTree::attachPartitionImpl(
     PartitionCommandsResultInfo results;
     PartsTemporaryRename renamed_parts(*this, DETACHED_DIR_NAME);
     MutableDataPartsVector loaded_parts = tryLoadPartsToAttach(command, query_context, renamed_parts);
+
+    /// Until the parts are committed, the registration of the stored binary type origin waits on this replica, and it did not happen since
+    /// their admission. The commit of a part admitted for the unset origin also checks the version of the replicated metadata
+    /// (ReplicatedMergeTreeSink), so that a registration from another replica comes first or makes the commit fail.
+    std::shared_lock admission_lock(stored_binary_type_origin_admission_mutex);
+    for (const auto & part : loaded_parts)
+        checkUnsetStoredBinaryTypeOriginAdmission(*part);
 
     /// TODO Allow to use quorum here.
     ReplicatedMergeTreeSink output(
@@ -12115,6 +12147,11 @@ void StorageReplicatedMergeTree::attachRestoredParts(
     auto sink = std::make_shared<ReplicatedMergeTreeSink>(
         /* async_insert */ false, *this, metadata_snapshot, /* quorum */ 0, /* quorum_timeout_ms */ 0, /* max_parts_per_block */ 0, /* quorum_parallel */ false,
         /* majority_quorum */ false, getContext(), /* is_attach */ true, /* allow_attach_while_readonly */ false, zookeeper_retries_info);
+
+    /// See attachPartitionImpl.
+    std::shared_lock admission_lock(stored_binary_type_origin_admission_mutex);
+    for (const auto & part : parts)
+        checkUnsetStoredBinaryTypeOriginAdmission(*part);
 
     for (auto & part : parts)
         sink->writeExistingPart(part, /* deduplicate_part */ false);

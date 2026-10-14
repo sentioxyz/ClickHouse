@@ -485,6 +485,12 @@ public:
     /// the table admits the part (MergeTreeData::admitStoredBinaryTypeOriginOfRawPart), it is read with its own record or with Unknown, in
     /// every read of its load, also of its projections and of the columns of a unique key.
     bool is_raw_import = false;
+    /// Set when the table admitted this raw import for its unset stored binary type origin: the part is committed only while that origin
+    /// is still unset (MergeTreeData::checkUnsetStoredBinaryTypeOriginAdmission), so that the registration covers exactly the parts that
+    /// the table has when it is applied. A replicated table also keeps the version of its metadata in ZooKeeper at the admission, which
+    /// the commit of the part checks (ReplicatedMergeTreeSink).
+    bool admitted_for_unset_stored_binary_type_origin = false;
+    std::optional<int32_t> unset_stored_binary_type_origin_metadata_version;
     /// The origin the stored data of the part is read with: that of its own record if it has one, Unknown for a raw import that its table
     /// has not admitted yet, otherwise the stored origin of its table. A projection is read with the origin of its parent part.
     BinaryTypeOrigin getBinaryTypeOriginForReading() const;

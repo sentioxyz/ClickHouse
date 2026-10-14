@@ -93,6 +93,10 @@ public:
         UNLOCK_SNAPSHOT,
 
         EXECUTE_COMMAND,
+
+        /// ALTER TABLE ... MODIFY SENTIO BINARY TYPE ORIGIN 'name': the privileged one-time registration of the stored binary type origin
+        /// of a table (Storages/StoredBinaryTypeOrigin.h).
+        MODIFY_SENTIO_BINARY_TYPE_ORIGIN,
     };
 
     Type type = NO_TYPE;
@@ -237,6 +241,9 @@ public:
 
     /// Which property user want to remove
     String remove_property;
+
+    /// For MODIFY SENTIO BINARY TYPE ORIGIN: the name of the origin, as written in the statement.
+    String binary_type_origin;
 
     String getID(char delim) const override;
 

@@ -47,6 +47,7 @@
 #include <Parsers/ASTSQLSecurity.h>
 #include <Storages/AlterCommands.h>
 #include <Storages/StorageFactory.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <Storages/MergeTree/MergeTreeData.h>
 #include <Storages/MergeTree/MergeTreeSettings.h>
 #include <Common/typeid_cast.h>
@@ -632,6 +633,14 @@ std::optional<AlterCommand> AlterCommand::parse(const ASTAlterCommand * command_
         command.ast = command_ast->clone();
         command.type = AlterCommand::MODIFY_SQL_SECURITY;
         command.sql_security = command_ast->sql_security->clone();
+        return command;
+    }
+    if (command_ast->type == ASTAlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN)
+    {
+        AlterCommand command;
+        command.ast = command_ast->clone();
+        command.type = AlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN;
+        command.binary_type_origin = parseBinaryTypeOriginName(command_ast->binary_type_origin, ErrorCodes::BAD_ARGUMENTS);
         return command;
     }
 
@@ -1291,6 +1300,10 @@ void AlterCommand::apply(StorageInMemoryMetadata & metadata, ContextPtr context,
     }
     else if (type == MODIFY_SQL_SECURITY)
         metadata.setSQLSecurity(sql_security->as<ASTSQLSecurity &>());
+    else if (type == MODIFY_SENTIO_BINARY_TYPE_ORIGIN)
+    {
+        /// The origin is stored with the data of the table (MergeTreeData), not in its metadata.
+    }
     else
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Wrong parameter type in ALTER query");
 }
@@ -2047,6 +2060,19 @@ void AlterCommands::validate(const StoragePtr & table, ContextPtr context) const
     {
         const auto & command = (*this)[i];
 
+        if (command.type == AlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN)
+        {
+            /// The privileged one-time registration states the origin of all the data of the table (Storages/StoredBinaryTypeOrigin.h):
+            /// it is a statement of its own, and its only transition is from Unknown to sentio_legacy_v0.
+            if (size() != 1)
+                throw Exception(ErrorCodes::BAD_ARGUMENTS, "MODIFY SENTIO BINARY TYPE ORIGIN cannot be combined with other commands");
+            if (command.binary_type_origin != BinaryTypeOrigin::SentioLegacyV0)
+                throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                                "Only sentio_legacy_v0 can be registered as the stored binary type origin of a table, not {}",
+                                getBinaryTypeOriginName(command.binary_type_origin));
+            continue;
+        }
+
         if (command.ttl && !table->supportsTTL())
             throw Exception(ErrorCodes::BAD_ARGUMENTS, "Engine {} doesn't support TTL clause", table->getName());
 
@@ -2476,6 +2502,11 @@ bool AlterCommands::isSettingsAlter() const
 bool AlterCommands::isCommentAlter() const
 {
     return std::all_of(begin(), end(), [](const AlterCommand & c) { return c.isCommentAlter(); });
+}
+
+bool AlterCommands::isStoredBinaryTypeOriginRegistration() const
+{
+    return std::any_of(begin(), end(), [](const AlterCommand & c) { return c.type == AlterCommand::MODIFY_SENTIO_BINARY_TYPE_ORIGIN; });
 }
 
 static MutationCommand createMaterializeTTLCommand()

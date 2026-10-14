@@ -480,6 +480,13 @@ void StorageMergeTree::alter(
     if (local_context->getCurrentTransaction() && local_context->getSettingsRef()[Setting::throw_on_unsupported_query_inside_transaction])
         throw Exception(ErrorCodes::NOT_IMPLEMENTED, "ALTER METADATA is not supported inside transactions");
 
+    /// The registration of the stored binary type origin writes the record of the table, and changes no metadata.
+    if (commands.isStoredBinaryTypeOriginRegistration())
+    {
+        registerStoredBinaryTypeOrigin(commands.front().binary_type_origin);
+        return;
+    }
+
     auto table_id = getStorageID();
     auto old_storage_settings = getSettings();
     const auto & query_settings = local_context->getSettingsRef();
@@ -3014,6 +3021,11 @@ PartitionCommandsResultInfo StorageMergeTree::attachPartition(
     PartsTemporaryRename renamed_parts(*this, DETACHED_DIR_NAME);
     MutableDataPartsVector loaded_parts = tryLoadPartsToAttach(command, local_context, renamed_parts);
 
+    /// Until the parts are committed, the registration of the stored binary type origin waits, and it did not happen since their admission.
+    std::shared_lock admission_lock(stored_binary_type_origin_admission_mutex);
+    for (const auto & part : loaded_parts)
+        checkUnsetStoredBinaryTypeOriginAdmission(*part);
+
     for (size_t i = 0; i < loaded_parts.size(); ++i)
     {
         LOG_INFO(log, "Attaching part {} from {}", loaded_parts[i]->name, renamed_parts.old_and_new_names[i].new_dir);
@@ -3604,6 +3616,11 @@ BackupEntries StorageMergeTree::backupMutations(UInt64 version, const String & d
 
 void StorageMergeTree::attachRestoredParts(MutableDataPartsVector && parts, const std::optional<ZooKeeperRetriesInfo> &)
 {
+    /// See attachPartition.
+    std::shared_lock admission_lock(stored_binary_type_origin_admission_mutex);
+    for (const auto & part : parts)
+        checkUnsetStoredBinaryTypeOriginAdmission(*part);
+
     for (auto part : parts)
     {
         /// It's important to create it outside of lock scope because
