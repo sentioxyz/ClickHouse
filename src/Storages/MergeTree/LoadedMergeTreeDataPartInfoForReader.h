@@ -103,6 +103,8 @@ public:
     std::shared_ptr<const IMergeTreeDataPart> getDataPart() const override { return data_part; }
 
     size_t getRowCount() const override { return data_part->rows_count; }
+
+    BinaryTypeOrigin getBinaryTypeOriginForReading() const override { return data_part->getBinaryTypeOriginForReading(); }
 private:
     MergeTreeData::DataPartPtr data_part;
     AlterConversionsPtr alter_conversions;

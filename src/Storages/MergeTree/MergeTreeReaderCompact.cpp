@@ -6,6 +6,7 @@
 #include <DataTypes/Serializations/getSubcolumnsDeserializationOrder.h>
 #include <DataTypes/Serializations/SerializationQuantizedVector.h>
 #include <DataTypes/NestedUtils.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <Interpreters/Context.h>
 #include <ranges>
 
@@ -228,6 +229,7 @@ void MergeTreeReaderCompact::readData(
         deserialize_settings.getter = buffer_getter;
         deserialize_settings.use_specialized_prefixes_and_suffixes_substreams = true;
         deserialize_settings.data_part_type = MergeTreeDataPartType::Compact;
+        deserialize_settings.format_settings = &getFormatSettingsForStoredBinaryTypeOrigin(data_part_info_for_read->getBinaryTypeOriginForReading());
         deserialize_settings.get_avg_value_size_hint_callback
             = [&](const ISerialization::SubstreamPath & substream_path) -> double
         {
@@ -504,6 +506,7 @@ void MergeTreeReaderCompact::readPrefix(
         deserialize_settings.object_and_dynamic_read_statistics = true;
         deserialize_settings.use_specialized_prefixes_and_suffixes_substreams = true;
         deserialize_settings.data_part_type = MergeTreeDataPartType::Compact;
+        deserialize_settings.format_settings = &getFormatSettingsForStoredBinaryTypeOrigin(data_part_info_for_read->getBinaryTypeOriginForReading());
         deserialize_settings.check_stream_exists_callback = std::move(check_stream_exists_callback);
 
         serialization->deserializeBinaryBulkStatePrefix(deserialize_settings, state, cache);

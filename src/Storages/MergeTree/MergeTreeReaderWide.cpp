@@ -4,6 +4,7 @@
 #include <Columns/ColumnSparse.h>
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/NestedUtils.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <DataTypes/DataTypeNested.h>
 #include <Interpreters/inplaceBlockConversions.h>
 #include <Interpreters/Context.h>
@@ -391,6 +392,7 @@ void MergeTreeReaderWide::deserializePrefix(
         deserialize_settings.object_and_dynamic_read_statistics = true;
         deserialize_settings.prefixes_prefetch_callback = prefixes_prefetch_callback;
         deserialize_settings.data_part_type = MergeTreeDataPartType::Wide;
+        deserialize_settings.format_settings = &getFormatSettingsForStoredBinaryTypeOrigin(data_part_info_for_read->getBinaryTypeOriginForReading());
         deserialize_settings.prefixes_deserialization_thread_pool = settings.use_prefixes_deserialization_thread_pool ? &getMergeTreePrefixesDeserializationThreadPool().get() : nullptr;
         deserialize_settings.getter = [&](const ISerialization::SubstreamPath & substream_path)
         {
@@ -609,6 +611,7 @@ void MergeTreeReaderWide::readData(
 {
     ISerialization::DeserializeBinaryBulkSettings deserialize_settings;
     deserialize_settings.data_part_type = MergeTreeDataPartType::Wide;
+    deserialize_settings.format_settings = &getFormatSettingsForStoredBinaryTypeOrigin(data_part_info_for_read->getBinaryTypeOriginForReading());
 
     deserializePrefix(serialization, name_and_type, from_mark, deserialize_binary_bulk_state_map, cache, deserialize_states_cache, {});
 

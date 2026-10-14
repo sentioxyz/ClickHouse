@@ -30,6 +30,7 @@
 #include <Storages/MergeTree/Backup.h>
 #include <Storages/MergeTree/LoadedMergeTreeDataPartInfoForReader.h>
 #include <Storages/MergeTree/MergeTreeData.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <Storages/MergeTree/MergeTreeVirtualColumns.h>
 #include <Storages/MergeTree/MergeTreeIndexGranularityAdaptive.h>
 #include <Storages/MergeTree/MergeTreeIndexGranularityConstant.h>
@@ -1497,6 +1498,7 @@ void IMergeTreeDataPart::loadColumnsChecksumsIndexes(bool require_columns_checks
             loadColumnsSubstreams();
             loadInvalidatedSystemColumns();
             loadChecksums(require_columns_checksums);
+            loadStoredBinaryTypeOrigin();
             loadIndexGranularity();
 
             /// Load `source_parts.dat` before the primary index: a v2 patch's rebuilt metadata takes
@@ -1840,6 +1842,10 @@ NameSet IMergeTreeDataPart::getFileNamesWithoutChecksums() const
     if (getDataPartStorage().existsFile(INVALIDATED_SYSTEM_COLUMNS_FILE_NAME))
         result.emplace(INVALIDATED_SYSTEM_COLUMNS_FILE_NAME);
 
+    /// The part record of the stored binary type origin travels with the part (backup, fetch, clone); it is bound to the checksums.
+    if (getDataPartStorage().existsFile(STORED_BINARY_TYPE_ORIGIN_FILE_NAME))
+        result.emplace(STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
+
     /// UNIQUE KEY per-part SST. Enumerated based on the part's own on-disk
     /// presence (a part property), not table metadata, so `MergeTreeData::backupParts`
     /// and `DataPartsExchange::sendPart` transfer it — both build the transferred
@@ -1862,6 +1868,35 @@ NameSet IMergeTreeDataPart::getSystemColumnsToInvalidate(const MergeTreePartInfo
         return {};
 
     return {BlockNumberColumn::name, BlockOffsetColumn::name};
+}
+
+void IMergeTreeDataPart::loadStoredBinaryTypeOrigin()
+{
+    stored_binary_type_origin.reset();
+
+    /// A projection has no record of its own: it is read with the origin of its parent part.
+    if (parent_part)
+        return;
+
+    auto in = readFileIfExists(STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
+    if (!in)
+        return;
+
+    const auto record = StoredBinaryTypeOriginRecord::read(*in);
+    const auto match = matchPartRecord(record, checksums.getTotalChecksumHex());
+    if (match != StoredBinaryTypeOriginRecordMatch::Applies)
+        throw Exception(ErrorCodes::CORRUPTED_DATA, "The stored binary type origin record of part {} does not apply to it: it is {}",
+                        name, describeStoredBinaryTypeOriginRecordMatch(match));
+    stored_binary_type_origin = record.origin;
+}
+
+BinaryTypeOrigin IMergeTreeDataPart::getBinaryTypeOriginForReading() const
+{
+    if (parent_part)
+        return parent_part->getBinaryTypeOriginForReading();
+    if (stored_binary_type_origin)
+        return *stored_binary_type_origin;
+    return storage.getStoredBinaryTypeOrigin();
 }
 
 void IMergeTreeDataPart::loadInvalidatedSystemColumns()

@@ -25,6 +25,7 @@
 #include <Storages/MergeTree/MergeTreeData.h>
 #include <Storages/MergeTree/MergeTreeDataPartChecksum.h>
 #include <Storages/MergeTree/MergeTreeIndicesSerialization.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <Common/formatReadable.h>
 #include <Common/logger_useful.h>
 
@@ -1032,6 +1033,7 @@ void DataPartStorageOnDiskBase::clearDirectory(
         request.emplace_back(fs::path(dir) / "metadata_version.txt", true);
         request.emplace_back(fs::path(dir) / IMergeTreeDataPart::COLUMNS_SUBSTREAMS_FILE_NAME, true);
         request.emplace_back(fs::path(dir) / IMergeTreeDataPart::INVALIDATED_SYSTEM_COLUMNS_FILE_NAME, true);
+        request.emplace_back(fs::path(dir) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME, true);
 
         disk->removeSharedFiles(request, !can_remove_shared_data, names_not_to_remove);
         disk->removeDirectory(dir);

@@ -5,6 +5,7 @@
 #include <Storages/ColumnsDescription.h>
 #include <Storages/ColumnSize.h>
 #include <Core/NamesAndTypes.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <base/types.h>
 
 namespace DB
@@ -127,6 +128,9 @@ public:
     virtual void reportBroken() = 0;
 
     virtual size_t getRowCount() const = 0;
+
+    /// The origin the stored data of the part is read with (IMergeTreeDataPart::getBinaryTypeOriginForReading).
+    virtual BinaryTypeOrigin getBinaryTypeOriginForReading() const = 0;
 };
 
 using MergeTreeDataPartInfoForReaderPtr = std::shared_ptr<IMergeTreeDataPartInfoForReader>;

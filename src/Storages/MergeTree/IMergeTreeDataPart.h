@@ -5,6 +5,7 @@
 #include <mutex>
 #include <Core/NamesAndTypes.h>
 #include <Core/UUID.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <DataTypes/Serializations/SerializationInfo.h>
 #include <IO/WriteSettings.h>
 #include <Storages/ColumnSize.h>
@@ -476,6 +477,13 @@ public:
     static void writeInvalidatedSystemColumnsFile(IDisk & disk, const std::filesystem::path & part_dir, const NameSet & columns, const WriteSettings & settings);
     static void writeInvalidatedSystemColumnsFile(IDiskTransaction & transaction, const std::filesystem::path & part_dir, const NameSet & columns, const WriteSettings & settings);
 
+    /// The origin of the part record (Storages/StoredBinaryTypeOrigin.h): set for a part that carries the origin of its data from
+    /// another table (or from before it left its table) in a valid record of its own; nothing for any other part.
+    std::optional<BinaryTypeOrigin> stored_binary_type_origin;
+    /// The origin the stored data of the part is read with: that of its own record if it has one, otherwise the stored origin of its table.
+    /// A projection is read with the origin of its parent part.
+    BinaryTypeOrigin getBinaryTypeOriginForReading() const;
+
     CompressionCodecPtr default_codec;
 
     mutable std::unique_ptr<VersionMetadata> version;
@@ -898,6 +906,10 @@ private:
 
     /// Reads invalidated_system_columns.txt if present.
     void loadInvalidatedSystemColumns();
+
+    /// Reads the part record of the stored binary type origin if present (after the checksums, which it is bound to). A record that does
+    /// not apply to this part (another checksum, a table record) throws CORRUPTED_DATA: the part is not read with a foreign origin.
+    void loadStoredBinaryTypeOrigin();
 
     /// Loads marks index granularity into memory
     virtual void loadIndexGranularity();
