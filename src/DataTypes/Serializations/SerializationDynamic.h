@@ -9,6 +9,7 @@ namespace DB
 {
 
 class SerializationDynamicElement;
+class DataTypeVariant;
 
 class SerializationDynamic final : public ISerialization
 {
@@ -107,13 +108,18 @@ public:
         DeserializeBinaryBulkStatePtr & state,
         SubstreamsCache * cache) const override;
 
+    /// A binary value is a type header with the value. The header is decoded with the origin of the settings (values in memory are
+    /// canonical) and written for their writer mode. Every value is read in a nesting scope (BinaryTypeDecodingContext) that covers its
+    /// header and its whole payload: the overloads without a context use the context that the settings carry (of the value it is nested
+    /// in) or one of their own; the overloads with a context take that of the enclosing value explicitly.
     void serializeBinary(const Field & field, WriteBuffer & ostr, const FormatSettings & settings) const override;
     void deserializeBinary(Field & field, ReadBuffer & istr, const FormatSettings & settings) const override;
+    void deserializeBinary(Field & field, ReadBuffer & istr, const FormatSettings & settings, BinaryTypeDecodingContext & context) const;
 
     void serializeBinary(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const override;
     void serializeBinary(const ColumnDynamic & dynamic_column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const;
     void deserializeBinary(IColumn & column, ReadBuffer & istr, const FormatSettings & settings) const override;
-    void deserializeBinary(ColumnDynamic & dynamic_column, ReadBuffer & istr, const FormatSettings & settings) const;
+    void deserializeBinary(IColumn & column, ReadBuffer & istr, const FormatSettings & settings, BinaryTypeDecodingContext & context) const;
 
     void serializeForHashCalculation(const IColumn & column, size_t row_num, WriteBuffer & ostr) const override;
     static void serializeVariantForHashCalculation(const IColumn & column, const SerializationPtr & serialization, const DataTypePtr & type, size_t row_num, WriteBuffer & ostr);
@@ -150,10 +156,19 @@ public:
 private:
     friend SerializationDynamicElement;
 
+    /// Inserts the rows of data read in the layout of `source_type` into the column (see published_variant_type).
+    static void insertFromVariantLayout(ColumnDynamic & column_dynamic, const ColumnVariant & source, const DataTypeVariant & source_type);
+
     struct DeserializeBinaryBulkStateDynamicStructure : public ISerialization::DeserializeBinaryBulkState
     {
         SerializationVersion structure_version;
+        /// The variants of the data as written: the layout of the streams.
         DataTypePtr variant_type;
+        /// The variants of the Dynamic column the data is read into. A type that its name does not identify (a native decimal named like
+        /// another class, see isTypeIdentifiedByName) is a representable variant of data written with binary type descriptors, but not
+        /// a regular variant in memory: then this type has the other variants only, and the values of such a variant are moved into the
+        /// shared variant while they are read (with the descriptor, in the canonical encoding). Otherwise it is `variant_type`.
+        DataTypePtr published_variant_type;
         size_t num_dynamic_types{};
         ColumnDynamic::StatisticsPtr statistics;
 

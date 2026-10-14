@@ -2,6 +2,7 @@
 
 #include <Core/Defines.h>
 #include <Core/Names.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <base/types.h>
 #include <base/unit.h>
 
@@ -185,6 +186,20 @@ struct FormatSettings
         /// input formats. A default-constructed FormatSettings (internal decode of already-stored data) leaves
         /// it at 0, so stored/background decode is never limited.
         UInt64 max_binary_type_complexity = 0;
+        /// The origin of the binary type headers being read: of the column types when they are binary-encoded, and of the per-value type
+        /// headers inside `Dynamic` and `JSON` data, which are always binary-encoded. `Unknown` refuses the legacy indexes of the
+        /// Decimal512 fork as ambiguous and validates every such header before the data is accepted; `SentioLegacyV0` reads them and
+        /// normalizes them to the canonical encoding. Input formats take it from input_format_binary_type_origin; readers of stored data
+        /// set it from the table's stored origin, never from a format or session setting.
+        BinaryTypeOrigin type_origin = BinaryTypeOrigin::Unknown;
+        /// How the 512-bit types are written in binary type headers: of the column types when they are binary-encoded, and inside
+        /// `Dynamic` and `JSON` data. `SentioLegacyBridge` is only for an explicit offline export (output_format_binary_type_writer_mode).
+        BinaryTypeWriterMode type_writer_mode = BinaryTypeWriterMode::SentioWideV1;
+        /// The nesting context of the value being read (BinaryTypeOrigin.h). Only the reader of one value sets it, on its own copy of the
+        /// settings that it passes to the readers of the values nested in that value. Settings that outlive the value (of formats,
+        /// serializations, deserialization states) never carry it: with nullptr every value starts a context of its own with
+        /// max_binary_type_complexity.
+        BinaryTypeDecodingContext * type_decoding_context = nullptr;
     } binary{};
 
     struct

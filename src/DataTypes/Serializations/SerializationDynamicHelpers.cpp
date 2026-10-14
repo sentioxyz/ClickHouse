@@ -2,6 +2,7 @@
 #include <DataTypes/DataTypeVariant.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
 #include <DataTypes/DataTypesNumber.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Columns/ColumnDynamic.h>
 #include <Columns/ColumnVariant.h>
 #include <Columns/ColumnsNumber.h>
@@ -51,7 +52,7 @@ ColumnPtr createIndexes(
             auto value = shared_variant_column.getDataAt(offsets[i]);
             ReadBufferFromMemory buf(value);
             auto type = decodeDataType(buf);
-            data.push_back(static_cast<IndexesColumn::ValueType>(shared_variant_type_to_index.at(type->getName())));
+            data.push_back(static_cast<IndexesColumn::ValueType>(shared_variant_type_to_index.at(getTypeIdentityKey(type))));
         }
         else
         {
@@ -93,14 +94,15 @@ FlattenedDynamicColumn flattenDynamicColumn(const ColumnDynamic & dynamic_column
         auto value = shared_variant_column.getDataAt(i);
         ReadBufferFromMemory buf(value);
         auto type = decodeDataType(buf);
-        auto type_name = type->getName();
-        auto it = shared_variant_columns.find(type_name);
+        /// Types with the same name but different native classes stay apart (getTypeIdentityKey).
+        auto type_key = getTypeIdentityKey(type);
+        auto it = shared_variant_columns.find(type_key);
         /// If we see this type for the first time, add it to the map and create a column for it.
         if (it == shared_variant_columns.end())
-            it = shared_variant_columns.emplace(type_name, std::make_pair(type->createColumn(), type)).first;
+            it = shared_variant_columns.emplace(type_key, std::make_pair(type->createColumn(), type)).first;
 
         /// Deserialize value into the corresponding column.
-        type->getDefaultSerialization()->deserializeBinary(*shared_variant_columns[type_name].first, buf, format_settings);
+        type->getDefaultSerialization()->deserializeBinary(*it->second.first, buf, format_settings);
     }
 
     /// Append the deserialized shared-variant columns to the flattened list.
@@ -108,9 +110,9 @@ FlattenedDynamicColumn flattenDynamicColumn(const ColumnDynamic & dynamic_column
     flattened_dynamic_column.types.reserve(flattened_dynamic_column.types.size() + shared_variant_columns.size());
     /// Mapping from the type name from shared variant to an index of this type in flattened list.
     std::unordered_map<String, size_t> shared_variant_type_to_index;
-    for (const auto & [type_name, column_with_type] : shared_variant_columns)
+    for (const auto & [type_key, column_with_type] : shared_variant_columns)
     {
-        shared_variant_type_to_index[type_name] = flattened_dynamic_column.columns.size();
+        shared_variant_type_to_index[type_key] = flattened_dynamic_column.columns.size();
         flattened_dynamic_column.columns.push_back(column_with_type.first->getPtr());
         flattened_dynamic_column.types.push_back(column_with_type.second);
     }
@@ -147,10 +149,8 @@ template <typename IndexesColumn>
 void fillDynamicColumn(
     FlattenedDynamicColumn && flattened_column,
     ColumnDynamic & dynamic_column,
-    /// Map (index -> discriminator) for types that will be stored as separate variants.
-    const std::unordered_map<size_t, ColumnVariant::Discriminator> & index_to_discriminator,
-    /// All types with index starting from this should be inserted into shared variant.
-    size_t first_index_for_shared_variant)
+    /// Map (index -> discriminator) for types that will be stored as separate variants; all other types go to the shared variant.
+    const std::unordered_map<size_t, ColumnVariant::Discriminator> & index_to_discriminator)
 {
     const auto & indexes_data = assert_cast<const IndexesColumn &>(*flattened_column.indexes_column).getData();
     dynamic_column.reserve(dynamic_column.size() + indexes_data.size());
@@ -181,9 +181,9 @@ void fillDynamicColumn(
             local_discriminators.push_back(ColumnVariant::NULL_DISCRIMINATOR);
             offsets.emplace_back();
         }
-        else if (index < first_index_for_shared_variant)
+        else if (auto discriminator_it = index_to_discriminator.find(index); discriminator_it != index_to_discriminator.end())
         {
-            auto global_discr = index_to_discriminator.at(index);
+            auto global_discr = discriminator_it->second;
             local_discriminators.push_back(variant_column.localDiscriminatorByGlobal(global_discr));
             /// If we see this type for the first time, replace the corresponding variant column with the data of this type.
             if (flattened_columns_offsets[index] == 0)
@@ -211,39 +211,36 @@ void fillDynamicColumn(
 
 void unflattenDynamicColumn(FlattenedDynamicColumn && flattened_column, ColumnDynamic & dynamic_column)
 {
-    /// Iterate over types and try to add them as new variants into Dynamic column until the limit is reached.
-    size_t first_index_for_shared_variant = flattened_column.types.size();
+    /// Iterate over types and try to add them as new variants into Dynamic column, deciding for every type on its own: a type goes to the
+    /// shared variant if the limit is reached or if it cannot be a regular variant at all (a type that its name does not identify, see
+    /// addNewVariant). Such a type does not send the types after it to the shared variant while the limit allows them as variants.
+    std::vector<bool> is_regular_variant(flattened_column.types.size());
+    for (size_t i = 0; i != flattened_column.types.size(); ++i)
+        is_regular_variant[i] = dynamic_column.addNewVariant(flattened_column.types[i], flattened_column.types[i]->getName());
+
+    /// Map (index -> discriminator) for types that were successfully added as variants. Adding a variant can change the discriminators of
+    /// the others, so they are looked up after all types were added.
+    std::unordered_map<size_t, ColumnVariant::Discriminator> index_to_discriminator;
     for (size_t i = 0; i != flattened_column.types.size(); ++i)
     {
-        auto type_name = flattened_column.types[i]->getName();
-        /// If a type cannot be added as a new variant, it means that the limit is reached
-        /// and all remaining variants should be inserted into shared variant.
-        if (!dynamic_column.addNewVariant(flattened_column.types[i], type_name))
-        {
-            first_index_for_shared_variant = i;
-            break;
-        }
+        if (is_regular_variant[i])
+            index_to_discriminator[i] = *dynamic_column.findVariantDiscriminator(flattened_column.types[i], flattened_column.types[i]->getName());
     }
-
-    /// Map (index -> discriminator) for types that were successfully added as variants.
-    std::unordered_map<size_t, ColumnVariant::Discriminator> index_to_discriminator;
-    for (size_t i = 0; i != first_index_for_shared_variant; ++i)
-        index_to_discriminator[i] = dynamic_column.getVariantInfo().variant_name_to_discriminator.at(flattened_column.types[i]->getName());
 
 
     switch (flattened_column.indexes_type->getTypeId())
     {
         case TypeIndex::UInt8:
-            fillDynamicColumn<ColumnUInt8>(std::move(flattened_column), dynamic_column, index_to_discriminator, first_index_for_shared_variant);
+            fillDynamicColumn<ColumnUInt8>(std::move(flattened_column), dynamic_column, index_to_discriminator);
             break;
         case TypeIndex::UInt16:
-            fillDynamicColumn<ColumnUInt16>(std::move(flattened_column), dynamic_column, index_to_discriminator, first_index_for_shared_variant);
+            fillDynamicColumn<ColumnUInt16>(std::move(flattened_column), dynamic_column, index_to_discriminator);
             break;
         case TypeIndex::UInt32:
-            fillDynamicColumn<ColumnUInt32>(std::move(flattened_column), dynamic_column, index_to_discriminator, first_index_for_shared_variant);
+            fillDynamicColumn<ColumnUInt32>(std::move(flattened_column), dynamic_column, index_to_discriminator);
             break;
         case TypeIndex::UInt64:
-            fillDynamicColumn<ColumnUInt64>(std::move(flattened_column), dynamic_column, index_to_discriminator, first_index_for_shared_variant);
+            fillDynamicColumn<ColumnUInt64>(std::move(flattened_column), dynamic_column, index_to_discriminator);
             break;
         default:
             throw Exception(ErrorCodes::LOGICAL_ERROR, "Unexpected type of indexes in flattened Dynamic column: {}", flattened_column.indexes_type->getName());

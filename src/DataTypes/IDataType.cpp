@@ -328,6 +328,9 @@ void IDataType::setCustomization(DataTypeCustomDescPtr custom_desc_) const
 
     if (custom_desc_->serialization)
         custom_serialization = std::move(custom_desc_->serialization);
+
+    if (custom_desc_->serialization_wrapper)
+        custom_serialization_wrapper = custom_desc_->serialization_wrapper;
 }
 
 MutableSerializationInfoPtr IDataType::createSerializationInfo(const SerializationInfoSettings & settings) const
@@ -355,7 +358,8 @@ SerializationPtr IDataType::getDefaultSerialization() const
     if (custom_serialization)
         return custom_serialization;
 
-    return doGetSerialization(SerializationInfoSettings{});
+    auto serialization = doGetSerialization(SerializationInfoSettings{});
+    return custom_serialization_wrapper ? custom_serialization_wrapper(serialization) : serialization;
 }
 
 SerializationPtr IDataType::wrapSerializationBasedOnKindStack(SerializationPtr serialization, const ISerialization::KindStack & kind_stack, const SerializationInfoSettings & settings) const
@@ -385,7 +389,8 @@ SerializationPtr IDataType::getSerialization(const SerializationInfoSettings & s
     if (custom_serialization)
         return custom_serialization;
 
-    return doGetSerialization(settings);
+    auto serialization = doGetSerialization(settings);
+    return custom_serialization_wrapper ? custom_serialization_wrapper(serialization) : serialization;
 }
 
 // static

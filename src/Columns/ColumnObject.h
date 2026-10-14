@@ -377,8 +377,8 @@ private:
 
     void insertFromSharedDataAndFillRemainingDynamicPaths(const ColumnObject & src_object_column, VectorWithMemoryTracking<std::string_view> && src_dynamic_paths_for_shared_data, size_t start, size_t length);
     void serializePathAndValueIntoArena(Arena & arena, const char *& begin, std::string_view path, std::string_view value, std::string_view & res) const;
-    void serializeDynamicPathsAndSharedDataIntoArena(size_t n, Arena & arena, const char *& begin, std::string_view & res) const;
-    void deserializeDynamicPathsAndSharedDataFromArena(ReadBuffer & in);
+    void serializeDynamicPathsAndSharedDataIntoArena(size_t n, Arena & arena, const char *& begin, std::string_view & res, BinaryTypeWriterMode mode) const;
+    void deserializeDynamicPathsAndSharedDataFromArena(ReadBuffer & in, const BinaryTypeDecoding & decoding);
 
     /// Map path -> column for paths with explicitly specified types.
     /// This set of paths is constant and cannot be changed.

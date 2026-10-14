@@ -30,14 +30,22 @@ using DataTypeCustomNamePtr = std::unique_ptr<const IDataTypeCustomName>;
  */
 struct DataTypeCustomDesc
 {
+    /// Wraps the serialization that the type itself chooses for the settings of each request.
+    using SerializationWrapper = SerializationPtr (*)(const SerializationPtr & nested);
+
     DataTypeCustomNamePtr name;
     SerializationPtr serialization;
+    /// Instead of a fixed serialization: the type keeps choosing its serialization for the settings (for example the version of the
+    /// `String` serialization), and this function wraps it.
+    SerializationWrapper serialization_wrapper = nullptr;
 
     explicit DataTypeCustomDesc(
         DataTypeCustomNamePtr name_,
-        SerializationPtr serialization_ = nullptr)
+        SerializationPtr serialization_ = nullptr,
+        SerializationWrapper serialization_wrapper_ = nullptr)
     : name(std::move(name_))
-    , serialization(std::move(serialization_)) {}
+    , serialization(std::move(serialization_))
+    , serialization_wrapper(serialization_wrapper_) {}
 };
 
 using DataTypeCustomDescPtr = std::unique_ptr<DataTypeCustomDesc>;

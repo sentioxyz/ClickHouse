@@ -6,6 +6,7 @@
 #include <DataTypes/DataTypeVariant.h>
 #include <DataTypes/DataTypeNullable.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/TypeNameIdentity.h>
 
 #include <Columns/ColumnDynamic.h>
 #include <Columns/ColumnNullable.h>
@@ -423,20 +424,21 @@ ColumnPtr ExecutableFunctionDynamicAdaptor::executeImpl(const ColumnsWithTypeAnd
             auto value = shared_variant.getDataAt(offsets[i]);
             ReadBufferFromMemory buf(value);
             auto type = decodeDataType(buf);
-            auto type_name = type->getName();
+            /// Types with the same name but different native classes (a native decimal named like another class) stay apart.
+            auto type_key = getTypeIdentityKey(type);
 
             /// Check if we already allocated selector index for this variant type.
             /// If not, append it to list of variants and remember its index.
-            auto indexes_it = variant_indexes.find(type_name);
+            auto indexes_it = variant_indexes.find(type_key);
             if (indexes_it == variant_indexes.end())
             {
-                indexes_it = variant_indexes.emplace(type_name, variants.size()).first;
+                indexes_it = variant_indexes.emplace(type_key, variants.size()).first;
                 variants.emplace_back(type->createColumn(), type, "");
             }
 
-            auto serializations_it = shared_variants_serializations.find(type_name);
+            auto serializations_it = shared_variants_serializations.find(type_key);
             if (serializations_it == shared_variants_serializations.end())
-                serializations_it = shared_variants_serializations.emplace(type_name, type->getDefaultSerialization()).first;
+                serializations_it = shared_variants_serializations.emplace(type_key, type->getDefaultSerialization()).first;
 
             /// Deserialize value into usual column.
             serializations_it->second->deserializeBinary(*variants[indexes_it->second].column->assumeMutable(), buf, format_settings);

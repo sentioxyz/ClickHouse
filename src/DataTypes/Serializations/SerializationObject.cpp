@@ -14,6 +14,8 @@
 #include <Core/MergeTreeSerializationEnums.h>
 #include <DataTypes/DataTypeObject.h>
 #include <DataTypes/DataTypeArray.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <DataTypes/Serializations/SerializationDynamic.h>
 #include <IO/ReadBufferFromString.h>
 #include <IO/ReadHelpers.h>
 #include <IO/WriteHelpers.h>
@@ -933,7 +935,10 @@ void SerializationObject::serializeBinaryBulkWithMultipleStreams(
     }
 
     settings.path.push_back(Substream::ObjectSharedData);
-    object_state->shared_data_serialization->serializeBinaryBulkWithMultipleStreams(*shared_data, offset, limit, settings, object_state->shared_data_state);
+    /// The values in shared data are binary Dynamic values, canonical as in memory: only an explicit bridge export writes them again.
+    const auto mode = settings.format_settings ? settings.format_settings->binary.type_writer_mode : BinaryTypeWriterMode::SentioWideV1;
+    const auto written_shared_data = recodeObjectSharedDataForWrite(shared_data, mode);
+    object_state->shared_data_serialization->serializeBinaryBulkWithMultipleStreams(*written_shared_data, offset, limit, settings, object_state->shared_data_state);
     if (object_state->recalculate_statistics)
     {
         /// Calculate statistics for paths in shared data.
@@ -1197,16 +1202,27 @@ void SerializationObject::serializeBinary(const IColumn & col, size_t row_num, W
     }
 
     const auto [shared_data_paths, shared_data_values] = column_object.getSharedDataPathsAndValues();
+    /// The values are binary Dynamic values, canonical as in memory: only an explicit bridge export writes them again.
+    String recoded;
     for (size_t i = offset; i != end; ++i)
     {
         writeStringBinary(shared_data_paths->getDataAt(i), ostr);
-        auto value = shared_data_values->getDataAt(i);
+        auto value = recodeBinaryDynamicValueForWrite(shared_data_values->getDataAt(i), settings.binary.type_writer_mode, recoded);
         ostr.write(value.data(), value.size());
     }
 }
 
 void SerializationObject::deserializeBinary(Field & field, ReadBuffer & istr, const FormatSettings & settings) const
 {
+    /// The JSON value is nested in the value whose reader passes its context, or is a value of its own; its scope covers all its paths,
+    /// whose values are nested in it as siblings. The values of dynamic paths take the context explicitly; a typed path whose values can
+    /// hold binary type headers gets settings that carry it.
+    BinaryTypeDecodingContext own_context(settings.binary.max_binary_type_complexity);
+    auto & context = settings.binary.type_decoding_context ? *settings.binary.type_decoding_context : own_context;
+    BinaryValueNestingScope scope(context);
+    const auto & dynamic = assert_cast<const SerializationDynamic &>(*dynamic_serialization);
+    std::optional<FormatSettings> settings_with_context;
+
     Object object;
     size_t number_of_paths = 0;
     readVarUInt(number_of_paths, istr);
@@ -1226,15 +1242,16 @@ void SerializationObject::deserializeBinary(Field & field, ReadBuffer & istr, co
         if (!shouldSkipPath(path))
         {
             if (auto it = typed_paths_serializations.find(path); it != typed_paths_serializations.end())
-                it->second->deserializeBinary(object[path], istr, settings);
+                it->second->deserializeBinary(
+                    object[path], istr, withBinaryTypeDecodingContext(settings, *typed_paths_types.at(path), context, settings_with_context));
             else
-                dynamic_serialization->deserializeBinary(object[path], istr, settings);
+                dynamic.deserializeBinary(object[path], istr, settings, context);
         }
         else
         {
             /// Skip value of this path.
             Field tmp;
-            dynamic_serialization->deserializeBinary(tmp, istr, settings);
+            dynamic.deserializeBinary(tmp, istr, settings, context);
         }
     }
 
@@ -1323,6 +1340,15 @@ void SerializationObject::deserializeBinary(IColumn & col, ReadBuffer & istr, co
     auto [shared_data_paths, shared_data_values] = column_object.getSharedDataPathsAndValues();
     auto & shared_data_offsets = column_object.getSharedDataOffsets();
 
+    /// The JSON value is nested in the value whose reader passes its context, or is a value of its own; its scope covers all its paths,
+    /// whose values are nested in it as siblings. The values of dynamic paths take the context explicitly; a typed path whose values can
+    /// hold binary type headers gets settings that carry it.
+    BinaryTypeDecodingContext own_context(settings.binary.max_binary_type_complexity);
+    auto & context = settings.binary.type_decoding_context ? *settings.binary.type_decoding_context : own_context;
+    BinaryValueNestingScope scope(context);
+    const auto & dynamic = assert_cast<const SerializationDynamic &>(*dynamic_serialization);
+    std::optional<FormatSettings> settings_with_context;
+
     size_t number_of_paths = 0;
     readVarUInt(number_of_paths, istr);
     std::vector<std::pair<String, String>> paths_and_values_for_shared_data;
@@ -1348,7 +1374,8 @@ void SerializationObject::deserializeBinary(IColumn & col, ReadBuffer & istr, co
                     }
                     else
                     {
-                        typed_it->second->deserializeBinary(*typed_column, istr, settings);
+                        typed_it->second->deserializeBinary(
+                            *typed_column, istr, withBinaryTypeDecodingContext(settings, *typed_paths_types.at(path), context, settings_with_context));
                     }
                 }
                 /// Check if we have this path in dynamic paths.
@@ -1361,29 +1388,39 @@ void SerializationObject::deserializeBinary(IColumn & col, ReadBuffer & istr, co
                             throw Exception(ErrorCodes::INCORRECT_DATA, "Found duplicated path during binary deserialization of JSON type: {}. You can enable setting type_json_skip_duplicated_paths to skip duplicated paths during insert", path);
                     }
 
-                    dynamic_serialization->deserializeBinary(*dynamic_it->second, istr, settings);
+                    dynamic.deserializeBinary(*dynamic_it->second, istr, settings, context);
                 }
                 /// Try to add a new dynamic paths.
                 else if (auto * dynamic_column = column_object.tryToAddNewDynamicPath(path))
                 {
-                    dynamic_serialization->deserializeBinary(*dynamic_column, istr, settings);
+                    dynamic.deserializeBinary(*dynamic_column, istr, settings, context);
                 }
                 /// Otherwise this path should go to shared data.
                 else
                 {
                     String value;
                     Field field;
-                    readParsedValueIntoString(value, istr, [&](ReadBuffer & buf){ dynamic_serialization->deserializeBinary(field, buf, settings); });
+                    /// Reading the value as a field validates all its binary type headers with the origin, nested in this JSON value.
+                    readParsedValueIntoString(value, istr, [&](ReadBuffer & buf){ dynamic.deserializeBinary(field, buf, settings, context); });
                     /// Don't write nulls into shared data.
                     if (!field.isNull())
+                    {
+                        /// Memory holds the canonical encoding: legacy headers of the value are written again with the descriptors. The
+                        /// value was already validated with the limits above, so it is decoded again without them.
+                        if (settings.binary.type_origin == BinaryTypeOrigin::SentioLegacyV0)
+                        {
+                            String canonical;
+                            value = String(acceptBinaryDynamicValue(value, getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::SentioLegacyV0), canonical));
+                        }
                         paths_and_values_for_shared_data.emplace_back(std::move(path), std::move(value));
+                    }
                 }
             }
             else
             {
                 /// Skip value of this path.
                 Field tmp;
-                dynamic_serialization->deserializeBinary(tmp, istr, settings);
+                dynamic.deserializeBinary(tmp, istr, settings, context);
             }
         }
 

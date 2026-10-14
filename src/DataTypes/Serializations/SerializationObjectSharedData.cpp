@@ -6,6 +6,7 @@
 #include <DataTypes/Serializations/getSubcolumnsDeserializationOrder.h>
 #include <DataTypes/DataTypeObject.h>
 #include <DataTypes/DataTypesNumber.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <Columns/ColumnMap.h>
 #include <Columns/ColumnArray.h>
 #include <Columns/ColumnTuple.h>
@@ -976,6 +977,8 @@ std::shared_ptr<SerializationObjectSharedData::PathsDataGranules> SerializationO
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot read paths from object shared data with ADVANCED serialization version because seek_stream_to_mark_callback is not initialized");
 
     DeserializeBinaryBulkSettings deserialization_settings;
+    /// The paths are Dynamic columns: they are read with the origin of the data (see SentioWideRecode.h).
+    deserialization_settings.format_settings = settings.format_settings;
     deserialization_settings.object_and_dynamic_read_statistics = false;
     deserialization_settings.position_independent_encoding = true;
     deserialization_settings.use_specialized_prefixes_and_suffixes_substreams = true;
@@ -1103,21 +1106,47 @@ void SerializationObjectSharedData::deserializeBinaryBulkWithMultipleStreams(
     {
         /// Deserialize the shared data map and cache it for path subcolumn reads (SerializationObjectSharedDataPath).
         size_t prev_size = column.size();
-        serialization_map->deserializeBinaryBulkWithMultipleStreams(column, limit, settings, shared_data_state->map_state, cache);
-        addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, column.getPtr(), column.size() - prev_size);
+        if (isProvenCanonicalStoredData(settings.format_settings))
+        {
+            serialization_map->deserializeBinaryBulkWithMultipleStreams(column, limit, settings, shared_data_state->map_state, cache);
+            addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, column.getPtr(), column.size() - prev_size);
+        }
+        /// Otherwise the values are binary Dynamic values of an undeclared, declared or legacy origin: they are accepted (validated, and
+        /// normalized for the legacy origin) before anything holds or caches them. The path subcolumn readers cache only accepted maps.
+        else if (!insertDataFromSubstreamsCacheIfAny(cache, settings, column))
+        {
+            auto map_column = column.cloneEmpty();
+            serialization_map->deserializeBinaryBulkWithMultipleStreams(*map_column, limit, settings, shared_data_state->map_state, nullptr);
+            acceptObjectSharedDataRows(*map_column, 0, getSettingsForAcceptingBinaryDynamicValues(settings.format_settings));
+            column.insertRangeFrom(*map_column, 0, map_column->size());
+            const size_t num_read_rows = map_column->size();
+            addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, std::move(map_column), num_read_rows);
+        }
     }
     else if (serialization_version.value == SerializationVersion::MAP_WITH_BUCKETS)
     {
+        const bool accept_values = !isProvenCanonicalStoredData(settings.format_settings);
         Columns shared_data_buckets(buckets);
         for (size_t bucket = 0; bucket != buckets; ++bucket)
         {
             settings.path.push_back(Substream::Bucket);
             settings.path.back().bucket = bucket;
-            /// Deserialize the bucket's map and cache it for a path subcolumn read of the same bucket.
-            auto mutable_bucket_column = column.cloneEmpty();
-            serialization_map->deserializeBinaryBulkWithMultipleStreams(*mutable_bucket_column, limit, settings, shared_data_state->bucket_map_states[bucket], cache);
-            shared_data_buckets[bucket] = std::move(mutable_bucket_column);
-            addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, shared_data_buckets[bucket], shared_data_buckets[bucket]->size());
+            /// Deserialize the bucket's map and cache it for a path subcolumn read of the same bucket. Values that are not proven
+            /// canonical are accepted (see above) before the bucket is cached.
+            if (auto cached = accept_values ? getColumnWithNumReadRowsFromSubstreamsCache(cache, settings.path) : std::nullopt)
+            {
+                shared_data_buckets[bucket] = cached->first->cut(cached->first->size() - cached->second, cached->second);
+            }
+            else
+            {
+                auto mutable_bucket_column = column.cloneEmpty();
+                serialization_map->deserializeBinaryBulkWithMultipleStreams(
+                    *mutable_bucket_column, limit, settings, shared_data_state->bucket_map_states[bucket], accept_values ? nullptr : cache);
+                if (accept_values)
+                    acceptObjectSharedDataRows(*mutable_bucket_column, 0, getSettingsForAcceptingBinaryDynamicValues(settings.format_settings));
+                shared_data_buckets[bucket] = std::move(mutable_bucket_column);
+                addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, shared_data_buckets[bucket], shared_data_buckets[bucket]->size());
+            }
             settings.path.pop_back();
         }
 
@@ -1181,6 +1210,8 @@ void SerializationObjectSharedData::deserializeBinaryBulkWithMultipleStreams(
                     throw Exception(ErrorCodes::LOGICAL_ERROR, "Got empty stream for object shared data data");
 
                 DeserializeBinaryBulkSettings deserialization_settings;
+                /// The paths are Dynamic columns: they are read with the origin of the data (see SentioWideRecode.h).
+                deserialization_settings.format_settings = settings.format_settings;
                 deserialization_settings.object_and_dynamic_read_statistics = false;
                 deserialization_settings.position_independent_encoding = true;
                 deserialization_settings.use_specialized_prefixes_and_suffixes_substreams = true;
@@ -1375,6 +1406,11 @@ void SerializationObjectSharedData::deserializeBinaryBulkWithMultipleStreams(
 
             settings.path.pop_back();
         }
+
+        /// The values of the shared data copy are binary Dynamic values: unless they are proven canonical, they are accepted (validated,
+        /// and normalized for the legacy origin) before they are cached.
+        if (!isProvenCanonicalStoredData(settings.format_settings))
+            acceptObjectSharedDataRows(column, prev_size, getSettingsForAcceptingBinaryDynamicValues(settings.format_settings));
 
         addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, column.getPtr(), column.size() - prev_size);
     }

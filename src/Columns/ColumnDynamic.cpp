@@ -8,6 +8,9 @@
 #include <DataTypes/DataTypeVariant.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
 #include <DataTypes/FieldToDataType.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <DataTypes/Serializations/SerializationSharedVariant.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <DataTypes/Serializations/SerializationString.h>
 #include <Formats/FormatSettings.h>
 #include <IO/Operators.h>
@@ -67,9 +70,14 @@ const FormatSettings & getFormatSettings()
 /// Shared variant will contain String values but we cannot use usual String type
 /// because we can have regular variant with type String.
 /// To solve it, we use String type with custom name for shared variant.
+/// Its serialization wraps the `String` one chosen for the settings, to accept the binary type headers of the values where they are read
+/// and to write them for the writer mode (see SerializationSharedVariant).
 const DataTypePtr & ColumnDynamic::getSharedVariantDataType()
 {
-    static thread_local DataTypePtr type = DataTypeFactory::instance().getCustom("String", std::make_unique<DataTypeCustomDesc>(std::make_unique<DataTypeCustomFixedName>(getSharedVariantTypeName())));
+    static thread_local DataTypePtr type = DataTypeFactory::instance().getCustom(
+        "String",
+        std::make_unique<DataTypeCustomDesc>(
+            std::make_unique<DataTypeCustomFixedName>(getSharedVariantTypeName()), nullptr, &SerializationSharedVariant::create));
     return type;
 }
 
@@ -130,6 +138,12 @@ void ColumnDynamic::createVariantInfo(const DataTypePtr & variant_type)
     variant_info.variant_name_to_discriminator.reserve(variants.size());
     for (ColumnVariant::Discriminator discr = 0; discr != variants.size(); ++discr)
     {
+        /// Regular variants are found by their names, so every one of them must be identified by its name (see addNewVariant).
+        if (!isTypeIdentifiedByName(*variants[discr]))
+            throw Exception(
+                ErrorCodes::LOGICAL_ERROR,
+                "Type {} cannot be a regular variant of a Dynamic column: its name does not identify it",
+                variants[discr]->getName());
         const auto & variant_name = variant_info.variant_names.emplace_back(variants[discr]->getName());
         variant_info.variant_name_to_discriminator[variant_name] = discr;
     }
@@ -140,6 +154,10 @@ void ColumnDynamic::createVariantInfo(const DataTypePtr & variant_type)
 
 bool ColumnDynamic::addNewVariant(const DataTypePtr & new_variant, const String & new_variant_name)
 {
+    /// A type that its name does not identify stays in the shared variant, even if a regular variant has its name.
+    if (!isTypeIdentifiedByName(*new_variant))
+        return false;
+
     /// Check if we already have such variant.
     if (variant_info.variant_name_to_discriminator.contains(new_variant_name))
         return true;
@@ -160,6 +178,33 @@ bool ColumnDynamic::addNewVariant(const DataTypePtr & new_variant, const String 
     auto new_variant_type = std::make_shared<DataTypeVariant>(all_variants);
     updateVariantInfoAndExpandVariantColumn(new_variant_type);
     return true;
+}
+
+std::optional<ColumnVariant::Discriminator> ColumnDynamic::findVariantDiscriminator(const DataTypePtr & type, const String & type_name) const
+{
+    if (!isTypeIdentifiedByName(*type))
+        return std::nullopt;
+    auto it = variant_info.variant_name_to_discriminator.find(type_name);
+    if (it == variant_info.variant_name_to_discriminator.end())
+        return std::nullopt;
+    return it->second;
+}
+
+const SerializationPtr & ColumnDynamic::getVariantSerialization(const DataTypePtr & variant_type, const String & variant_name)
+{
+    if (serialization_cache.size() == SERIALIZATION_CACHE_MAX_SIZE)
+        serialization_cache.clear();
+
+    /// A type that its name does not identify is keyed by its binary encoding (getTypeIdentityKey).
+    String encoding_key;
+    if (!isTypeIdentifiedByName(*variant_type))
+        encoding_key = getTypeIdentityKey(variant_type);
+    const String & key = encoding_key.empty() ? variant_name : encoding_key;
+
+    if (auto it = serialization_cache.find(key); it != serialization_cache.end())
+        return it->second;
+
+    return serialization_cache.emplace(key, variant_type->getDefaultSerialization()).first->second;
 }
 
 void extendVariantColumn(
@@ -401,8 +446,8 @@ void ColumnDynamic::doInsertFrom(const IColumn & src_, size_t n)
         auto type = decodeDataType(buf);
         auto type_name = type->getName();
         /// Check if we have this variant and deserialize value into variant from shared variant data.
-        if (auto it = variant_info.variant_name_to_discriminator.find(type_name); it != variant_info.variant_name_to_discriminator.end())
-            variant_col.deserializeBinaryIntoVariant(it->second, getVariantSerialization(type, type_name), buf, getFormatSettings());
+        if (auto discr = findVariantDiscriminator(type, type_name))
+            variant_col.deserializeBinaryIntoVariant(*discr, getVariantSerialization(type, type_name), buf, getFormatSettings());
         /// Try to add a new variant if there are available slots.
         else if (addNewVariant(type, type_name))
             variant_col.deserializeBinaryIntoVariant(variant_info.variant_name_to_discriminator[type_name], getVariantSerialization(type, type_name), buf, getFormatSettings());
@@ -508,9 +553,9 @@ void ColumnDynamic::doInsertRangeFrom(const IColumn & src_, size_t start, size_t
                 auto type_name = type->getName();
                 /// Check if we have variant with this type. In this case we should extract
                 /// the value from src shared variant and insert it into this variant.
-                if (auto it = variant_info.variant_name_to_discriminator.find(type_name); it != variant_info.variant_name_to_discriminator.end())
+                if (auto discr = findVariantDiscriminator(type, type_name))
                 {
-                    auto local_discr = variant_col.localDiscriminatorByGlobal(it->second);
+                    auto local_discr = variant_col.localDiscriminatorByGlobal(*discr);
                     auto & variant = variant_col.getVariantByLocalDiscriminator(local_discr);
                     getVariantSerialization(type, type_name)->deserializeBinary(variant, buf, getFormatSettings());
                     /// Local discriminators were already filled in ColumnVariant::insertRangeFrom and this row should contain
@@ -635,9 +680,9 @@ void ColumnDynamic::doInsertRangeFrom(const IColumn & src_, size_t start, size_t
                 auto type_name = type->getName();
                 /// Check if we have variant with this type. In this case we should extract
                 /// the value from src shared variant and insert it into this variant.
-                if (auto it = variant_info.variant_name_to_discriminator.find(type_name); it != variant_info.variant_name_to_discriminator.end())
+                if (auto discr = findVariantDiscriminator(type, type_name))
                 {
-                    auto local_discr = variant_col.localDiscriminatorByGlobal(it->second);
+                    auto local_discr = variant_col.localDiscriminatorByGlobal(*discr);
                     getVariantSerialization(type, type_name)->deserializeBinary(*variant_columns[local_discr], buf, getFormatSettings());
                     local_discriminators.push_back(local_discr);
                     offsets.push_back(variant_columns[local_discr]->size() - 1);
@@ -712,13 +757,13 @@ void ColumnDynamic::doInsertManyFrom(const IColumn & src_, size_t position, size
         auto type = decodeDataType(buf);
         auto type_name = type->getName();
         /// Check if we have this variant and deserialize value into variant from shared variant data.
-        if (auto it = variant_info.variant_name_to_discriminator.find(type_name); it != variant_info.variant_name_to_discriminator.end())
+        if (auto discr = findVariantDiscriminator(type, type_name))
         {
             /// Deserialize value into temporary column and use it in insertManyIntoVariantFrom.
             auto tmp_column = type->createColumn();
             tmp_column->reserve(1);
             getVariantSerialization(type, type_name)->deserializeBinary(*tmp_column, buf, getFormatSettings());
-            variant_col.insertManyIntoVariantFrom(it->second, *tmp_column, 0, length);
+            variant_col.insertManyIntoVariantFrom(*discr, *tmp_column, 0, length);
         }
         /// Try to add a new variant if there are available slots.
         else if (addNewVariant(type, type_name))
@@ -799,7 +844,7 @@ void ColumnDynamic::serializeValueIntoSharedVariant(
     shared_variant.getOffsets().push_back(chars.size());
 }
 
-std::string_view ColumnDynamic::serializeValueIntoArena(size_t n, Arena & arena, const char *& begin, const IColumn::SerializationSettings *) const
+std::string_view ColumnDynamic::serializeValueIntoArena(size_t n, Arena & arena, const char *& begin, const IColumn::SerializationSettings * settings) const
 {
     /// We cannot use Variant serialization here as it serializes discriminator + value,
     /// but Dynamic doesn't have fixed mapping discriminator <-> variant type
@@ -815,19 +860,23 @@ std::string_view ColumnDynamic::serializeValueIntoArena(size_t n, Arena & arena,
         return {pos, sizeof(UInt8)};
     }
 
+    /// The binary type headers are written for the writer mode of the settings (canonical by default).
+    const auto mode = settings ? settings->binary_type_writer_mode : BinaryTypeWriterMode::SentioWideV1;
     WriteBufferFromOwnString buf;
+    String recoded;
     std::string_view type_and_value;
-    /// If we have value from shared variant, it's already stored in the desired format.
+    /// If we have value from shared variant, it's already stored in the desired format (canonical, as in memory).
     if (discr == getSharedVariantDiscriminator())
     {
-        type_and_value = getSharedVariant().getDataAt(variant_col.offsetAt(n));
+        type_and_value = recodeBinaryDynamicValueForWrite(getSharedVariant().getDataAt(variant_col.offsetAt(n)), mode, recoded);
     }
     /// For regular variants serialize its type and value in binary format.
     else
     {
         const auto & variant_type = assert_cast<const DataTypeVariant &>(*variant_info.variant_type).getVariant(discr);
-        encodeDataType(variant_type, buf);
-        variant_type->getDefaultSerialization()->serializeBinary(variant_col.getVariantByGlobalDiscriminator(discr), variant_col.offsetAt(n), buf, getFormatSettings());
+        encodeDataType(variant_type, buf, mode);
+        variant_type->getDefaultSerialization()->serializeBinary(
+            variant_col.getVariantByGlobalDiscriminator(discr), variant_col.offsetAt(n), buf, getFormatSettingsForBinaryTypeWriterMode(mode));
         type_and_value = buf.str();
     }
 
@@ -839,7 +888,7 @@ std::string_view ColumnDynamic::serializeValueIntoArena(size_t n, Arena & arena,
     return {pos, sizeof(UInt8) + sizeof(size_t) + type_and_value.size()};
 }
 
-void ColumnDynamic::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings *)
+void ColumnDynamic::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings * settings)
 {
     auto & variant_col = getVariantColumn();
     UInt8 null_bit = 0;
@@ -859,30 +908,50 @@ void ColumnDynamic::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn
     std::string_view type_and_value(in.position(), type_and_value_size);
     in.ignore(type_and_value_size);
 
+    /// The binary type headers are read with the origin of the settings (Unknown by default, which validates them; values in memory are
+    /// canonical), and the value with the same origin, so that its nested headers end up canonical in memory as well. If the settings carry
+    /// the nesting context of an enclosing value, this value is nested in it: its scope covers the header and the whole payload, and the
+    /// header has the type complexity limit of the context. Without one, decoding of values stored in the column is not limited by
+    /// input_format_binary_max_type_complexity: it can happen during background operations where we don't want to throw.
+    const auto origin = settings ? settings->binary_type_origin : BinaryTypeOrigin::Unknown;
+    auto * context = settings ? settings->binary_type_decoding_context : nullptr;
+    std::optional<BinaryValueNestingScope> scope;
+    if (context)
+        scope.emplace(*context);
+    const FormatSettings * value_settings = &getFormatSettingsForBinaryTypeOrigin(origin);
+    std::optional<FormatSettings> value_settings_with_context;
     ReadBufferFromMemory buf(type_and_value);
-    /// Decoding of values stored in the column is not limited by input_format_binary_max_type_complexity:
-    /// it can happen during background operations where we don't want to throw.
-    auto variant_type = decodeDataType(buf);
+    auto variant_type = decodeDataType(buf, origin, context ? context->max_complexity : 0);
+    if (context)
+        value_settings = &withBinaryTypeDecodingContext(*value_settings, *variant_type, *context, value_settings_with_context);
+
     auto variant_name = variant_type->getName();
     /// If we already have such variant, just deserialize it into corresponding variant column.
-    auto it = variant_info.variant_name_to_discriminator.find(variant_name);
-    if (it != variant_info.variant_name_to_discriminator.end())
+    if (auto discr = findVariantDiscriminator(variant_type, variant_name))
     {
-        variant_col.deserializeBinaryIntoVariant(it->second, getVariantSerialization(variant_type, variant_name), buf, getFormatSettings());
+        variant_col.deserializeBinaryIntoVariant(*discr, getVariantSerialization(variant_type, variant_name), buf, *value_settings);
     }
     /// If we don't have such variant, try to add it.
     else if (likely(addNewVariant(variant_type)))
     {
         auto discr = variant_info.variant_name_to_discriminator[variant_name];
-        variant_col.deserializeBinaryIntoVariant(discr, getVariantSerialization(variant_type, variant_name), buf, getFormatSettings());
+        variant_col.deserializeBinaryIntoVariant(discr, getVariantSerialization(variant_type, variant_name), buf, *value_settings);
     }
-    /// Otherwise insert this value into shared variant.
-    else
+    /// Otherwise insert this value into shared variant, in the canonical encoding. A value without nested headers keeps its bytes unless
+    /// its header has to be normalized; any other value is read like a regular variant (validating its nested headers with the origin,
+    /// nested in this value) and written there again.
+    else if (origin != BinaryTypeOrigin::SentioLegacyV0 && !valuesMayHaveBinaryTypeHeaders(*variant_type))
     {
         auto & shared_variant = getSharedVariant();
         shared_variant.insertData(type_and_value.data(), type_and_value.size());
         variant_col.getLocalDiscriminators().push_back(variant_col.localDiscriminatorByGlobal(getSharedVariantDiscriminator()));
         variant_col.getOffsets().push_back(shared_variant.size() - 1);
+    }
+    else
+    {
+        auto tmp_variant_column = variant_type->createColumn();
+        getVariantSerialization(variant_type, variant_name)->deserializeBinary(*tmp_variant_column, buf, *value_settings);
+        insertValueIntoSharedVariant(*tmp_variant_column, variant_type, variant_name, 0);
     }
 }
 
@@ -933,6 +1002,24 @@ void ColumnDynamic::updateHashWithValueRange(size_t begin, size_t end, SipHash &
     variant_column_ptr->updateHashWithValueRange(begin, end, hash);
 }
 
+namespace
+{
+
+/// Orders the types of two values: by name, and two different types with the same name (a native decimal named like another class, see
+/// isTypeIdentifiedByName) by their binary encoding. Returns 0 only for equal types, whose values can then be compared with each other.
+int compareValueTypes(const DataTypePtr & left_type, const String & left_name, const DataTypePtr & right_type, const String & right_name)
+{
+    if (left_name != right_name)
+        return left_name < right_name ? -1 : 1;
+    if (left_type->equals(*right_type))
+        return 0;
+    const auto left_encoding = encodeDataType(left_type);
+    const auto right_encoding = encodeDataType(right_type);
+    return left_encoding < right_encoding ? -1 : 1;
+}
+
+}
+
 int ColumnDynamic::compareSerializedValues(std::string_view lhs, std::string_view rhs, int nan_direction_hint)
 {
     /// Both values are serialized as [binary encoded type][value], with NULL encoded as the
@@ -959,11 +1046,11 @@ int ColumnDynamic::compareSerializedValues(std::string_view lhs, std::string_vie
     if (right_is_null)
         return -nan_direction_hint;
 
-    /// If rows have different types, we compare type names.
+    /// If rows have different types, we compare type names (and the types, which can differ under the same name).
     auto left_data_type_name = left_data_type->getName();
     auto right_data_type_name = right_data_type->getName();
-    if (left_data_type_name != right_data_type_name)
-        return left_data_type_name < right_data_type_name ? -1 : 1;
+    if (int type_order = compareValueTypes(left_data_type, left_data_type_name, right_data_type, right_data_type_name))
+        return type_order;
 
     /// If rows have the same type, we compare actual values by deserializing both into a single
     /// temporary column of the concrete type.
@@ -1014,9 +1101,11 @@ int ColumnDynamic::doCompareAt(size_t n, size_t m, const IColumn & rhs, int nan_
         auto left_data_type = decodeDataType(buf_left);
         auto left_data_type_name = left_data_type->getName();
 
-        /// If rows have different types, we compare type names.
-        if (left_data_type_name != right_dynamic.variant_info.variant_names[right_discr])
-            return left_data_type_name < right_dynamic.variant_info.variant_names[right_discr] ? -1 : 1;
+        /// If rows have different types, we compare type names (and the types, which can differ under the same name).
+        const auto & right_variant_type = assert_cast<const DataTypeVariant &>(*right_dynamic.variant_info.variant_type).getVariant(right_discr);
+        if (int type_order = compareValueTypes(
+                left_data_type, left_data_type_name, right_variant_type, right_dynamic.variant_info.variant_names[right_discr]))
+            return type_order;
 
         /// If rows have the same type, we compare actual values.
         /// We have left value serialized in binary format, we need to
@@ -1035,9 +1124,10 @@ int ColumnDynamic::doCompareAt(size_t n, size_t m, const IColumn & rhs, int nan_
         auto right_data_type = decodeDataType(buf_right);
         auto right_data_type_name = right_data_type->getName();
 
-        /// If rows have different types, we compare type names.
-        if (variant_info.variant_names[left_discr] != right_data_type_name)
-            return variant_info.variant_names[left_discr] < right_data_type_name ? -1 : 1;
+        /// If rows have different types, we compare type names (and the types, which can differ under the same name).
+        const auto & left_variant_type = assert_cast<const DataTypeVariant &>(*variant_info.variant_type).getVariant(left_discr);
+        if (int type_order = compareValueTypes(left_variant_type, variant_info.variant_names[left_discr], right_data_type, right_data_type_name))
+            return type_order;
 
         /// If rows have the same type, we compare actual values.
         /// We have right value serialized in binary format, we need to

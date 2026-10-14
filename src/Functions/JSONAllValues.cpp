@@ -6,6 +6,7 @@
 #include <DataTypes/DataTypeString.h>
 #include <DataTypes/DataTypeObject.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <DataTypes/Serializations/SerializationDynamic.h>
 #include <Columns/ColumnObject.h>
 #include <Columns/ColumnString.h>
@@ -219,9 +220,10 @@ private:
         else
         {
             auto type = decodeDataType(buf);
-            auto type_name = type->getName();
-            const auto & serialization = get_serialization_from_cache(type_name, *type);
-            const auto & temp_column = get_column_from_cache(type_name, *type);
+            /// Types with the same name but different native classes (a native decimal named like another class) stay apart.
+            auto type_key = getTypeIdentityKey(type);
+            const auto & serialization = get_serialization_from_cache(type_key, *type);
+            const auto & temp_column = get_column_from_cache(type_key, *type);
             serialize(*type, *serialization, *temp_column);
         }
     }

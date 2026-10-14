@@ -975,6 +975,22 @@ DataTypePtr decodeDataType(ReadBuffer & buf, BinaryTypeOrigin origin, size_t max
     return decodeDataTypeImpl(buf, complexity, max_complexity, origin);
 }
 
+BinaryValueNestingScope::BinaryValueNestingScope(BinaryTypeDecodingContext & context_)
+    : context(context_)
+{
+    if (context.max_complexity > 0 && context.depth >= context.max_complexity)
+        throw Exception(
+            ErrorCodes::INCORRECT_DATA,
+            "Binary values are nested too deeply: more than {} levels (adjust input_format_binary_max_type_complexity)",
+            context.max_complexity);
+    ++context.depth;
+}
+
+BinaryValueNestingScope::~BinaryValueNestingScope()
+{
+    --context.depth;
+}
+
 size_t getBinaryTypeDecodingComplexityLimit(const ContextPtr & context)
 {
     return context->getSettingsRef()[Setting::input_format_binary_max_type_complexity];

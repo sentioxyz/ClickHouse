@@ -1,6 +1,8 @@
 #include <DataTypes/DataTypesBinaryEncoding.h>
 #include <DataTypes/DataTypesCache.h>
 #include <DataTypes/DataTypeDynamic.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Columns/ColumnObject.h>
 #include <Columns/ColumnCompressed.h>
 #include <Columns/ColumnVariant.h>
@@ -1102,12 +1104,16 @@ std::string_view ColumnObject::serializeValueIntoArena(size_t n, Arena & arena, 
     }
 
     /// Second, serialize paths and values in binary format from dynamic paths and shared data in sorted by path order.
-    serializeDynamicPathsAndSharedDataIntoArena(n, arena, begin, res);
+    serializeDynamicPathsAndSharedDataIntoArena(n, arena, begin, res, settings ? settings->binary_type_writer_mode : BinaryTypeWriterMode::SentioWideV1);
     return res;
 }
 
-void ColumnObject::serializeDynamicPathsAndSharedDataIntoArena(size_t n, Arena & arena, const char *& begin, std::string_view & res) const
+void ColumnObject::serializeDynamicPathsAndSharedDataIntoArena(size_t n, Arena & arena, const char *& begin, std::string_view & res, BinaryTypeWriterMode mode) const
 {
+    /// The binary type headers of the values are written for the writer mode (canonical by default, as in memory).
+    const auto & value_settings = getFormatSettingsForBinaryTypeWriterMode(mode);
+    String recoded;
+
     /// Calculate total number of paths to serialize and write it.
     const auto & shared_data_offsets = getSharedDataOffsets();
     size_t offset = shared_data_offsets[static_cast<ssize_t>(n) - 1];
@@ -1134,12 +1140,13 @@ void ColumnObject::serializeDynamicPathsAndSharedDataIntoArena(size_t n, Arena &
             if (!dynamic_column->isNullAt(n))
             {
                 WriteBufferFromOwnString buf;
-                getDynamicSerialization()->serializeBinary(*dynamic_column, n, buf, getFormatSettings());
+                getDynamicSerialization()->serializeBinary(*dynamic_column, n, buf, value_settings);
                 serializePathAndValueIntoArena(arena, begin, std::string_view(*dynamic_paths_it), buf.str(), res);
             }
             ++dynamic_paths_it;
         }
-        serializePathAndValueIntoArena(arena, begin, std::string_view(path), shared_data_values->getDataAt(i), res);
+        serializePathAndValueIntoArena(
+            arena, begin, std::string_view(path), recodeBinaryDynamicValueForWrite(shared_data_values->getDataAt(i), mode, recoded), res);
     }
 
     /// Serialize all remaining paths in dynamic paths.
@@ -1149,7 +1156,7 @@ void ColumnObject::serializeDynamicPathsAndSharedDataIntoArena(size_t n, Arena &
         if (!dynamic_column->isNullAt(n))
         {
             WriteBufferFromOwnString buf;
-            getDynamicSerialization()->serializeBinary(*dynamic_column, n, buf, getFormatSettings());
+            getDynamicSerialization()->serializeBinary(*dynamic_column, n, buf, value_settings);
             serializePathAndValueIntoArena(arena, begin, std::string_view(*dynamic_paths_it), buf.str(), res);
         }
     }
@@ -1169,16 +1176,29 @@ void ColumnObject::serializePathAndValueIntoArena(DB::Arena & arena, const char 
 
 void ColumnObject::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings * settings)
 {
+    /// If the settings carry the nesting context of an enclosing value, this JSON value is nested in it and the values of its paths are
+    /// nested in this value as siblings.
+    auto * context = settings ? settings->binary_type_decoding_context : nullptr;
+    std::optional<BinaryValueNestingScope> scope;
+    if (context)
+        scope.emplace(*context);
+
     /// First deserialize typed paths. They come first.
     for (auto path : sorted_typed_paths)
         typed_paths.find(path)->second->deserializeAndInsertFromArena(in, settings);
 
     /// Second deserialize all other paths and values and insert them into dynamic paths or shared data.
-    deserializeDynamicPathsAndSharedDataFromArena(in);
+    deserializeDynamicPathsAndSharedDataFromArena(
+        in, BinaryTypeDecoding{.origin = settings ? settings->binary_type_origin : BinaryTypeOrigin::Unknown, .context = context});
 }
 
-void ColumnObject::deserializeDynamicPathsAndSharedDataFromArena(ReadBuffer & in)
+void ColumnObject::deserializeDynamicPathsAndSharedDataFromArena(ReadBuffer & in, const BinaryTypeDecoding & decoding)
 {
+    /// The values are read with the origin (which validates their binary type headers and keeps memory canonical), nested in the value of
+    /// the context if there is one.
+    std::optional<FormatSettings> value_settings_with_context;
+    const auto & value_settings = getFormatSettingsForBinaryTypeDecoding(decoding, value_settings_with_context);
+    String canonical;
     size_t current_size = size();
     size_t num_paths = 0;
     readBinaryLittleEndian<size_t>(num_paths, in);
@@ -1205,12 +1225,12 @@ void ColumnObject::deserializeDynamicPathsAndSharedDataFromArena(ReadBuffer & in
         /// Check if we have this path in dynamic paths.
         if (auto dynamic_it = dynamic_paths.find(path); dynamic_it != dynamic_paths.end())
         {
-            getDynamicSerialization()->deserializeBinary(*dynamic_it->second, in, getFormatSettings());
+            getDynamicSerialization()->deserializeBinary(*dynamic_it->second, in, value_settings);
         }
         /// Try to add a new dynamic path.
         else if (auto * dynamic_path_column = tryToAddNewDynamicPath(path))
         {
-            getDynamicSerialization()->deserializeBinary(*dynamic_path_column, in, getFormatSettings());
+            getDynamicSerialization()->deserializeBinary(*dynamic_path_column, in, value_settings);
         }
         /// Limit on dynamic paths is reached, add this path to shared data.
         /// Serialized paths are sorted, so we can insert right away.
@@ -1224,8 +1244,9 @@ void ColumnObject::deserializeDynamicPathsAndSharedDataFromArena(ReadBuffer & in
                     in.available());
             std::string_view value(in.position(), value_size);
             in.ignore(value_size);
+            auto accepted = acceptBinaryDynamicValue(value, value_settings, canonical);
             shared_data_paths->insertData(path.data(), path.size());
-            shared_data_values->insertData(value.data(), value.size());
+            shared_data_values->insertData(accepted.data(), accepted.size());
         }
     }
 
@@ -1309,7 +1330,10 @@ void ColumnObject::updateHashWithValue(size_t n, SipHash & hash) const
         auto type_name = value_type->getName();
         hash.update(type_name);
         auto tmp_column = value_type->createColumn();
-        getDataTypesCache().getSerialization(type_name)->deserializeBinary(*tmp_column, buf, getFormatSettings());
+        /// A type that its name does not identify (a native decimal named like another class) must not get the serialization cached
+        /// for its name.
+        auto serialization = isTypeIdentifiedByName(*value_type) ? getDataTypesCache().getSerialization(type_name) : value_type->getDefaultSerialization();
+        serialization->deserializeBinary(*tmp_column, buf, getFormatSettings());
         tmp_column->updateHashWithValue(0, hash);
     }
 

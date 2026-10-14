@@ -347,6 +347,8 @@ protected:
     /// This is mutable to allow setting custom name and serialization on `const IDataType` post construction.
     mutable DataTypeCustomNamePtr custom_name;
     mutable SerializationPtr custom_serialization;
+    /// See DataTypeCustomDesc::serialization_wrapper.
+    mutable SerializationPtr (*custom_serialization_wrapper)(const SerializationPtr &) = nullptr;
 
 public:
     /// Customize this DataType

@@ -7,6 +7,7 @@
 #include <DataTypes/DataTypeFactory.h>
 #include <DataTypes/NullableUtils.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Columns/ColumnDynamic.h>
 #include <Columns/ColumnLowCardinality.h>
 #include <Formats/FormatSettings.h>
@@ -112,8 +113,13 @@ void SerializationDynamicElement::deserializeBinaryBulkStatePrefix(
     dynamic_element_state->structure_state = std::move(structure_state);
     const auto & variant_type = assert_cast<const DataTypeVariant &>(
         *checkAndGetState<SerializationDynamic::DeserializeBinaryBulkStateDynamicStructure>(dynamic_element_state->structure_state)->variant_type);
-    /// Check if we actually have required element in the Variant.
-    if (auto global_discr = variant_type.tryGetVariantDiscriminator(dynamic_element_name))
+    /// Check if we actually have required element in the Variant. The element is the type of its name: a variant of the data with the
+    /// same name that the name does not identify (a native decimal named like another class) is another type, whose values are not read
+    /// with this type's width.
+    auto global_discr = variant_type.tryGetVariantDiscriminator(dynamic_element_name);
+    if (global_discr && !isTypeIdentifiedByName(*variant_type.getVariant(*global_discr)))
+        global_discr.reset();
+    if (global_discr)
     {
         settings.path.push_back(Substream::DynamicData);
         if (is_null_map_subcolumn)
@@ -228,7 +234,9 @@ void SerializationDynamicElement::deserializeBinaryBulkWithMultipleStreams(
                 ReadBufferFromMemory buf(value);
                 /// Reading already-stored shared-variant data: not limited by the input complexity guard.
                 auto type = decodeDataType(buf);
-                if (type->getName() == dynamic_element_name)
+                /// The subcolumn is the type created from its name. A type that has the same name but is not identified by it (a native
+                /// decimal named like another class) is a different type, whose values must not be read with this type's width.
+                if (type->getName() == dynamic_element_name && isTypeIdentifiedByName(*type))
                 {
                     /// When requested type is LowCardinality the subcolumn type name will be LowCardinality(Nullable).
                     /// Value in shared variant is serialized as LowCardinality and we cannot simply deserialize it

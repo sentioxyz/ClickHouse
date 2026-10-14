@@ -3,6 +3,7 @@
 #include <string_view>
 #include <Columns/IColumn_fwd.h>
 #include <Core/TypeId.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <Common/AllocatorWithMemoryTracking.h>
 #include <Common/VectorWithMemoryTracking.h>
 #include <Common/PODArray_fwd.h>
@@ -327,6 +328,15 @@ public:
     struct SerializationSettings
     {
         bool serialize_string_with_zero_byte = false;
+        /// The binary type headers in the serialized values (of `Dynamic` and `JSON` values, also nested and in aggregation states; see
+        /// DataTypes/BinaryTypeOrigin.h). Values in memory are always canonical: deserializeAndInsertFromArena validates the headers of
+        /// values read with the Unknown origin and normalizes those of SentioLegacyV0, serializeValueIntoArena writes them for the
+        /// writer mode. Only the explicit readers and writers of aggregation states from outside set them.
+        BinaryTypeOrigin binary_type_origin = BinaryTypeOrigin::Unknown;
+        BinaryTypeWriterMode binary_type_writer_mode = BinaryTypeWriterMode::SentioWideV1;
+        /// The nesting context of the value that the deserialized value belongs to (BinaryTypeDecoding). Set only by the reader of
+        /// that value, on settings that do not outlive the call; nullptr: no type complexity limit.
+        BinaryTypeDecodingContext * binary_type_decoding_context = nullptr;
 
         static SerializationSettings createForAggregationState()
         {

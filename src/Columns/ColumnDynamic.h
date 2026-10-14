@@ -399,8 +399,15 @@ public:
     const ColumnVariant & getVariantColumn() const { return *variant_column_ptr; }
     ColumnVariant & getVariantColumn() { return *variant_column_ptr; }
 
+    /// Regular variants are held and found by their names. A type that its name does not identify (isTypeIdentifiedByName: a native
+    /// decimal named like another class, also nested) is never added: its values go to the shared variant, which keeps their binary
+    /// type descriptor, so addNewVariant returns false for it.
     bool addNewVariant(const DataTypePtr & new_variant, const String & new_variant_name);
     bool addNewVariant(const DataTypePtr & new_variant) { return addNewVariant(new_variant, new_variant->getName()); }
+
+    /// The global discriminator of the regular variant for values of `type` (named `type_name`), if there is one. A type that its name
+    /// does not identify never has one, even if a regular variant has the same name.
+    std::optional<ColumnVariant::Discriminator> findVariantDiscriminator(const DataTypePtr & type, const String & type_name) const;
 
     bool hasDynamicStructure() const override { return true; }
     bool dynamicStructureEquals(const IColumn & rhs) const override;
@@ -457,19 +464,12 @@ public:
     /// Insert value into shared variant. Also updates Variant discriminators and offsets.
     void insertValueIntoSharedVariant(const IColumn & src, const DataTypePtr & type, const String & type_name, size_t n);
 
-    const SerializationPtr & getVariantSerialization(const DataTypePtr & variant_type, const String & variant_name)
-    {
-        /// Get serialization for provided data type.
-        /// To avoid calling type->getDefaultSerialization() every time we use simple cache with max size.
-        /// When max size is reached, just clear the cache.
-        if (serialization_cache.size() == SERIALIZATION_CACHE_MAX_SIZE)
-            serialization_cache.clear();
-
-        if (auto it = serialization_cache.find(variant_name); it != serialization_cache.end())
-            return it->second;
-
-        return serialization_cache.emplace(variant_name, variant_type->getDefaultSerialization()).first->second;
-    }
+    /// Get serialization for provided data type.
+    /// To avoid calling type->getDefaultSerialization() every time we use simple cache with max size.
+    /// When max size is reached, just clear the cache.
+    /// The cache is keyed by the name for a type that its name identifies, and by the binary encoding otherwise (a native decimal named
+    /// like another class must not get the serialization of that class).
+    const SerializationPtr & getVariantSerialization(const DataTypePtr & variant_type, const String & variant_name);
 
     const SerializationPtr & getVariantSerialization(const DataTypePtr & variant_type) { return getVariantSerialization(variant_type, variant_type->getName()); }
 

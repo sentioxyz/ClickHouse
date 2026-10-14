@@ -1,4 +1,5 @@
 #include <Functions/FunctionsConversion.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Common/UnorderedMapWithMemoryTracking.h>
 #include <Common/VectorWithMemoryTracking.h>
 
@@ -166,12 +167,13 @@ ColumnPtr ConvertImplFromDynamicToColumn::execute(
                 auto value = shared_variant.getDataAt(offsets[i]);
                 ReadBufferFromMemory buf(value);
                 auto type = decodeDataType(buf);
-                auto type_name = type->getName();
-                auto it = shared_variant_to_index.find(type_name);
+                /// Types with the same name but different native classes (a native decimal named like another class) stay apart.
+                auto type_key = getTypeIdentityKey(type);
+                auto it = shared_variant_to_index.find(type_key);
                 /// Check if we didn't create column for this variant yet.
                 if (it == shared_variant_to_index.end())
                 {
-                    it = shared_variant_to_index.emplace(type_name, variant_columns_from_shared_variant.size()).first;
+                    it = shared_variant_to_index.emplace(type_key, variant_columns_from_shared_variant.size()).first;
                     variant_columns_from_shared_variant.push_back(type->createColumn());
                     variant_types_from_shared_variant.push_back(type);
                 }
@@ -2370,6 +2372,58 @@ FunctionCast::WrapperType FunctionCast::createVariantToDynamicWrapper(const Data
     /// storage Variant from those canonical types; the Variant to Variant cast below converts any subcolumn
     /// whose representation differs (it recurses into Array/Map/Tuple).
     auto source_variants = from_variant_type.getVariants();
+
+    /// A type that its name does not identify at all (a native decimal named like another class, see isTypeIdentifiedByName) must not be
+    /// narrowed to the type of its name either: it cannot be a regular variant, so its values go to the shared variant with their own
+    /// binary type descriptor, value by value. That path keeps the other types as they are, so it is refused if one of them would need the
+    /// canonical representation described above.
+    if (std::ranges::any_of(source_variants, [](const DataTypePtr & variant) { return !isTypeIdentifiedByName(*variant); }))
+    {
+        for (const auto & source_variant : source_variants)
+        {
+            auto canonical_variant = isTypeIdentifiedByName(*source_variant) ? DataTypeFactory::instance().tryGet(source_variant->getName()) : nullptr;
+            if (canonical_variant && !canonical_variant->equals(*source_variant))
+                throw Exception(
+                    ErrorCodes::CANNOT_CONVERT_TYPE,
+                    "Cannot convert {} to Dynamic: it has types that their names do not identify together with {}, which needs its canonical representation",
+                    from_variant_type.getName(),
+                    source_variant->getName());
+        }
+
+        return [variants = source_variants, max_dynamic_types = dynamic_type.getMaxDynamicTypes()]
+               (ColumnsWithTypeAndName & arguments, const DataTypePtr &, const ColumnNullable *, size_t input_rows_count) -> ColumnPtr
+        {
+            auto full_column = arguments.front().column->convertToFullColumnIfConst();
+            const auto & variant_column = assert_cast<const ColumnVariant &>(*full_column);
+            auto result = ColumnDynamic::create(max_dynamic_types);
+            result->reserve(input_rows_count);
+            for (size_t i = 0; i != input_rows_count; ++i)
+            {
+                auto global_discr = variant_column.globalDiscriminatorAt(i);
+                if (global_discr == ColumnVariant::NULL_DISCRIMINATOR)
+                {
+                    result->insertDefault();
+                    continue;
+                }
+
+                const auto & type = variants[global_discr];
+                const auto type_name = type->getName();
+                const auto & source = variant_column.getVariantByGlobalDiscriminator(global_discr);
+                const size_t offset = variant_column.offsetAt(i);
+                if (result->addNewVariant(type, type_name))
+                {
+                    auto & result_variant_column = result->getVariantColumn();
+                    result_variant_column.insertIntoVariantFrom(*result->findVariantDiscriminator(type, type_name), source, offset);
+                }
+                else
+                {
+                    result->insertValueIntoSharedVariant(source, type, type_name, offset);
+                }
+            }
+            return result;
+        };
+    }
+
     DataTypes variants_for_dynamic;
     variants_for_dynamic.reserve(source_variants.size() + 1);
     for (const auto & source_variant : source_variants)

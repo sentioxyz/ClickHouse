@@ -1,5 +1,6 @@
 #include <Common/SipHash.h>
 #include <DataTypes/DataTypeObject.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <DataTypes/Serializations/SerializationObjectSharedDataPath.h>
 #include <DataTypes/Serializations/getSubcolumnsDeserializationOrder.h>
 #include <Columns/ColumnArray.h>
@@ -240,11 +241,17 @@ void SerializationObjectSharedDataPath::deserializeBinaryBulkWithMultipleStreams
             {
                 std::tie(map_column, num_read_rows) = *cached_column_with_num_read_rows;
             }
-            /// Otherwise deserialize the whole shared data map and cache it for other path subcolumns.
+            /// Otherwise deserialize the whole shared data map and cache it for other path subcolumns. Values that are not proven
+            /// canonical are accepted (validated, and normalized for the legacy origin) before the map is cached, as by
+            /// SerializationObjectSharedData, which caches the same map.
             else
             {
+                const bool accept_values = !isProvenCanonicalStoredData(settings.format_settings);
                 auto mutable_map_column = DataTypeObject::getTypeOfSharedData()->createColumn();
-                serialization_map->deserializeBinaryBulkWithMultipleStreams(*mutable_map_column, limit, settings, shared_data_path_state->map_state, cache);
+                serialization_map->deserializeBinaryBulkWithMultipleStreams(
+                    *mutable_map_column, limit, settings, shared_data_path_state->map_state, accept_values ? nullptr : cache);
+                if (accept_values)
+                    acceptObjectSharedDataRows(*mutable_map_column, 0, getSettingsForAcceptingBinaryDynamicValues(settings.format_settings));
                 num_read_rows = mutable_map_column->size();
                 map_column = std::move(mutable_map_column);
                 addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, map_column, num_read_rows);
@@ -259,11 +266,15 @@ void SerializationObjectSharedDataPath::deserializeBinaryBulkWithMultipleStreams
             {
                 map_column = cached_column_with_num_read_rows->first;
             }
-            /// If we don't have it in cache, deserialize the bucket's map into a fresh column and cache it.
+            /// If we don't have it in cache, deserialize the bucket's map into a fresh column and cache it (accepted first, see above).
             else
             {
+                const bool accept_values = !isProvenCanonicalStoredData(settings.format_settings);
                 auto mutable_map_column = DataTypeObject::getTypeOfSharedData()->createColumn();
-                serialization_map->deserializeBinaryBulkWithMultipleStreams(*mutable_map_column, limit, settings, shared_data_path_state->map_state, cache);
+                serialization_map->deserializeBinaryBulkWithMultipleStreams(
+                    *mutable_map_column, limit, settings, shared_data_path_state->map_state, accept_values ? nullptr : cache);
+                if (accept_values)
+                    acceptObjectSharedDataRows(*mutable_map_column, 0, getSettingsForAcceptingBinaryDynamicValues(settings.format_settings));
                 map_column = std::move(mutable_map_column);
                 addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, map_column, map_column->size());
             }

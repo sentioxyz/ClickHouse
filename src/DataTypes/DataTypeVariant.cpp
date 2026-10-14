@@ -2,6 +2,7 @@
 #include <Columns/ColumnConst.h>
 #include <Core/Field.h>
 #include <DataTypes/DataTypeVariant.h>
+#include <DataTypes/TypeNameIdentity.h>
 
 #include <DataTypes/DataTypeFactory.h>
 #include <DataTypes/DataTypeNullable.h>
@@ -52,8 +53,22 @@ DataTypeVariant::DataTypeVariant(const DataTypes & variants_)
         checkAllowedInsideVariant(type);
 
         /// Don't use Nothing type as a variant.
-        if (!isNothing(type))
-            name_to_type[type->getName()] = type;
+        if (isNothing(type))
+            continue;
+
+        auto [it, inserted] = name_to_type.emplace(type->getName(), type);
+        if (!inserted)
+        {
+            /// Variants are told apart by their names. Two different types with the same name of which one is not identified by it
+            /// (a native decimal named like another class, e.g. a 64-byte `Decimal512(76, 10)` and the 32-byte `Decimal256(76, 10)`)
+            /// cannot both be variants, and squashing one into the other would change the width of its values.
+            if (!it->second->equals(*type) && (!isTypeIdentifiedByName(*type) || !isTypeIdentifiedByName(*it->second)))
+                throw Exception(
+                    ErrorCodes::BAD_ARGUMENTS,
+                    "Variant type cannot have two different types with the same name {}: the name does not identify one of them",
+                    type->getName());
+            it->second = type;
+        }
     }
 
     variants.reserve(name_to_type.size());
