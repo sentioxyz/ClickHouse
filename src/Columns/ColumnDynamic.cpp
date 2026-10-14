@@ -934,8 +934,8 @@ void ColumnDynamic::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn
     /// If we don't have such variant, try to add it.
     else if (likely(addNewVariant(variant_type)))
     {
-        auto discr = variant_info.variant_name_to_discriminator[variant_name];
-        variant_col.deserializeBinaryIntoVariant(discr, getVariantSerialization(variant_type, variant_name), buf, *value_settings);
+        auto new_discr = variant_info.variant_name_to_discriminator[variant_name];
+        variant_col.deserializeBinaryIntoVariant(new_discr, getVariantSerialization(variant_type, variant_name), buf, *value_settings);
     }
     /// Otherwise insert this value into shared variant, in the canonical encoding. A value without nested headers keeps its bytes unless
     /// its header has to be normalized; any other value is read like a regular variant (validating its nested headers with the origin,
