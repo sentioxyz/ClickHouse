@@ -3,6 +3,7 @@
 #include <Storages/MergeTree/MergeTreeSettings.h>
 #include <Storages/MergeTree/MergeTreeVirtualColumns.h>
 #include <Storages/IndicesDescription.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <DataTypes/IDataType.h>
 #include <Parsers/parseQuery.h>
 #include <Parsers/ASTFunction.h>
@@ -30,6 +31,7 @@ namespace MergeTreeSetting
 namespace ErrorCodes
 {
     extern const int METADATA_MISMATCH;
+    extern const int CORRUPTED_DATA;
 }
 
 static String formattedAST(const ASTPtr & ast)
@@ -113,6 +115,8 @@ ReplicatedMergeTreeTableMetadata::ReplicatedMergeTreeTableMetadata(const MergeTr
         index_granularity_bytes = 0;
 
     constraints = metadata_snapshot->getConstraints().toString();
+
+    binary_type_origin = data.getStoredBinaryTypeOrigin();
 }
 
 void ReplicatedMergeTreeTableMetadata::write(WriteBuffer & out) const
@@ -177,6 +181,11 @@ void ReplicatedMergeTreeTableMetadata::write(WriteBuffer & out) const
         if (!graphite_params_hash.empty())
             out << "graphite hash: " << graphite_params_hash << "\n";
     }
+
+    /// After every other field, under a name whose first letter no optional field before it has (see above), so that a reader without
+    /// it, which does not check for the end of the metadata, ignores it, and the checks of the optional fields never advance into it.
+    if (binary_type_origin != BinaryTypeOrigin::Unknown)
+        out << "binary type origin: " << String(getBinaryTypeOriginName(binary_type_origin)) << "\n";
 }
 
 String ReplicatedMergeTreeTableMetadata::toString() const
@@ -245,6 +254,13 @@ void ReplicatedMergeTreeTableMetadata::read(ReadBuffer & in)
 
         if (checkString("graphite hash: ", in))
             in >> graphite_params_hash >> "\n";
+    }
+
+    if (checkString("binary type origin: ", in))
+    {
+        String origin_name;
+        in >> origin_name >> "\n";
+        binary_type_origin = parseBinaryTypeOriginName(origin_name, ErrorCodes::CORRUPTED_DATA);
     }
 }
 

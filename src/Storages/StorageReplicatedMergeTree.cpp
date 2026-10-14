@@ -73,6 +73,7 @@
 #include <Storages/MergeTree/ReplicatedMergeTreeQuorumEntry.h>
 #include <Storages/MergeTree/ReplicatedMergeTreeSink.h>
 #include <Storages/MergeTree/ReplicatedMergeTreeTableMetadata.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <Storages/MergeTree/ZeroCopyLock.h>
 #include <Storages/PartitionCommands.h>
 #include <Storages/StorageReplicatedMergeTree.h>
@@ -431,7 +432,8 @@ StorageReplicatedMergeTree::StorageReplicatedMergeTree(
     const MergingParams & merging_params_,
     std::unique_ptr<MergeTreeSettings> settings_,
     bool need_check_structure,
-    const ZooKeeperRetriesInfo & create_query_zookeeper_retries_info_)
+    const ZooKeeperRetriesInfo & create_query_zookeeper_retries_info_,
+    std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp)
     : MergeTreeData(table_id_,
                     metadata_,
                     context_,
@@ -473,7 +475,9 @@ StorageReplicatedMergeTree::StorageReplicatedMergeTree(
     }
 
     initializeDirectoriesAndFormatVersion(relative_data_path_, LoadingStrictnessLevel::ATTACH <= mode, date_column_name);
-    initializeStoredBinaryTypeOrigin(mode, {});
+    /// The stamp of an original CREATE goes into the ZooKeeper metadata if this replica creates the table; otherwise the replica takes
+    /// the origin of the existing table from ZooKeeper below (adoptStoredBinaryTypeOrigin).
+    initializeStoredBinaryTypeOrigin(mode, stored_binary_type_origin_to_stamp);
 
     /// We create and deactivate all tasks for consistency.
     /// They all will be scheduled and activated by the restarting thread.
@@ -688,7 +692,13 @@ StorageReplicatedMergeTree::StorageReplicatedMergeTree(
         }
 
         if (!is_first_replica)
+        {
+            /// A new replica of an existing table takes the stored binary type origin of the table, whatever this CREATE stamped.
+            adoptStoredBinaryTypeOrigin(
+                ReplicatedMergeTreeTableMetadata::parseRaw(getZooKeeper()->get(fs::path(zookeeper_path) / "metadata")).binary_type_origin,
+                "ZooKeeper metadata of the table");
             createReplica(metadata_snapshot, getCreateQueryZooKeeperRetriesInfo());
+        }
 
         createNewZooKeeperNodes(getCreateQueryZooKeeperRetriesInfo());
         syncPinnedPartUUIDs(getCreateQueryZooKeeperRetriesInfo());
@@ -6721,6 +6731,26 @@ bool StorageReplicatedMergeTree::optimize(
     return assigned;
 }
 
+void StorageReplicatedMergeTree::adoptStoredBinaryTypeOrigin(BinaryTypeOrigin origin, std::string_view source)
+{
+    if (getStorageID().uuid == UUIDHelpers::Nil)
+    {
+        if (origin != BinaryTypeOrigin::Unknown)
+            LOG_WARNING(log, "The {} gives table {} the stored binary type origin {}, but the table has no UUID, so it stays Unknown",
+                        source, getStorageID().getNameForLogs(), getBinaryTypeOriginName(origin));
+        return;
+    }
+
+    if (origin == getStoredBinaryTypeOrigin() && !stored_binary_type_origin_record_ignored)
+        return;
+
+    LOG_INFO(log, "Taking the stored binary type origin {} of table {} from the {} (it was {})",
+             getBinaryTypeOriginName(origin), getStorageID().getNameForLogs(), source, getBinaryTypeOriginName(getStoredBinaryTypeOrigin()));
+    /// Without a writable disk there is no local record: ZooKeeper alone keeps the origin.
+    if (!persistStoredBinaryTypeOrigin(origin))
+        stored_binary_type_origin = origin;
+}
+
 bool StorageReplicatedMergeTree::executeMetadataAlter(const StorageReplicatedMergeTree::LogEntry & entry)
 {
     auto current_metadata = getInMemoryMetadataPtr(getContext(), false);
@@ -6786,6 +6816,8 @@ bool StorageReplicatedMergeTree::executeMetadataAlter(const StorageReplicatedMer
         const auto table_metadata = ReplicatedMergeTreeTableMetadata(*this, current_metadata);
         auto metadata_diff = table_metadata.checkAndFindDiff(metadata_from_entry, current_metadata->columns, current_metadata->virtuals, getStorageID().getNameForLogs(), getContext());
         setTableStructure(table_id, alter_context, std::move(columns_from_entry), metadata_diff, entry.alter_version);
+        /// The stored binary type origin is replicated metadata but not in-memory metadata: the entry applies it at its metadata version.
+        adoptStoredBinaryTypeOrigin(metadata_from_entry.binary_type_origin, "ALTER_METADATA entry");
 
         auto applied_metadata_snapshot = getInMemoryMetadataPtr(getContext(), true);
         LOG_INFO(log, "Applied changes to the metadata of the table. Current metadata version: {}", applied_metadata_snapshot->getMetadataVersion());

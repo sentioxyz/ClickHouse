@@ -192,6 +192,11 @@ void ReplicatedMergeTreeAttachThread::runImpl()
 
     /// Here `zookeeper_retries_info = {}` because the attach thread has its own retries (see ReplicatedMergeTreeAttachThread::run()).
     storage.checkTableStructure(replica_path, metadata_snapshot, /* metadata_version = */ nullptr, /* strict_check = */ true, /* zookeeper_retries_info = */ {});
+    /// The metadata of the replica holds the stored binary type origin at the metadata version the replica applied last. The local record
+    /// lags behind it if the server stopped between applying an ALTER_METADATA entry in ZooKeeper and locally; until then the replica
+    /// keeps the older origin (Unknown before a registration), which refuses what it cannot read rather than misreading it.
+    storage.adoptStoredBinaryTypeOrigin(
+        ReplicatedMergeTreeTableMetadata::parseRaw(zookeeper->get(replica_path + "/metadata")).binary_type_origin, "ZooKeeper metadata of the replica");
     storage.checkParts(skip_sanity_checks);
 
     /// Temporary directories contain uninitialized results of Merges or Fetches (after forced restart),

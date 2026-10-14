@@ -114,7 +114,8 @@ public:
         const MergingParams & merging_params_,
         std::unique_ptr<MergeTreeSettings> settings_,
         bool need_check_structure,
-        const ZooKeeperRetriesInfo & create_query_zookeeper_retries_info_);
+        const ZooKeeperRetriesInfo & create_query_zookeeper_retries_info_,
+        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {});
 
     void startup() override;
 
@@ -690,6 +691,10 @@ private:
     /// Wait for parts in PreActive state within the drop range to finish committing.
     /// This prevents a race between a concurrent INSERT and DROP_RANGE processing.
     void waitForPreActivePartsInRange(const MergeTreePartInfo & drop_range) const;
+
+    /// Makes `origin`, which ZooKeeper holds for this table (`source` names where), the stored binary type origin of the table and of its
+    /// local record. A table without a UUID has no stored origin of its own and stays Unknown (Storages/StoredBinaryTypeOrigin.h).
+    void adoptStoredBinaryTypeOrigin(BinaryTypeOrigin origin, std::string_view source);
 
     /// Execute alter of table metadata. Set replica/metadata and replica/columns
     /// nodes in zookeeper and also changes in memory metadata.
