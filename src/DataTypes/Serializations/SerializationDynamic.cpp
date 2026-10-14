@@ -497,6 +497,23 @@ ISerialization::DeserializeBinaryBulkStatePtr SerializationDynamic::deserializeD
                         readVarUInt(statistics.shared_variants_statistics[variant_name], *structure_stream);
                     }
 
+                    /// The statistics describe the whole data in its own layout, and the column gets the published one: the values of a
+                    /// variant that the column does not get move into the shared variant (see published_variant_type), so its size is
+                    /// added to the size of the shared variant. Its name is not recorded for the shared variant, as it does not identify
+                    /// the type. Every variant has an entry: they were read above.
+                    if (published_variants.size() != variants.size())
+                    {
+                        auto & shared_variant_size = statistics.variants_statistics[ColumnDynamic::getSharedVariantTypeName()];
+                        for (const auto & variant : variant_type->getVariants())
+                        {
+                            if (isTypeIdentifiedByName(*variant))
+                                continue;
+                            const auto it = statistics.variants_statistics.find(variant->getName());
+                            shared_variant_size += it->second;
+                            statistics.variants_statistics.erase(it);
+                        }
+                    }
+
                     structure_state->statistics = std::make_shared<const ColumnDynamic::Statistics>(std::move(statistics));
                 }
             }
@@ -641,6 +658,9 @@ void SerializationDynamic::serializeBinaryBulkWithMultipleStreamsAndCountTotalSi
                     auto value = shared_variant.getDataAt(offsets[i]);
                     ReadBufferFromMemory buf(value);
                     auto type = decodeDataType(buf);
+                    /// A type is recorded by name only if its name identifies it (see ColumnDynamic::getOrCalculateStatistics).
+                    if (!isTypeIdentifiedByName(*type))
+                        continue;
                     auto type_name = type->getName();
                     if (auto it = dynamic_state->statistics.shared_variants_statistics.find(type_name); it != dynamic_state->statistics.shared_variants_statistics.end())
                         ++it->second;

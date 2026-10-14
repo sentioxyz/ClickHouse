@@ -52,6 +52,31 @@ bool isTypeItselfIdentifiedByName(const IDataType & type)
     }
 }
 
+/// A decimal class below Decimal512: a native decimal of a wider class can have the same precision and scale, and so the same name.
+bool isTypeItselfNameUnambiguous(const IDataType & type)
+{
+    switch (type.getTypeId())
+    {
+        case TypeIndex::Decimal32:
+        case TypeIndex::Decimal64:
+        case TypeIndex::Decimal128:
+        case TypeIndex::Decimal256:
+            return false;
+        case TypeIndex::AggregateFunction:
+        {
+            const auto & aggregate_function = assert_cast<const DataTypeAggregateFunction &>(type);
+            for (const auto & argument : aggregate_function.getArgumentsDataTypes())
+            {
+                if (!isTypeNameUnambiguous(*argument))
+                    return false;
+            }
+            return true;
+        }
+        default:
+            return true;
+    }
+}
+
 }
 
 bool isTypeIdentifiedByName(const IDataType & type)
@@ -61,6 +86,15 @@ bool isTypeIdentifiedByName(const IDataType & type)
     /// forEachChild visits all nested types, not only the direct children.
     bool result = true;
     type.forEachChild([&result](const IDataType & child) { result = result && isTypeItselfIdentifiedByName(child); });
+    return result;
+}
+
+bool isTypeNameUnambiguous(const IDataType & type)
+{
+    if (!isTypeIdentifiedByName(type) || !isTypeItselfNameUnambiguous(type))
+        return false;
+    bool result = true;
+    type.forEachChild([&result](const IDataType & child) { result = result && isTypeItselfNameUnambiguous(child); });
     return result;
 }
 

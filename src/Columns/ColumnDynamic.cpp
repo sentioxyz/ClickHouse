@@ -1491,13 +1491,19 @@ void ColumnDynamic::chooseDynamicStructureForMerge(const VectorWithMemoryTrackin
 
         /// Add variants from shared variant statistics. It can help extracting
         /// frequent variants from shared variant to usual variants.
+        /// The statistics are only hints, and they can come from data written by another version: a name in them may have been
+        /// written for a type that it does not identify (a native decimal), or name no type at all. Only a name that no other type has
+        /// is taken (see isTypeNameUnambiguous); the values of the others stay where they are.
         for (const auto & [variant_name, size] : source_statistics->shared_variants_statistics)
         {
+            auto type = DataTypeFactory::instance().tryGet(variant_name);
+            if (!type || !isTypeNameUnambiguous(*type))
+                continue;
             auto it = total_sizes.find(variant_name);
             /// Add this variant to the list of all variants if we didn't see it yet.
             if (it == total_sizes.end())
             {
-                all_variants.push_back(DataTypeFactory::instance().get(variant_name));
+                all_variants.push_back(type);
                 it = total_sizes.emplace(variant_name, 0).first;
             }
             it->second += size;
@@ -1614,6 +1620,10 @@ ColumnDynamic::StatisticsPtr ColumnDynamic::getOrCalculateStatistics() const
         auto value = shared_variant.getDataAt(i);
         ReadBufferFromMemory buf(value);
         auto type = decodeDataType(buf);
+        /// The size of the shared variant above counts every value, but a type is recorded by name only if its name identifies it: the
+        /// statistics are read by name, and a native decimal has the name of another type (see isTypeIdentifiedByName).
+        if (!isTypeIdentifiedByName(*type))
+            continue;
         auto type_name = type->getName();
         if (auto it = calculated_statistics->shared_variants_statistics.find(type_name); it != calculated_statistics->shared_variants_statistics.end())
             ++it->second;
@@ -1630,6 +1640,7 @@ void ColumnDynamic::takeOrCalculateStatisticsFrom(const VectorWithMemoryTracking
     Statistics new_statistics;
     /// Collect total sizes for variants that are not in our structure (candidates for shared variant statistics).
     UnorderedMapWithMemoryTracking<String, size_t> shared_variant_candidates;
+    const auto & variants = assert_cast<const DataTypeVariant &>(*variant_info.variant_type).getVariants();
     for (const auto & source_column : source_columns)
     {
         const auto & source_dynamic = assert_cast<const ColumnDynamic &>(*source_column);
@@ -1647,9 +1658,12 @@ void ColumnDynamic::takeOrCalculateStatisticsFrom(const VectorWithMemoryTracking
 
         /// For shared variant statistics: if the variant got promoted to a regular variant
         /// in the merged structure, add to variants_statistics; otherwise accumulate in candidates.
+        /// A name that other types can have (see isTypeNameUnambiguous) may stand for values that stay in the shared variant (a native
+        /// decimal is never a regular variant), so its size stays with the candidates.
         for (const auto & [variant_name, size] : source_statistics->shared_variants_statistics)
         {
-            if (variant_info.variant_name_to_discriminator.contains(variant_name))
+            auto it = variant_info.variant_name_to_discriminator.find(variant_name);
+            if (it != variant_info.variant_name_to_discriminator.end() && isTypeNameUnambiguous(*variants[it->second]))
                 new_statistics.variants_statistics[variant_name] += size;
             else
                 shared_variant_candidates[variant_name] += size;

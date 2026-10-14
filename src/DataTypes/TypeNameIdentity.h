@@ -17,6 +17,13 @@ class IDataType;
 /// the shared variant, with its binary type descriptor) and is never resolved from its name.
 bool isTypeIdentifiedByName(const IDataType & type);
 
+/// Whether no other type has the name of the type: the name identifies it, and no type that its name does not identify has the same name.
+/// A decimal of a class below `Decimal512` fails the second condition, as does a type that has one inside: a native decimal of a wider
+/// class can have the same precision and scale (a native `Decimal512(76, 10)` is named like `Decimal256(76, 10)`). A hint that has only the
+/// name of a type, such as the statistics of the shared variant of `Dynamic` (which can come from data written by another version), tells
+/// the type created from the name only if the name is unambiguous.
+bool isTypeNameUnambiguous(const IDataType & type);
+
 /// A key that tells types apart where they are grouped or cached by name: the name of a type that it identifies, otherwise the binary
 /// encoding of the type after a zero byte (which never equals a type name).
 String getTypeIdentityKey(const DataTypePtr & type);
