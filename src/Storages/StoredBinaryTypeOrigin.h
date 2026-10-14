@@ -28,7 +28,12 @@ struct WriteSettings;
 ///    Unknown and cannot be registered.
 ///  - A part record lives in the directory of a data part that left its table as raw files (detached, fetched from another table, restored
 ///    into a table of another origin), or of a mutation of such a part, and binds the total checksum of that part. It carries the origin
-///    of the data of the part: a part with a record is read with it, any other part with the origin of its table.
+///    of the data of the part: a part with a record is read with it, any other part with the origin of its table. A part that comes into a
+///    table as raw files (fetched from another table into detached/, attached from detached/, restored from a backup) is read with its
+///    own record or with Unknown from the first read of its load on, never with the origin of the table, which is no proof of its data.
+///    A part fetched from another table gets a record of the origin of that table, if its ZooKeeper metadata holds one. A part attached or
+///    restored without a record of its own follows a table with an unset origin, is refused by a SentioLegacyV0 table, and gets a record
+///    of the Unknown origin in any other table (MergeTreeData::admitStoredBinaryTypeOriginOfRawPart).
 /// A part record is never a table record and the reverse: the loader of each kind rejects the other one.
 inline constexpr auto STORED_BINARY_TYPE_ORIGIN_FILE_NAME = "sentio_binary_type_origin.txt";
 

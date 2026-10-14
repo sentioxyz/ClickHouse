@@ -2545,6 +2545,8 @@ MergeTreeData::MutableDataPartPtr StorageReplicatedMergeTree::attachPartHelperFo
             .withPartFormatFromDisk()
             .build();
 
+        /// The local copy is a raw import, like a part attached from detached/ (see MergeTreeData::tryLoadPartsToAttach).
+        part->is_raw_import = true;
         try
         {
             loadPartAndFixMetadataImpl(part, getContext());
@@ -2575,6 +2577,16 @@ MergeTreeData::MutableDataPartPtr StorageReplicatedMergeTree::attachPartHelperFo
             // if isRetryableException(std::current_exception()) = false then we move part with prefix broken_ to exclude it from next attempts
             // if part is moved with prefix broken_ successfully than rollBackAll is no op
             // otherwise try to move it back, more likely the same exception would be thrown, that exception would be propagated
+            rename_parts.rollBackAll();
+            continue;
+        }
+
+        /// A local copy that the table does not admit stays in detached/, and the part is fetched from a replica that has it, with the
+        /// stored binary type origin record it has there.
+        if (!admitStoredBinaryTypeOriginOfRawPart(*part))
+        {
+            LOG_INFO(log, "Will not attach the local copy {} of part {}: the table has the stored binary type origin sentio_legacy_v0, and the "
+                          "copy has no stored binary type origin record of its own", detached_part_info.dir_name, entry.new_part_name);
             rename_parts.rollBackAll();
             continue;
         }

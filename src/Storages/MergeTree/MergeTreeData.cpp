@@ -8075,6 +8075,25 @@ void MergeTreeData::loadPartAndFixMetadataImpl(MergeTreeData::MutableDataPartPtr
     unique_key_dense_index_ops->onPartAttach(part);
 }
 
+bool MergeTreeData::admitStoredBinaryTypeOriginOfRawPart(IMergeTreeDataPart & part) const
+{
+    if (!part.is_raw_import || part.getParentPart())
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Part {} was not loaded as a raw import", part.name);
+
+    if (!part.stored_binary_type_origin && !hasUnsetStoredBinaryTypeOrigin())
+    {
+        if (getStoredBinaryTypeOrigin() == BinaryTypeOrigin::SentioLegacyV0)
+            return false;
+
+        /// The origin of the table does not apply to the part when it is loaded again, after a restart or on a replica that fetches it.
+        part.writeAndLoadStoredBinaryTypeOriginRecord(
+            BinaryTypeOrigin::Unknown, getContext()->getWriteSettings(), (*getSettings())[MergeTreeSetting::fsync_part_directory]);
+    }
+
+    part.is_raw_import = false;
+    return true;
+}
+
 void MergeTreeData::unregisterFromMergeSelection(const MergeTreeSettingsPtr & settings)
 {
     if ((*settings)[MergeTreeSetting::merge_selector_algorithm].value == MergeSelectorAlgorithm::MANUAL)
@@ -9129,6 +9148,8 @@ MergeTreeData::MutableDataPartPtr MergeTreeData::loadPartRestoredFromBackup(cons
         MergeTreeDataPartBuilder builder(*this, part_name, single_disk_volume, parent_part_dir, part_dir_name, getReadSettings(), PartDirIntent::OpenExisting);
         builder.withPartFormatFromDisk();
         part = std::move(builder).build();
+        /// A part from a backup is a raw import, like a part from detached/ (see tryLoadPartsToAttach).
+        part->is_raw_import = true;
         part->version->setAndStoreCreationTID(Tx::NonTransactionalTID, nullptr);
         IMergeTreeDataPart::writeInvalidatedSystemColumnsFile(*part->getDataPartStoragePtr(), "", IMergeTreeDataPart::getSystemColumnsToInvalidate(part->info), getContext()->getWriteSettings());
         part->loadColumnsChecksumsIndexes(/* require_columns_checksums= */ false, /* check_consistency= */ true);
@@ -9137,6 +9158,11 @@ MergeTreeData::MutableDataPartPtr MergeTreeData::loadPartRestoredFromBackup(cons
         /// usable; a failure throws and routes the part to `mark_broken` below
         /// (detached), matching the fail-closed contract on every other load path.
         unique_key_dense_index_ops->onPartAttach(part);
+        if (!admitStoredBinaryTypeOriginOfRawPart(*part))
+            throw Exception(ErrorCodes::INCORRECT_DATA,
+                            "Cannot restore part {} to table {}: the table has the stored binary type origin sentio_legacy_v0, and the part has "
+                            "no stored binary type origin record of its own, so nothing proves that its data has that origin",
+                            part->name, getStorageID().getNameForLogs());
     };
 
     /// Broken parts can appear in a backup sometimes.
@@ -10088,21 +10114,26 @@ MergeTreeData::MutableDataPartsVector MergeTreeData::tryLoadPartsToAttach(const 
             .withPartFormatFromDisk()
             .build();
 
+        /// Nothing but a stored binary type origin record of its own (bound to its checksums, see Storages/StoredBinaryTypeOrigin.h) proves
+        /// where the data of a part from detached/ comes from: it may have been detached from an Unknown table or by an older binary,
+        /// fetched from a table without an origin, or put there by hand. So it is loaded as a raw import, and it is not read with the origin
+        /// of this table unless the table admits it so below.
+        part->is_raw_import = true;
         loadPartAndFixMetadataImpl(part, local_context);
 
-        /// A part from detached/ is read with its own stored binary type origin record if it has one (bound to its checksums, see
-        /// Storages/StoredBinaryTypeOrigin.h), otherwise with the origin of this table. Without a record, nothing proves where its data
-        /// comes from: detached from an Unknown table or by an older binary, fetched from a table without an origin, or put there by hand.
-        /// A SentioLegacyV0 table would read the legacy indexes 0x37/0x38/0x39 in it with their legacy meaning, so it refuses such a part.
-        /// An Unknown or OfficialCanonical table reads it fail-closed (both refuse the legacy indexes).
-        if (!part->stored_binary_type_origin && getStoredBinaryTypeOrigin() == BinaryTypeOrigin::SentioLegacyV0)
+        chassert(!part->version->getInfo().isRemoved());
+        loaded_parts.push_back(part);
+    }
+
+    /// Only once every part is loaded, so that a broken part leaves the others in detached/ as they were. A table that refuses a part
+    /// (SentioLegacyV0) writes no record into any of them.
+    for (const auto & part : loaded_parts)
+    {
+        if (!admitStoredBinaryTypeOriginOfRawPart(*part))
             throw Exception(ErrorCodes::INCORRECT_DATA,
                             "Cannot attach part {} to table {}: the table has the stored binary type origin sentio_legacy_v0, and the part has no "
                             "stored binary type origin record of its own, so nothing proves that its data has that origin",
                             part->name, getStorageID().getNameForLogs());
-
-        chassert(!part->version->getInfo().isRemoved());
-        loaded_parts.push_back(part);
     }
 
     return loaded_parts;

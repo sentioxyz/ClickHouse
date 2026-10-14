@@ -1367,6 +1367,15 @@ public:
     }
     std::optional<BinaryTypeOrigin> tryGetStoredBinaryTypeOrigin() const override { return getStoredBinaryTypeOrigin(); }
 
+    /// Whether the table has no stored binary type origin at all: Unknown, without a record at its path that does not apply to it, and
+    /// without a conflict with its replicated metadata. Its parts without a record of their own follow its origin, also the ones that came
+    /// in as raw files, and the registration (Unknown to SentioLegacyV0) states the origin of all of them.
+    bool hasUnsetStoredBinaryTypeOrigin() const
+    {
+        return stored_binary_type_origin.load() == BinaryTypeOrigin::Unknown && !stored_binary_type_origin_record_ignored.load()
+            && !stored_binary_type_origin_conflict.load();
+    }
+
     /// Merging params - what additional actions to perform during merge.
     const MergingParams merging_params;
 
@@ -1593,6 +1602,16 @@ private:
 
 protected:
     void loadPartAndFixMetadataImpl(MergeTreeData::MutableDataPartPtr part, ContextPtr local_context) const;
+
+    /// Admits the stored binary type origin of a part that came into this table as raw files and was loaded as a raw import
+    /// (IMergeTreeDataPart::is_raw_import), so that from now on it is read exactly as it will be when it is loaded again:
+    ///  - with a valid record of its own, with the origin of that record;
+    ///  - without one, in a table with an unset origin (hasUnsetStoredBinaryTypeOrigin), with the origin of the table, like the parts it
+    ///    has already;
+    ///  - without one, in a table with the stored origin SentioLegacyV0: not admitted (returns false and changes nothing), since nothing
+    ///    proves that its data has that origin;
+    ///  - without one, in any other table: with Unknown, from a part record of the Unknown origin written into its directory.
+    bool admitStoredBinaryTypeOriginOfRawPart(IMergeTreeDataPart & part) const;
 
     void unregisterFromMergeSelection(const MergeTreeSettingsPtr & settings);
 

@@ -911,6 +911,11 @@ MergeTreeData::MutableDataPartPtr Fetcher::downloadPartToDisk(
         MergeTreeDataPartBuilder builder(data, part_name, volume, part_relative_path, part_dir, getReadSettings(), PartDirIntent::OpenExisting);
         new_data_part = builder.withPartFormatFromDisk().build();
 
+        /// A part fetched into detached/ comes from another table (FETCH PARTITION/PART, or a part moved between shards): a raw import,
+        /// read with its own stored binary type origin record or with Unknown from the first read of this load on, never with the origin
+        /// of this table (see IMergeTreeDataPart::is_raw_import); it is admitted only when it is attached. A part fetched from a replica
+        /// of this table (to replicate it, or for REPLACE PARTITION) was written into this table, and is read as the parts it has already.
+        new_data_part->is_raw_import = to_detached;
         new_data_part->version->setAndStoreCreationTID(Tx::NonTransactionalTID, nullptr);
         new_data_part->is_temp = true;
         /// In case of replicated merge tree with zero copy replication

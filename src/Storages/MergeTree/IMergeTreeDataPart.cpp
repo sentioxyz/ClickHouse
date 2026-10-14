@@ -1906,12 +1906,22 @@ void IMergeTreeDataPart::writeStoredBinaryTypeOriginRecord(
     part_storage.commitTransaction();
 }
 
+void IMergeTreeDataPart::writeAndLoadStoredBinaryTypeOriginRecord(BinaryTypeOrigin origin, const WriteSettings & settings, bool sync)
+{
+    writeStoredBinaryTypeOriginRecord(getDataPartStorage(), origin, settings, sync);
+    loadStoredBinaryTypeOrigin();
+    if (stored_binary_type_origin != origin)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "The stored binary type origin record written into part {} is not read back", name);
+}
+
 BinaryTypeOrigin IMergeTreeDataPart::getBinaryTypeOriginForReading() const
 {
     if (parent_part)
         return parent_part->getBinaryTypeOriginForReading();
     if (stored_binary_type_origin)
         return *stored_binary_type_origin;
+    if (is_raw_import)
+        return BinaryTypeOrigin::Unknown;
     return storage.getStoredBinaryTypeOrigin();
 }
 

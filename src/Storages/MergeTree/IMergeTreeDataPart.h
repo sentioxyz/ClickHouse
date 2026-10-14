@@ -480,12 +480,20 @@ public:
     /// The origin of the part record (Storages/StoredBinaryTypeOrigin.h): set for a part that carries the origin of its data from
     /// another table (or from before it left its table) in a valid record of its own; nothing for any other part.
     std::optional<BinaryTypeOrigin> stored_binary_type_origin;
-    /// The origin the stored data of the part is read with: that of its own record if it has one, otherwise the stored origin of its table.
-    /// A projection is read with the origin of its parent part.
+    /// Set before loading a part that comes into its table as raw files (fetched from another table into detached/, attached from
+    /// detached/, restored from a backup): the stored origin of the table is no proof of where the data of such a part comes from. Until
+    /// the table admits the part (MergeTreeData::admitStoredBinaryTypeOriginOfRawPart), it is read with its own record or with Unknown, in
+    /// every read of its load, also of its projections and of the columns of a unique key.
+    bool is_raw_import = false;
+    /// The origin the stored data of the part is read with: that of its own record if it has one, Unknown for a raw import that its table
+    /// has not admitted yet, otherwise the stored origin of its table. A projection is read with the origin of its parent part.
     BinaryTypeOrigin getBinaryTypeOriginForReading() const;
     /// Writes a part record with `origin`, bound to the checksums of this part, into `part_storage`: the directory of this part or of a
     /// copy of it. The previous file is removed first, since it may be a hard link shared with the part this one was cloned from.
     void writeStoredBinaryTypeOriginRecord(IDataPartStorage & part_storage, BinaryTypeOrigin origin, const WriteSettings & settings, bool sync) const;
+    /// Writes a part record with `origin` into the directory of this part, and loads it as the origin of this part, as a load of the part
+    /// from its directory does.
+    void writeAndLoadStoredBinaryTypeOriginRecord(BinaryTypeOrigin origin, const WriteSettings & settings, bool sync);
 
     CompressionCodecPtr default_codec;
 
