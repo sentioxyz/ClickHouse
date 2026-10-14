@@ -473,6 +473,7 @@ StorageReplicatedMergeTree::StorageReplicatedMergeTree(
     }
 
     initializeDirectoriesAndFormatVersion(relative_data_path_, LoadingStrictnessLevel::ATTACH <= mode, date_column_name);
+    initializeStoredBinaryTypeOrigin(mode, {});
 
     /// We create and deactivate all tasks for consistency.
     /// They all will be scheduled and activated by the restarting thread.

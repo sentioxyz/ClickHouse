@@ -2,12 +2,14 @@
 
 #include <Common/Documentation.h>
 #include <Common/NamePrompter.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <Databases/LoadingStrictnessLevel.h>
 #include <Parsers/IAST_fwd.h>
 #include <Storages/ColumnsDescription.h>
 #include <Storages/IStorage_fwd.h>
 #include <Storages/registerStorages.h>
 #include <Access/Common/AccessType.h>
+#include <optional>
 #include <unordered_map>
 
 
@@ -52,6 +54,9 @@ public:
         LoadingStrictnessLevel mode;
         const String & comment;
         bool is_restore_from_backup = false;
+        /// The stored binary type origin (Storages/StoredBinaryTypeOrigin.h) the new table gets: set only for an original CREATE (see
+        /// InterpreterCreateQuery), never for ATTACH, startup, restore, or replayed or recovered metadata.
+        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {};
 
         ContextMutablePtr getContext() const;
         ContextMutablePtr getLocalContext() const;
@@ -102,7 +107,8 @@ public:
         const ColumnsDescription & columns,
         const ConstraintsDescription & constraints,
         LoadingStrictnessLevel mode,
-        bool is_restore_from_backup = false) const;
+        bool is_restore_from_backup = false,
+        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {}) const;
 
     /// Register a table engine by its name.
     /// No locking, you must register all engines before usage of get.

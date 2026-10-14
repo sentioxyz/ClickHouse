@@ -1203,7 +1203,8 @@ static StoragePtr create(const StorageFactory::Arguments & args)
         context,
         date_column_name,
         merging_params,
-        std::move(storage_settings));
+        std::move(storage_settings),
+        args.stored_binary_type_origin_to_stamp);
 }
 
 

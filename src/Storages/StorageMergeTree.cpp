@@ -206,7 +206,8 @@ StorageMergeTree::StorageMergeTree(
     ContextMutablePtr context_,
     const String & date_column_name,
     const MergingParams & merging_params_,
-    std::unique_ptr<MergeTreeSettings> storage_settings_)
+    std::unique_ptr<MergeTreeSettings> storage_settings_,
+    std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp)
     : MergeTreeData(
           table_id_,
           metadata_,
@@ -222,6 +223,7 @@ StorageMergeTree::StorageMergeTree(
     , support_transaction(supportTransaction(getDisks(), log.load()))
 {
     initializeDirectoriesAndFormatVersion(relative_data_path_, LoadingStrictnessLevel::ATTACH <= mode, date_column_name);
+    initializeStoredBinaryTypeOrigin(mode, stored_binary_type_origin_to_stamp);
 
     loadDataParts(LoadingStrictnessLevel::FORCE_RESTORE <= mode, std::nullopt);
 

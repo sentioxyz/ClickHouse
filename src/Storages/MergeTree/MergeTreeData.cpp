@@ -124,6 +124,7 @@
 #include <Storages/Statistics/ConditionSelectivityEstimator.h>
 #include <Storages/StorageInMemoryMetadata.h>
 #include <Storages/StorageReplicatedMergeTree.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <Storages/VirtualColumnUtils.h>
 #include <Common/Config/ConfigHelper.h>
 #include <Common/CurrentMetrics.h>
@@ -597,6 +598,96 @@ void MergeTreeData::initializeDirectoriesAndFormatVersion(const std::string & re
             throw Exception(ErrorCodes::METADATA_MISMATCH, "MergeTree data format version on disk doesn't support custom partitioning");
     }
 }
+void MergeTreeData::initializeStoredBinaryTypeOrigin(LoadingStrictnessLevel mode, std::optional<BinaryTypeOrigin> origin_to_stamp)
+{
+    const auto record_path = fs::path(relative_data_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME;
+    const UUID table_uuid = getStorageID().uuid;
+
+    if (mode < LoadingStrictnessLevel::ATTACH)
+    {
+        if (origin_to_stamp && table_uuid != UUIDHelpers::Nil)
+        {
+            if (!persistStoredBinaryTypeOrigin(*origin_to_stamp))
+                LOG_INFO(log, "Table {} has no writable disk for its stored binary type origin record; it stays Unknown", getStorageID().getNameForLogs());
+            return;
+        }
+
+        /// A new table that is not stamped has no record: a leftover one in its directory must not apply to it.
+        for (const auto & disk : getDisks())
+        {
+            if (disk->isBroken() || disk->isReadOnly() || disk->isWriteOnce())
+                continue;
+            disk->removeFileIfExists(record_path);
+        }
+        stored_binary_type_origin = BinaryTypeOrigin::Unknown;
+        return;
+    }
+
+    std::optional<StoredBinaryTypeOriginRecord> found;
+    for (const auto & disk : getDisks())
+    {
+        if (disk->isBroken())
+            continue;
+
+        auto record = tryReadStoredBinaryTypeOriginRecord(*disk, record_path, getReadSettings());
+        if (!record)
+            continue;
+
+        if (found && record->toString() != found->toString())
+            throw Exception(ErrorCodes::CORRUPTED_DATA,
+                            "The stored binary type origin record {} of table {} differs from the record on another disk",
+                            fullPath(disk, record_path), getStorageID().getNameForLogs());
+        found = std::move(record);
+    }
+
+    if (!found)
+    {
+        stored_binary_type_origin = BinaryTypeOrigin::Unknown;
+        return;
+    }
+
+    const auto match = matchTableRecord(*found, table_uuid);
+    if (match != StoredBinaryTypeOriginRecordMatch::Applies)
+    {
+        LOG_WARNING(log, "Ignoring the stored binary type origin record of table {}: it is {}. The table is Unknown",
+                    getStorageID().getNameForLogs(), describeStoredBinaryTypeOriginRecordMatch(match));
+        stored_binary_type_origin_record_ignored = true;
+        stored_binary_type_origin = BinaryTypeOrigin::Unknown;
+        return;
+    }
+
+    stored_binary_type_origin = found->origin;
+}
+
+bool MergeTreeData::persistStoredBinaryTypeOrigin(BinaryTypeOrigin origin)
+{
+    const auto record = StoredBinaryTypeOriginRecord::forTable(origin, getStorageID().uuid);
+    const auto record_path = fs::path(relative_data_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME;
+    const bool sync = getContext()->getSettingsRef()[Setting::fsync_metadata];
+
+    bool written = false;
+    for (const auto & disk : getStoragePolicy()->getDisks())
+    {
+        if (disk->isBroken() || disk->isReadOnly() || disk->isWriteOnce())
+            continue;
+
+        /// The first writable disk always gets the record, as it gets format_version.txt; another disk only if it has a record already
+        /// (from before a change of the storage policy), so that no disk keeps an older one.
+        if (written && !disk->existsFile(record_path))
+            continue;
+
+        writeStoredBinaryTypeOriginRecord(*disk, record_path, record, getContext()->getWriteSettings(), sync);
+        written = true;
+    }
+
+    if (!written)
+        return false;
+
+    stored_binary_type_origin = origin;
+    stored_binary_type_origin_record_ignored = false;
+    return true;
+}
+
 DataPartsLock::DataPartsLock(SharedMutex & data_parts_mutex_, const MergeTreeData * data_)
     : wait_watch(Stopwatch(CLOCK_MONOTONIC))
     , lock(data_parts_mutex_)
@@ -2933,9 +3024,10 @@ void MergeTreeData::loadDataParts(bool skip_sanity_checks, std::optional<std::un
             auto local_component_guard = Coordination::setCurrentComponent(component_name);
             for (auto it = disk_ptr->iterateDirectory(relative_data_path); it->isValid(); it->next())
             {
-                /// Skip temporary directories, file 'format_version.txt' and directory 'detached'.
+                /// Skip temporary directories, files 'format_version.txt' and the stored binary type origin record, and directory 'detached'.
                 if (startsWith(it->name(), "tmp")
                     || it->name() == MergeTreeData::FORMAT_VERSION_FILE_NAME
+                    || startsWith(it->name(), STORED_BINARY_TYPE_ORIGIN_FILE_NAME)
                     || it->name() == DETACHED_DIR_NAME)
                     continue;
 
@@ -3292,9 +3384,10 @@ void MergeTreeData::refreshDataPartsOnce(UInt64 interval_milliseconds)
 
         for (auto it = disk_ptr->iterateDirectory(relative_data_path); it->isValid(); it->next())
         {
-            /// Skip temporary directories, file 'format_version.txt' and directory 'detached'.
+            /// Skip temporary directories, files 'format_version.txt' and the stored binary type origin record, and directory 'detached'.
             if (startsWith(it->name(), "tmp")
                 || it->name() == MergeTreeData::FORMAT_VERSION_FILE_NAME
+                || startsWith(it->name(), STORED_BINARY_TYPE_ORIGIN_FILE_NAME)
                 || it->name() == DETACHED_DIR_NAME)
                 continue;
 
@@ -4878,8 +4971,10 @@ void MergeTreeData::dropAllData()
             continue;
         }
 
-        LOG_INFO(log, "dropAllData: remove format_version.txt, detached, moving and write ahead logs");
+        LOG_INFO(log, "dropAllData: remove format_version.txt, the stored binary type origin record, detached, moving and write ahead logs");
         disk->removeFileIfExists(fs::path(relative_data_path) / FORMAT_VERSION_FILE_NAME);
+        disk->removeFileIfExists(fs::path(relative_data_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
+        disk->removeFileIfExists(fs::path(relative_data_path) / (String(STORED_BINARY_TYPE_ORIGIN_FILE_NAME) + ".tmp"));
 
         if (disk->existsDirectory(fs::path(relative_data_path) / DETACHED_DIR_NAME))
         {
@@ -4950,6 +5045,8 @@ void MergeTreeData::dropIfEmpty()
                 continue;
             /// Non recursive, exception is thrown if there are more files.
             disk->removeFileIfExists(fs::path(relative_data_path) / FORMAT_VERSION_FILE_NAME);
+            disk->removeFileIfExists(fs::path(relative_data_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
+            disk->removeFileIfExists(fs::path(relative_data_path) / (String(STORED_BINARY_TYPE_ORIGIN_FILE_NAME) + ".tmp"));
             disk->removeDirectory(fs::path(relative_data_path) / DETACHED_DIR_NAME);
             disk->removeDirectory(relative_data_path);
         }

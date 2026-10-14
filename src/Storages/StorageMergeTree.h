@@ -50,7 +50,8 @@ public:
         ContextMutablePtr context_,
         const String & date_column_name,
         const MergingParams & merging_params_,
-        std::unique_ptr<MergeTreeSettings> settings_);
+        std::unique_ptr<MergeTreeSettings> settings_,
+        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {});
 
     void startup() override;
     void flushAndPrepareForShutdown() override;

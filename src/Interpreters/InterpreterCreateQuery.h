@@ -4,6 +4,7 @@
 #include <Core/NamesAndAliases.h>
 #include <Core/QualifiedTableName.h>
 #include <Access/Common/AccessRightsElement.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <Databases/LoadingStrictnessLevel.h>
 #include <Interpreters/IInterpreter.h>
 #include <Storages/ColumnsDescription.h>
@@ -118,7 +119,13 @@ private:
     AccessRightsElements getRequiredAccess() const;
 
     /// Create IStorage and add it to database. If table already exists and IF NOT EXISTS specified, do nothing and return false.
-    bool doCreateTable(ASTCreateQuery & create, const TableProperties & properties, DDLGuardPtr & ddl_guard, LoadingStrictnessLevel mode);
+    /// `stored_binary_type_origin_to_stamp` is getStoredBinaryTypeOriginToStamp of the interpreter that normalized the query.
+    bool doCreateTable(ASTCreateQuery & create, const TableProperties & properties, DDLGuardPtr & ddl_guard, LoadingStrictnessLevel mode,
+                       std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp);
+    /// The stored binary type origin (Storages/StoredBinaryTypeOrigin.h) that an original CREATE gives the new table: OfficialCanonical,
+    /// or for `CREATE ... AS` and `CLONE AS` the origin of the source table. Nothing for any other way to make a table: ATTACH, startup,
+    /// restore, a secondary query of a Replicated database, or metadata replayed or recovered from stored metadata.
+    std::optional<BinaryTypeOrigin> getStoredBinaryTypeOriginToStamp(const ASTCreateQuery & create, LoadingStrictnessLevel mode) const;
     BlockIO doCreateOrReplaceTable(ASTCreateQuery & create, const InterpreterCreateQuery::TableProperties & properties, LoadingStrictnessLevel mode);
     BlockIO doCreateOrReplaceTemporaryTable(ASTCreateQuery & create, const InterpreterCreateQuery::TableProperties & properties, LoadingStrictnessLevel mode);
 #if CLICKHOUSE_CLOUD

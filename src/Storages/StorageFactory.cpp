@@ -72,7 +72,8 @@ StoragePtr StorageFactory::get(
     const ColumnsDescription & columns,
     const ConstraintsDescription & constraints,
     LoadingStrictnessLevel mode,
-    bool is_restore_from_backup) const
+    bool is_restore_from_backup,
+    std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp) const
 {
     String name;
     String comment;
@@ -231,7 +232,8 @@ StoragePtr StorageFactory::get(
         .constraints = constraints,
         .mode = mode,
         .comment = comment,
-        .is_restore_from_backup = is_restore_from_backup};
+        .is_restore_from_backup = is_restore_from_backup,
+        .stored_binary_type_origin_to_stamp = stored_binary_type_origin_to_stamp};
 
     chassert(arguments.getContext() == arguments.getContext()->getGlobalContext());
 

@@ -2099,7 +2099,7 @@ BlockIO InterpreterCreateQuery::createTable(ASTCreateQuery & create)
     }
 
     /// Actually creates table
-    bool created = doCreateTable(create, properties, ddl_guard, mode);
+    bool created = doCreateTable(create, properties, ddl_guard, mode, getStoredBinaryTypeOriginToStamp(create, mode));
 
     if (!created)   /// Table already exists
     {
@@ -2210,9 +2210,35 @@ catch (...)
 
 }
 
+std::optional<BinaryTypeOrigin> InterpreterCreateQuery::getStoredBinaryTypeOriginToStamp(const ASTCreateQuery & create, LoadingStrictnessLevel mode) const
+{
+    /// Only an original CREATE on this binary stamps a new table. Replayed or recovered metadata can arrive in mode CREATE, so the flags
+    /// that mark it are checked as well.
+    if (create.attach || mode != LoadingStrictnessLevel::CREATE || is_restore_from_backup || is_metadata_replay
+        || getContext()->isRecoveryFromStoredMetadata())
+        return {};
+
+    /// `CREATE ... AS` and `CLONE AS` give the new table the origin of their source table, so that `ATTACH PARTITION ... FROM` the source
+    /// keeps its meaning and `CLONE AS` copies data under the origin it was stored with. getTablePropertiesAndNormalizeCreateQuery has
+    /// moved the name of the source table from the query to as_table_saved.
+    const String & source_table = create.as_table.empty() ? as_table_saved : create.as_table;
+    const String & source_database = create.as_table.empty() ? as_database_saved : create.as_database;
+    if (!source_table.empty() && !create.as_table_function)
+    {
+        const StorageID source_id(getContext()->resolveDatabase(source_database), source_table);
+        if (auto source = DatabaseCatalog::instance().tryGetTable(source_id, getContext()))
+        {
+            if (auto origin = source->tryGetStoredBinaryTypeOrigin())
+                return origin;
+        }
+    }
+    return BinaryTypeOrigin::OfficialCanonical;
+}
+
 bool InterpreterCreateQuery::doCreateTable(ASTCreateQuery & create,
                                            const InterpreterCreateQuery::TableProperties & properties,
-                                           DDLGuardPtr & ddl_guard, LoadingStrictnessLevel mode)
+                                           DDLGuardPtr & ddl_guard, LoadingStrictnessLevel mode,
+                                           std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp)
 {
     if (create.isTemporary())
     {
@@ -2231,7 +2257,8 @@ bool InterpreterCreateQuery::doCreateTable(ASTCreateQuery & create,
                 properties.columns,
                 properties.constraints,
                 mode,
-                is_restore_from_backup);
+                is_restore_from_backup,
+                stored_binary_type_origin_to_stamp);
             validateStorage(*res, mode, getContext(), /*is_temporary=*/true);
             return res;
         };
@@ -2428,7 +2455,8 @@ bool InterpreterCreateQuery::doCreateTable(ASTCreateQuery & create,
             properties.columns,
             properties.constraints,
             mode,
-            is_restore_from_backup);
+            is_restore_from_backup,
+            stored_binary_type_origin_to_stamp);
 
         /// If schema was inferred while storage creation, add columns description to create query.
         auto & create_query = query_ptr->as<ASTCreateQuery &>();
@@ -2748,7 +2776,8 @@ BlockIO InterpreterCreateQuery::doCreateOrReplaceTable(ASTCreateQuery & create,
     {
         /// Create temporary table (random name will be generated)
         DDLGuardPtr ddl_guard;
-        [[maybe_unused]] bool done = InterpreterCreateQuery(query_ptr, create_context).doCreateTable(create, properties, ddl_guard, mode);
+        [[maybe_unused]] bool done = InterpreterCreateQuery(query_ptr, create_context).doCreateTable(
+            create, properties, ddl_guard, mode, getStoredBinaryTypeOriginToStamp(create, mode));
         ddl_guard.reset();
         chassert(done);
         created = true;
@@ -2940,7 +2969,8 @@ BlockIO InterpreterCreateQuery::doCreateOrReplaceTemporaryTable(ASTCreateQuery &
             properties.columns,
             properties.constraints,
             mode,
-            is_restore_from_backup);
+            is_restore_from_backup,
+            getStoredBinaryTypeOriginToStamp(create, mode));
         validateStorage(*res, mode, getContext(), /*is_temporary=*/true);
         return res;
     };

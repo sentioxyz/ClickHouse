@@ -3,6 +3,7 @@
 #include <Core/Names.h>
 #include <Core/QueryProcessingStage.h>
 #include <Databases/IDatabase.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <DataTypes/DataTypeLowCardinality.h>
 #include <Interpreters/CancellationCode.h>
 #include <Interpreters/Context_fwd.h>
@@ -173,6 +174,11 @@ public:
 
     /// Returns true if the storage replicates SELECT, INSERT and ALTER commands among replicas.
     virtual bool supportsReplication() const { return false; }
+
+    /// The stored binary type origin of the table (Storages/StoredBinaryTypeOrigin.h) for a storage that keeps one: what the binary type
+    /// headers in its stored `Dynamic`, `JSON` and aggregation state data mean, Unknown without a record that applies to the table.
+    /// Nothing for a storage without stored origins.
+    virtual std::optional<BinaryTypeOrigin> tryGetStoredBinaryTypeOrigin() const { return {}; }
 
     /// Returns true if the storage supports parallel insert.
     /// If false, each INSERT query will call write() only once.

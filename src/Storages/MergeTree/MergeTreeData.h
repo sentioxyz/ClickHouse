@@ -1358,6 +1358,11 @@ public:
 
     MergeTreeDataFormatVersion format_version;
 
+    /// The stored binary type origin of the table (Storages/StoredBinaryTypeOrigin.h): the origin of its table record, Unknown if it
+    /// has no record that applies to it. A part with a valid record of its own is read with that one instead.
+    BinaryTypeOrigin getStoredBinaryTypeOrigin() const { return stored_binary_type_origin.load(); }
+    std::optional<BinaryTypeOrigin> tryGetStoredBinaryTypeOrigin() const override { return getStoredBinaryTypeOrigin(); }
+
     /// Merging params - what additional actions to perform during merge.
     const MergingParams merging_params;
 
@@ -1658,6 +1663,22 @@ protected:
     struct TagByStateAndInfo{};
 
     void initializeDirectoriesAndFormatVersion(const std::string & relative_data_path_, bool attach, const std::string & date_column_name, bool need_create_directories = true);
+
+    /// Called right after initializeDirectoriesAndFormatVersion. A new table (`mode` below ATTACH) with a UUID gets the table record
+    /// `origin_to_stamp` if there is one (an original CREATE, see InterpreterCreateQuery); any other new table gets no record, and a
+    /// leftover one in its directory is removed. An existing table loads its record: a record of another table, of the other kind, or
+    /// found with a table without a UUID is ignored (Unknown), a malformed one or records that differ between the disks throw.
+    void initializeStoredBinaryTypeOrigin(LoadingStrictnessLevel mode, std::optional<BinaryTypeOrigin> origin_to_stamp);
+
+    /// Writes the table record with `origin` for the UUID of this table, atomically on the first writable disk and on every other writable
+    /// disk that has a record already, and makes it the origin of the table. Returns false and changes nothing if the table has no
+    /// writable disk; throws LOGICAL_ERROR if it has no UUID.
+    bool persistStoredBinaryTypeOrigin(BinaryTypeOrigin origin);
+
+    /// The origin of the table record (see above), and whether a record was found at the table path that does not apply to this table:
+    /// such a table is Unknown, and the registration refuses to replace that record.
+    std::atomic<BinaryTypeOrigin> stored_binary_type_origin{BinaryTypeOrigin::Unknown};
+    std::atomic<bool> stored_binary_type_origin_record_ignored{false};
 
     static const MergeTreePartInfo & dataPartPtrToInfo(const DataPartPtr & part)
     {
