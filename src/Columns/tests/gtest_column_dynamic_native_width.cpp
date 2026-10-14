@@ -326,8 +326,10 @@ String writeNativeDynamic(const ColumnDynamic & column)
 
 /// A Dynamic structure written with binary type headers can have a single regular variant of a type that its name does not identify: the
 /// descriptor identifies it exactly, so the data is read in its layout, and its values move into the shared variant (with the descriptor)
-/// before the column holds them; the other variants stay regular. This is the layout the fork's native writer produced with binary types
-/// (V2); the V3 MergeTree structure reads the same way.
+/// before the column holds them; the other variants stay regular. The V3 MergeTree structure reads the same way. The fixture has the
+/// canonical `Custom` descriptor, so this is the layout migration of canonical data, not data written by the Decimal512 fork (its headers
+/// have 0x39): the declared legacy origin, the refusal without it and the real writer modes of the fork are in the final compatibility
+/// harness.
 TEST(ColumnDynamicNativeWidth, OldBinaryStructureWithNativeRegularVariant)
 {
     const std::pair<UInt32, UInt32> native_states[] = {{76, 10}, {10, 20}};
