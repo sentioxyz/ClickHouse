@@ -11161,6 +11161,13 @@ MergeTreeData & MergeTreeData::checkStructureAndGetMergeTreeData(IStorage & sour
     if (format_version != src_data->format_version)
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Tables have different format_version");
 
+    /// A part without a record of its own is read with the stored binary type origin of its table (Storages/StoredBinaryTypeOrigin.h):
+    /// moved between tables of different origins, its stored data would be read under another meaning. The initiator of a replicated
+    /// REPLACE refuses here, before its log entry exists; a replica that later fails this check fetches the parts the initiator cloned.
+    if (getStoredBinaryTypeOrigin() != src_data->getStoredBinaryTypeOrigin())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "Tables have different stored binary type origins: {} and {}",
+                        getBinaryTypeOriginName(getStoredBinaryTypeOrigin()), getBinaryTypeOriginName(src_data->getStoredBinaryTypeOrigin()));
+
     if (query_to_string(my_snapshot->getPrimaryKey().expression_list_ast)
         != query_to_string(src_snapshot->getPrimaryKey().expression_list_ast))
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Tables have different primary key");
