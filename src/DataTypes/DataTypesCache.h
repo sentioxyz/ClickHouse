@@ -51,6 +51,9 @@ public:
 
 private:
     void addSimpleType(BinaryTypeIndex index, const String & type_name);
+    /// A simple type without a BinaryTypeIndex (the 512-bit types): cached for lookups by name only. It has no index slot, because its
+    /// legacy index means another type upstream (see SentioLegacyBinaryTypeIndex).
+    void addNamedSimpleType(const String & type_name);
 
     std::array<Element, BINARY_TYPE_INDEX_SIZE> by_index{};
     std::unordered_map<String, Element> by_name;

@@ -73,19 +73,26 @@ enum class BinaryTypeIndex : uint8_t
     Time64 = 0x34,
     /// reserved = 0x35
     QBit = 0x36,
-    /// The 512-bit types shipped with these indexes in the Decimal512 fork of 26.3 LTS and are stored in
-    /// `Dynamic`/`JSON` parts and binary formats written by it, so they must not move.
-    UInt512 = 0x37,
-    Int512 = 0x38,
-    Decimal512 = 0x39,
     /// QBit with an explicit stride parameter (stride != dimension). Non-strided QBit keeps using 0x36 for backward compatibility.
-    /// Upstream uses 0x37 for it; this fork keeps 0x37 for UInt512 (see above), so strided QBit is not exchangeable
-    /// in binary type encoding with upstream servers and clients.
-    QBitWithStride = 0x3A,
+    QBitWithStride = 0x37
 };
 
 /// Maximum value of BinaryTypeIndex + 1, used for sizing the index array in SimpleDataTypesCache.
-inline constexpr size_t BINARY_TYPE_INDEX_SIZE = 0x3B;
+inline constexpr size_t BINARY_TYPE_INDEX_SIZE = 0x38;
+
+/// The indexes the Decimal512 fork of 26.3 LTS (and this fork before the SentioWide descriptors) wrote for its 512-bit types and for
+/// strided `QBit`. They are not `BinaryTypeIndex` values: upstream 0x37 is strided `QBit`, and 0x38-0x3A are unassigned. They are read
+/// only for `BinaryTypeOrigin::SentioLegacyV0` and written only by `BinaryTypeWriterMode::SentioLegacyBridge` and by
+/// encodeDataTypeForHashCalculation (the historical fingerprint).
+namespace SentioLegacyBinaryTypeIndex
+{
+    inline constexpr uint8_t UInt512 = 0x37;
+    inline constexpr uint8_t Int512 = 0x38;
+    /// Followed by <uint8_precision><uint8_scale>.
+    inline constexpr uint8_t Decimal512 = 0x39;
+    /// The fork's strided `QBit` index; strided `QBit` is disabled in this fork, so it is refused.
+    inline constexpr uint8_t QBitWithStride = 0x3A;
+}
 
 /**
 
@@ -146,13 +153,18 @@ Binary encoding for ClickHouse data types:
 | Time                                                                                                    | 0x32                                                                                                                                                                                                                                                                                                                                                                     |
 | Time64(P)                                                                                               | 0x34<uint8_precision>                                                                                                                                                                                                                                                                                                                                                    |
 | QBit(T, N)                                                                                              | 0x36<element_type_encoding><var_uint_dimension>                                                                                                                                                                                                                                                                                                                          |
-| UInt512                                                                                                 | 0x37                                                                                                                                                                                                                                                                                                                                                                     |
-| Int512                                                                                                  | 0x38                                                                                                                                                                                                                                                                                                                                                                     |
-| Decimal512(P, S)                                                                                        | 0x39<uint8_precision><uint8_scale>                                                                                                                                                                                                                                                                                                                                       |
-| QBit(T, N, stride)                                                                                      | 0x3A<element_type_encoding><var_uint_dimension><var_uint_stride>                                                                                                                                                                                                                                                                                                         |
+| QBit(T, N, stride)                                                                                      | 0x37<element_type_encoding><var_uint_dimension><var_uint_stride>                                                                                                                                                                                                                                                                                                         |
+| UInt512, Int512, Decimal512(P, S)                                                                       | 0x2C<var_uint_descriptor_size><SentioWide_v1 descriptor> (see SentioWideTypeEncoding.h)                                                                                                                                                                                                                                                                                  |
 |---------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 
-For type QBit the 0x3A encoding (0x37 upstream) is used only when stride differs from the dimension N. When stride == N (including when the third argument is written explicitly, as in QBit(Float32, 4, 4)) the type is canonicalized to the two-argument QBit(T, N) form and encoded as 0x36 above, so its binary encoding stays byte-identical to a non-strided QBit.
+For type QBit the 0x37 encoding is used only when stride differs from the dimension N. When stride == N (including when the third argument is written explicitly, as in QBit(Float32, 4, 4)) the type is canonicalized to the two-argument QBit(T, N) form and encoded as 0x36 above, so its binary encoding stays byte-identical to a non-strided QBit.
+This fork refuses strided QBit (see DataTypeQBit): decoding 0x37 for the OfficialCanonical origin throws SUPPORT_IS_DISABLED.
+
+The 512-bit types UInt512, Int512 and Decimal512(P, S) of this fork are written as Custom (0x2C) with a private, versioned descriptor
+(SentioWide_v1_UInt512, SentioWide_v1_Int512, SentioWide_v1_Decimal512(P,S), see SentioWideTypeEncoding.h), which every origin decodes.
+Their legacy indexes (SentioLegacyBinaryTypeIndex: 0x37 UInt512, 0x38 Int512, 0x39<uint8_precision><uint8_scale> Decimal512, 0x3A
+strided QBit) are decoded only for the SentioLegacyV0 origin; the Unknown origin refuses 0x37, 0x38 and 0x39 as ambiguous before
+reading their payload.
 
 Interval kind binary encoding:
 |---------------|-----------------|
@@ -202,17 +214,22 @@ Aggregate function parameter binary encoding (binary encoding of a Field, see sr
 |------------------------|------------------------------------------------------------------------------------------------------------------------------|
 */
 
+/// Encode a type with the default writer, BinaryTypeWriterMode::SentioWideV1.
 String encodeDataType(const DataTypePtr & type);
 void encodeDataType(const DataTypePtr & type, WriteBuffer & buf);
 
 /// Special version of type encoding that is used for generic hash calculation.
 /// It can skip serializing some data types parameters.
+/// It keeps the historical fingerprint of every type: the 512-bit types are written with their legacy indexes (as the fork always hashed
+/// them, in every container), never with the SentioWide descriptors, so the hashes derived from it do not change.
 void encodeDataTypeForHashCalculation(const DataTypePtr & type, WriteBuffer & buf);
 
 /// Decode a type. max_complexity limits the number of decoded type nodes (0 == unlimited, the default).
 /// Callers reading untrusted input (input formats, and query plans deserialized from a client via
 /// receiveQueryPlan) pass the effective `input_format_binary_max_type_complexity` to guard against malicious
 /// input; callers decoding already-stored server data (columns, shared-data) use the default (unlimited).
+/// Without a declared origin the type is decoded for BinaryTypeOrigin::Unknown: the legacy indexes 0x37/0x38/0x39 are refused as
+/// ambiguous, never guessed.
 DataTypePtr decodeDataType(ReadBuffer & buf, size_t max_complexity = 0);
 
 /// The origin of a binary type encoding decides what the indexes 0x37, 0x38, 0x39 and 0x3A mean: the Decimal512 fork of 26.3 LTS wrote

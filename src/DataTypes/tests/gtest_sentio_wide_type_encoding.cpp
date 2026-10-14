@@ -39,6 +39,7 @@ extern const int SUPPORT_IS_DISABLED;
 extern const int UNKNOWN_TYPE;
 extern const int ATTEMPT_TO_READ_AFTER_EOF;
 extern const int CANNOT_READ_ALL_DATA;
+extern const int ARGUMENT_OUT_OF_BOUND;
 }
 
 namespace
@@ -505,4 +506,86 @@ TEST(SentioWideTypeEncoding, OtherTypesEncodeUnchanged)
     EXPECT_EQ(hexOf(encodeDataType(factory.get("Bool"))), "2d");
     EXPECT_EQ(hexOf(encodeDataType(factory.get("Dynamic(max_types=10)"))), "2b0a");
     EXPECT_EQ(hexOf(encodeDataType(factory.get("Ring"))), newHeader("Ring"));
+}
+
+/// The default reader (no declared origin) is the Unknown origin: it reads what the default writer writes (the SentioWide descriptors),
+/// and refuses the legacy indexes as ambiguous instead of applying a global legacy default.
+TEST(SentioWideTypeEncoding, DefaultWriterAndReaderRoundTrip)
+{
+    for (const auto & c : WIDE_CASES)
+    {
+        const String bytes = encodeDataType(typeOf(c));
+        ReadBufferFromString in(bytes);
+        expectWideType(decodeDataType(in), c, "default writer and reader");
+        EXPECT_TRUE(in.eof()) << c.id;
+    }
+    for (const char * name : {"Array(UInt512)", "Map(String, Decimal(100, 2))", "Tuple(a Int512, b Nullable(UInt512))", "Variant(Int512, String)"})
+    {
+        const auto type = DataTypeFactory::instance().get(name);
+        const String bytes = encodeDataType(type);
+        ReadBufferFromString in(bytes);
+        EXPECT_EQ(decodeDataType(in)->getName(), type->getName()) << name;
+    }
+    for (const char * hex : {"37", "38", "394c9a", "1e37"})
+    {
+        auto [code, message] = errorOf([&] { const String bytes = unhex(hex); ReadBufferFromString in(bytes); decodeDataType(in); });
+        EXPECT_EQ(code, ErrorCodes::INCORRECT_DATA) << hex << ": " << message;
+        EXPECT_NE(message.find("ambiguous"), String::npos) << hex << ": " << message;
+    }
+}
+
+/// The legacy Decimal512 index keeps the native constructor's limits (P in [1, 154], S in [0, 154], S not limited by P) and fails on
+/// truncated payloads.
+TEST(SentioWideTypeEncoding, LegacyDecimalKeepsConstructorLimits)
+{
+    for (const char * hex : {"390000", "399b00", "39019b"})
+    {
+        auto [code, message] = errorOf([&] { decode(unhex(hex), BinaryTypeOrigin::SentioLegacyV0); });
+        EXPECT_EQ(code, ErrorCodes::ARGUMENT_OUT_OF_BOUND) << hex << ": " << message;
+    }
+    for (const char * hex : {"39", "394c"})
+    {
+        auto [code, message] = errorOf([&] { decode(unhex(hex), BinaryTypeOrigin::SentioLegacyV0); });
+        EXPECT_TRUE(code == ErrorCodes::ATTEMPT_TO_READ_AFTER_EOF || code == ErrorCodes::CANNOT_READ_ALL_DATA) << hex << ": " << message;
+    }
+    const WideCase c{"legacy Decimal512(1,154)", WideKind::Decimal512, 1, 154, "", "", "", "", ""};
+    expectWideType(decode(unhex("39019a"), BinaryTypeOrigin::SentioLegacyV0), c, "legacy origin");
+}
+
+/// The bridge writer writes the legacy indexes in every container; the hash fingerprint of these types is the same bytes; the legacy
+/// origin reads them back.
+TEST(SentioWideTypeEncoding, LegacyBridgeWriterRecursesIntoContainers)
+{
+    tryRegisterAggregateFunctions();
+    const std::pair<const char *, const char *> cases[] = {
+        {"Array(UInt512)", "1e37"},
+        {"Nullable(Decimal(100, 2))", "23396402"},
+        {"Map(String, Int512)", "271538"},
+        {"Tuple(a Int512, b String)", "2002016138016215"},
+        {"Variant(String, UInt512)", "2a021537"},
+        {"AggregateFunction(sum, UInt512)", "25000373756d000137"},
+    };
+    for (const auto & [name, hex] : cases)
+    {
+        const auto type = DataTypeFactory::instance().get(name);
+        EXPECT_EQ(hexOf(encodeWith(type, BinaryTypeWriterMode::SentioLegacyBridge)), hex) << name;
+        EXPECT_EQ(hexOf(hashFingerprint(type)), hex) << name;
+        EXPECT_EQ(decode(unhex(hex), BinaryTypeOrigin::SentioLegacyV0)->getName(), type->getName()) << name;
+    }
+}
+
+/// The namespace probe: a name of exactly the namespace is a SentioWide descriptor (of an unsupported version); a shorter name or another
+/// spelling keeps the upstream path.
+TEST(SentioWideTypeEncoding, NamespaceProbeBoundary)
+{
+    for (auto origin : ALL_ORIGINS)
+    {
+        auto [code, message] = errorOf([&] { decode(customHeader("SentioWide_"), origin); });
+        EXPECT_EQ(code, ErrorCodes::INCORRECT_DATA) << message;
+        EXPECT_NE(message.find("version"), String::npos) << message;
+        std::tie(code, message) = errorOf([&] { decode(customHeader("SentioWide"), origin); });
+        EXPECT_EQ(code, ErrorCodes::UNKNOWN_TYPE) << message;
+        std::tie(code, message) = errorOf([&] { decode(customHeader("sentioWide_v1_UInt512"), origin); });
+        EXPECT_EQ(code, ErrorCodes::UNKNOWN_TYPE) << message;
+    }
 }

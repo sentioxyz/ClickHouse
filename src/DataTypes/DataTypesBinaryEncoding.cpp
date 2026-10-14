@@ -24,6 +24,7 @@
 #include <DataTypes/DataTypeNested.h>
 #include <DataTypes/DataTypeFactory.h>
 #include <DataTypes/DataTypesCache.h>
+#include <DataTypes/SentioWideTypeEncoding.h>
 #include <Columns/ColumnDynamic.h>
 #include <AggregateFunctions/IAggregateFunction.h>
 #include <AggregateFunctions/AggregateFunctionFactory.h>
@@ -46,7 +47,8 @@ namespace ErrorCodes
     extern const int UNSUPPORTED_METHOD;
     extern const int INCORRECT_DATA;
     extern const int SUPPORT_IS_DISABLED;
-    extern const int NOT_IMPLEMENTED;
+    extern const int LOGICAL_ERROR;
+    extern const int TOO_LARGE_STRING_SIZE;
 }
 
 namespace Setting
@@ -54,7 +56,7 @@ namespace Setting
 extern const SettingsUInt64 input_format_binary_max_type_complexity;
 }
 
-static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, size_t max_complexity);
+static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, size_t max_complexity, BinaryTypeOrigin origin);
 
 namespace
 {
@@ -108,7 +110,10 @@ BinaryTypeIndex getBinaryTypeIndex(const DataTypePtr & type)
         case TypeIndex::UInt256:
             return BinaryTypeIndex::UInt256;
         case TypeIndex::UInt512:
-            return BinaryTypeIndex::UInt512;
+        case TypeIndex::Int512:
+        case TypeIndex::Decimal512:
+            /// The 512-bit types have no BinaryTypeIndex: encodeDataTypeImpl writes them before asking for one (see encodeSentioWideType).
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "Type {} has no binary type index", type->getName());
         case TypeIndex::Int8:
             return BinaryTypeIndex::Int8;
         case TypeIndex::Int16:
@@ -121,8 +126,6 @@ BinaryTypeIndex getBinaryTypeIndex(const DataTypePtr & type)
             return BinaryTypeIndex::Int128;
         case TypeIndex::Int256:
             return BinaryTypeIndex::Int256;
-        case TypeIndex::Int512:
-            return BinaryTypeIndex::Int512;
         case TypeIndex::BFloat16:
             return BinaryTypeIndex::BFloat16;
         case TypeIndex::Float32:
@@ -161,8 +164,6 @@ BinaryTypeIndex getBinaryTypeIndex(const DataTypePtr & type)
             return BinaryTypeIndex::Decimal128;
         case TypeIndex::Decimal256:
             return BinaryTypeIndex::Decimal256;
-        case TypeIndex::Decimal512:
-            return BinaryTypeIndex::Decimal512;
         case TypeIndex::UUID:
             return BinaryTypeIndex::UUID;
         case TypeIndex::Array:
@@ -273,11 +274,42 @@ DataTypePtr decodeDecimal(ReadBuffer & buf)
 }
 
 
-template <bool encode_for_hash_calculation>
-void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf);
+/// The 512-bit types: Custom with the SentioWide v1 descriptor, or their legacy index for the bridge writer (and the hash fingerprint).
+void encodeSentioWideType(const DataTypePtr & type, WriteBuffer & buf, BinaryTypeWriterMode mode)
+{
+    switch (mode)
+    {
+        case BinaryTypeWriterMode::SentioWideV1:
+            buf.write(UInt8(BinaryTypeIndex::Custom));
+            writeStringBinary(makeSentioWideDescriptor(*type), buf);
+            return;
+        case BinaryTypeWriterMode::SentioLegacyBridge:
+            switch (type->getTypeId())
+            {
+                case TypeIndex::UInt512:
+                    buf.write(SentioLegacyBinaryTypeIndex::UInt512);
+                    return;
+                case TypeIndex::Int512:
+                    buf.write(SentioLegacyBinaryTypeIndex::Int512);
+                    return;
+                case TypeIndex::Decimal512:
+                    buf.write(SentioLegacyBinaryTypeIndex::Decimal512);
+                    encodeDecimal<Decimal512>(type, buf);
+                    return;
+                default:
+                    break;
+            }
+            break;
+    }
+    throw Exception(ErrorCodes::LOGICAL_ERROR, "Type {} is not a SentioWide type", type->getName());
+}
 
 template <bool encode_for_hash_calculation>
-void encodeAggregateFunction(const String & function_name, const Array & parameters, const DataTypes & arguments_types, WriteBuffer & buf)
+void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf, BinaryTypeWriterMode mode);
+
+template <bool encode_for_hash_calculation>
+void encodeAggregateFunction(
+    const String & function_name, const Array & parameters, const DataTypes & arguments_types, WriteBuffer & buf, BinaryTypeWriterMode mode)
 {
     writeStringBinary(function_name, buf);
     writeVarUInt(parameters.size(), buf);
@@ -285,10 +317,11 @@ void encodeAggregateFunction(const String & function_name, const Array & paramet
         encodeField(param, buf);
     writeVarUInt(arguments_types.size(), buf);
     for (const auto & argument_type : arguments_types)
-        encodeDataTypeImpl<encode_for_hash_calculation>(argument_type, buf);
+        encodeDataTypeImpl<encode_for_hash_calculation>(argument_type, buf, mode);
 }
 
-std::tuple<AggregateFunctionPtr, Array, DataTypes> decodeAggregateFunction(ReadBuffer & buf, size_t & complexity, size_t max_complexity)
+std::tuple<AggregateFunctionPtr, Array, DataTypes>
+decodeAggregateFunction(ReadBuffer & buf, size_t & complexity, size_t max_complexity, BinaryTypeOrigin origin)
 {
     String function_name;
     readStringBinary(function_name, buf);
@@ -309,7 +342,7 @@ std::tuple<AggregateFunctionPtr, Array, DataTypes> decodeAggregateFunction(ReadB
     DataTypes arguments_types;
     arguments_types.reserve(num_arguments);
     for (size_t i = 0; i != num_arguments; ++i)
-        arguments_types.push_back(decodeDataTypeImpl(buf, complexity, max_complexity));
+        arguments_types.push_back(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
     AggregateFunctionProperties properties;
     auto action = NullsAction::EMPTY;
     auto function = AggregateFunctionFactory::instance().get(function_name, action, arguments_types, parameters, properties);
@@ -317,8 +350,14 @@ std::tuple<AggregateFunctionPtr, Array, DataTypes> decodeAggregateFunction(ReadB
 }
 
 template <bool encode_for_hash_calculation>
-void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
+void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf, BinaryTypeWriterMode mode)
 {
+    if (isSentioWideType(*type))
+    {
+        encodeSentioWideType(type, buf, mode);
+        return;
+    }
+
     /// First, write the BinaryTypeIndex byte.
     auto binary_type_index = getBinaryTypeIndex(type);
     buf.write(UInt8(binary_type_index));
@@ -388,15 +427,10 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
             encodeDecimal<Decimal256>(type, buf);
             break;
         }
-        case BinaryTypeIndex::Decimal512:
-        {
-            encodeDecimal<Decimal512>(type, buf);
-            break;
-        }
         case BinaryTypeIndex::Array:
         {
             const auto & array_type = assert_cast<const DataTypeArray &>(*type);
-            encodeDataTypeImpl<encode_for_hash_calculation>(array_type.getNestedType(), buf);
+            encodeDataTypeImpl<encode_for_hash_calculation>(array_type.getNestedType(), buf, mode);
             break;
         }
         case BinaryTypeIndex::NamedTuple:
@@ -408,7 +442,7 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
             for (size_t i = 0; i != types.size(); ++i)
             {
                 writeStringBinary(names[i], buf);
-                encodeDataTypeImpl<encode_for_hash_calculation>(types[i], buf);
+                encodeDataTypeImpl<encode_for_hash_calculation>(types[i], buf, mode);
             }
             break;
         }
@@ -418,20 +452,20 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
             const auto & element_types = tuple_type.getElements();
             writeVarUInt(element_types.size(), buf);
             for (const auto & element_type : element_types)
-                encodeDataTypeImpl<encode_for_hash_calculation>(element_type, buf);
+                encodeDataTypeImpl<encode_for_hash_calculation>(element_type, buf, mode);
             break;
         }
         case BinaryTypeIndex::QBit:
         {
             const auto & qbit_type = assert_cast<const DataTypeQBit &>(*type);
-            encodeDataTypeImpl<encode_for_hash_calculation>(qbit_type.getElementType(), buf);
+            encodeDataTypeImpl<encode_for_hash_calculation>(qbit_type.getElementType(), buf, mode);
             writeVarUInt(qbit_type.getDimension(), buf);
             break;
         }
         case BinaryTypeIndex::QBitWithStride:
         {
             const auto & qbit_type = assert_cast<const DataTypeQBit &>(*type);
-            encodeDataTypeImpl<encode_for_hash_calculation>(qbit_type.getElementType(), buf);
+            encodeDataTypeImpl<encode_for_hash_calculation>(qbit_type.getElementType(), buf, mode);
             writeVarUInt(qbit_type.getDimension(), buf);
             writeVarUInt(qbit_type.getStride(), buf);
             break;
@@ -445,7 +479,7 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
         case BinaryTypeIndex::Nullable:
         {
             const auto & nullable_type = assert_cast<const DataTypeNullable &>(*type);
-            encodeDataTypeImpl<encode_for_hash_calculation>(nullable_type.getNestedType(), buf);
+            encodeDataTypeImpl<encode_for_hash_calculation>(nullable_type.getNestedType(), buf, mode);
             break;
         }
         case BinaryTypeIndex::Function:
@@ -455,21 +489,21 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
             const auto & return_type = function_type.getReturnType();
             writeVarUInt(arguments_types.size(), buf);
             for (const auto & argument_type : arguments_types)
-                encodeDataTypeImpl<encode_for_hash_calculation>(argument_type, buf);
-            encodeDataTypeImpl<encode_for_hash_calculation>(return_type, buf);
+                encodeDataTypeImpl<encode_for_hash_calculation>(argument_type, buf, mode);
+            encodeDataTypeImpl<encode_for_hash_calculation>(return_type, buf, mode);
             break;
         }
         case BinaryTypeIndex::LowCardinality:
         {
             const auto & low_cardinality_type = assert_cast<const DataTypeLowCardinality &>(*type);
-            encodeDataTypeImpl<encode_for_hash_calculation>(low_cardinality_type.getDictionaryType(), buf);
+            encodeDataTypeImpl<encode_for_hash_calculation>(low_cardinality_type.getDictionaryType(), buf, mode);
             break;
         }
         case BinaryTypeIndex::Map:
         {
             const auto & map_type = assert_cast<const DataTypeMap &>(*type);
-            encodeDataTypeImpl<encode_for_hash_calculation>(map_type.getKeyType(), buf);
-            encodeDataTypeImpl<encode_for_hash_calculation>(map_type.getValueType(), buf);
+            encodeDataTypeImpl<encode_for_hash_calculation>(map_type.getKeyType(), buf, mode);
+            encodeDataTypeImpl<encode_for_hash_calculation>(map_type.getValueType(), buf, mode);
             break;
         }
         case BinaryTypeIndex::Variant:
@@ -478,7 +512,7 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
             const auto & variants = variant_type.getVariants();
             writeVarUInt(variants.size(), buf);
             for (const auto & variant : variants)
-                encodeDataTypeImpl<encode_for_hash_calculation>(variant, buf);
+                encodeDataTypeImpl<encode_for_hash_calculation>(variant, buf, mode);
             break;
         }
         case BinaryTypeIndex::Dynamic:
@@ -496,13 +530,13 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
         {
             const auto & aggregate_function_type = assert_cast<const DataTypeAggregateFunction &>(*type);
             writeVarUInt(aggregate_function_type.getVersion(), buf);
-            encodeAggregateFunction<encode_for_hash_calculation>(aggregate_function_type.getFunctionName(), aggregate_function_type.getParameters(), aggregate_function_type.getArgumentsDataTypes(), buf);
+            encodeAggregateFunction<encode_for_hash_calculation>(aggregate_function_type.getFunctionName(), aggregate_function_type.getParameters(), aggregate_function_type.getArgumentsDataTypes(), buf, mode);
             break;
         }
         case BinaryTypeIndex::SimpleAggregateFunction:
         {
             const auto & simple_aggregate_function_type = assert_cast<const DataTypeCustomSimpleAggregateFunction &>(*type->getCustomName());
-            encodeAggregateFunction<encode_for_hash_calculation>(simple_aggregate_function_type.getFunctionName(), simple_aggregate_function_type.getParameters(), simple_aggregate_function_type.getArgumentsDataTypes(), buf);
+            encodeAggregateFunction<encode_for_hash_calculation>(simple_aggregate_function_type.getFunctionName(), simple_aggregate_function_type.getParameters(), simple_aggregate_function_type.getArgumentsDataTypes(), buf, mode);
             break;
         }
         case BinaryTypeIndex::Nested:
@@ -514,7 +548,7 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
             for (size_t i = 0; i != elements.size(); ++i)
             {
                 writeStringBinary(names[i], buf);
-                encodeDataTypeImpl<encode_for_hash_calculation>(elements[i], buf);
+                encodeDataTypeImpl<encode_for_hash_calculation>(elements[i], buf, mode);
             }
             break;
         }
@@ -541,7 +575,7 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
             for (const auto & [path, path_type] : typed_paths)
             {
                 writeStringBinary(path, buf);
-                encodeDataTypeImpl<encode_for_hash_calculation>(path_type, buf);
+                encodeDataTypeImpl<encode_for_hash_calculation>(path_type, buf, mode);
             }
             const auto & paths_to_skip = object_type.getPathsToSkip();
             writeVarUInt(paths_to_skip.size(), buf);
@@ -562,22 +596,28 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf)
 
 void encodeDataType(const DataTypePtr & type, WriteBuffer & buf)
 {
-    encodeDataTypeImpl<false>(type, buf);
+    encodeDataTypeImpl<false>(type, buf, BinaryTypeWriterMode::SentioWideV1);
+}
+
+void encodeDataType(const DataTypePtr & type, WriteBuffer & buf, BinaryTypeWriterMode mode)
+{
+    encodeDataTypeImpl<false>(type, buf, mode);
 }
 
 void encodeDataTypeForHashCalculation(const DataTypePtr & type, WriteBuffer & buf)
 {
-    encodeDataTypeImpl<true>(type, buf);
+    /// The historical fingerprint: the 512-bit types keep their legacy indexes, so persisted hash-derived values do not change.
+    encodeDataTypeImpl<true>(type, buf, BinaryTypeWriterMode::SentioLegacyBridge);
 }
 
 String encodeDataType(const DataTypePtr & type)
 {
     WriteBufferFromOwnString buf;
-    encodeDataTypeImpl<false>(type, buf);
+    encodeDataTypeImpl<false>(type, buf, BinaryTypeWriterMode::SentioWideV1);
     return buf.str();
 }
 
-static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, size_t max_complexity)
+static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, size_t max_complexity, BinaryTypeOrigin origin)
 {
     ++complexity;
     if (max_complexity > 0 && complexity > max_complexity)
@@ -587,6 +627,34 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
 
     UInt8 type = 0;
     readBinary(type, buf);
+
+    /// The legacy indexes of the 512-bit types mean them only for the SentioLegacyV0 origin. For the Unknown origin they are ambiguous
+    /// (upstream 0x37 is strided QBit) and refused before any payload is read; for OfficialCanonical they keep their upstream meaning
+    /// in the switch below (0x37 strided QBit, 0x38 and 0x39 unassigned).
+    if (type == SentioLegacyBinaryTypeIndex::UInt512 || type == SentioLegacyBinaryTypeIndex::Int512
+        || type == SentioLegacyBinaryTypeIndex::Decimal512)
+    {
+        if (origin == BinaryTypeOrigin::SentioLegacyV0)
+        {
+            if (type == SentioLegacyBinaryTypeIndex::UInt512)
+                return getSimpleDataTypesCache().getType(String("UInt512"));
+            if (type == SentioLegacyBinaryTypeIndex::Int512)
+                return getSimpleDataTypesCache().getType(String("Int512"));
+            return decodeDecimal<Decimal512>(buf);
+        }
+        if (origin == BinaryTypeOrigin::Unknown)
+            throw Exception(
+                ErrorCodes::INCORRECT_DATA,
+                "Binary type index {0:#04x} is ambiguous without a declared origin: the Decimal512 fork wrote it for a 512-bit type, "
+                "upstream does not", UInt64(type));
+    }
+    /// The fork's own strided QBit index: strided QBit is disabled, as for the upstream index below.
+    if (type == SentioLegacyBinaryTypeIndex::QBitWithStride && origin == BinaryTypeOrigin::SentioLegacyV0)
+        throw Exception(
+            ErrorCodes::SUPPORT_IS_DISABLED,
+            "Binary type index {0:#04x} (strided QBit of the Decimal512 fork) is not supported: strided QBit is disabled in this fork",
+            UInt64(type));
+
     auto binary_type_index = static_cast<BinaryTypeIndex>(type);
 
     switch (binary_type_index)
@@ -599,14 +667,12 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
         case BinaryTypeIndex::UInt64:
         case BinaryTypeIndex::UInt128:
         case BinaryTypeIndex::UInt256:
-        case BinaryTypeIndex::UInt512:
         case BinaryTypeIndex::Int8:
         case BinaryTypeIndex::Int16:
         case BinaryTypeIndex::Int32:
         case BinaryTypeIndex::Int64:
         case BinaryTypeIndex::Int128:
         case BinaryTypeIndex::Int256:
-        case BinaryTypeIndex::Int512:
         case BinaryTypeIndex::BFloat16:
         case BinaryTypeIndex::Float32:
         case BinaryTypeIndex::Float64:
@@ -665,10 +731,8 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             return decodeDecimal<Decimal128>(buf);
         case BinaryTypeIndex::Decimal256:
             return decodeDecimal<Decimal256>(buf);
-        case BinaryTypeIndex::Decimal512:
-            return decodeDecimal<Decimal512>(buf);
         case BinaryTypeIndex::Array:
-            return std::make_shared<DataTypeArray>(decodeDataTypeImpl(buf, complexity, max_complexity));
+            return std::make_shared<DataTypeArray>(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
         case BinaryTypeIndex::NamedTuple:
         {
             size_t size = 0;
@@ -684,7 +748,7 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             {
                 names.emplace_back();
                 readStringBinary(names.back(), buf);
-                elements.push_back(decodeDataTypeImpl(buf, complexity, max_complexity));
+                elements.push_back(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
             }
 
             return std::make_shared<DataTypeTuple>(elements, names);
@@ -699,12 +763,12 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             DataTypes elements;
             elements.reserve(size);
             for (size_t i = 0; i != size; ++i)
-                elements.push_back(decodeDataTypeImpl(buf, complexity, max_complexity));
+                elements.push_back(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
             return std::make_shared<DataTypeTuple>(elements);
         }
         case BinaryTypeIndex::QBit:
         {
-            auto element_type = decodeDataTypeImpl(buf, complexity, max_complexity);
+            auto element_type = decodeDataTypeImpl(buf, complexity, max_complexity, origin);
             size_t dimension = 0;
             readVarUInt(dimension, buf);
             /// Non-strided QBit: the stride defaults to the dimension.
@@ -713,12 +777,12 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
         case BinaryTypeIndex::QBitWithStride:
             /// The first release of this fork disables QBit with an explicit stride (see DataTypeQBit). Reject the index itself,
             /// before the element type, dimension or stride is read or any type is constructed, so an empty, truncated or crafted
-            /// payload and even a canonical stride == dimension payload are refused the same way. 0x36 (non-strided QBit) and
-            /// 0x37/0x38/0x39 (UInt512/Int512/Decimal512) are unchanged. Upstream encodes strided QBit as 0x37, which this fork
-            /// decodes as UInt512: that cannot be detected here and is not covered by this check.
+            /// payload and even a canonical stride == dimension payload are refused the same way. 0x36 (non-strided QBit) is unchanged.
+            /// Only the OfficialCanonical origin reaches this case: SentioLegacyV0 reads 0x37 as UInt512 and Unknown refuses it as
+            /// ambiguous above.
             throw Exception(
                 ErrorCodes::SUPPORT_IS_DISABLED,
-                "Binary type index QBitWithStride (0x3A) is not supported: strided QBit is disabled in the first release of this fork");
+                "Binary type index QBitWithStride (0x37) is not supported: strided QBit is disabled in the first release of this fork");
         case BinaryTypeIndex::Set:
             return std::make_shared<DataTypeSet>();
         case BinaryTypeIndex::Interval:
@@ -730,7 +794,7 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             return std::make_shared<DataTypeInterval>(IntervalKind(IntervalKind::Kind(kind)));
         }
         case BinaryTypeIndex::Nullable:
-            return std::make_shared<DataTypeNullable>(decodeDataTypeImpl(buf, complexity, max_complexity));
+            return std::make_shared<DataTypeNullable>(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
         case BinaryTypeIndex::Function:
         {
             size_t arguments_size = 0;
@@ -741,16 +805,16 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             DataTypes arguments;
             arguments.reserve(arguments_size);
             for (size_t i = 0; i != arguments_size; ++i)
-                arguments.push_back(decodeDataTypeImpl(buf, complexity, max_complexity));
-            auto return_type = decodeDataTypeImpl(buf, complexity, max_complexity);
+                arguments.push_back(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
+            auto return_type = decodeDataTypeImpl(buf, complexity, max_complexity, origin);
             return std::make_shared<DataTypeFunction>(arguments, return_type);
         }
         case BinaryTypeIndex::LowCardinality:
-            return std::make_shared<DataTypeLowCardinality>(decodeDataTypeImpl(buf, complexity, max_complexity));
+            return std::make_shared<DataTypeLowCardinality>(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
         case BinaryTypeIndex::Map:
         {
-            auto key_type = decodeDataTypeImpl(buf, complexity, max_complexity);
-            auto value_type = decodeDataTypeImpl(buf, complexity, max_complexity);
+            auto key_type = decodeDataTypeImpl(buf, complexity, max_complexity, origin);
+            auto value_type = decodeDataTypeImpl(buf, complexity, max_complexity, origin);
             return std::make_shared<DataTypeMap>(key_type, value_type);
         }
         case BinaryTypeIndex::Variant:
@@ -763,7 +827,7 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             DataTypes variants;
             variants.reserve(size);
             for (size_t i = 0; i != size; ++i)
-                variants.push_back(decodeDataTypeImpl(buf, complexity, max_complexity));
+                variants.push_back(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
             return std::make_shared<DataTypeVariant>(variants);
         }
         case BinaryTypeIndex::Dynamic:
@@ -776,12 +840,12 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
         {
             size_t version = 0;
             readVarUInt(version, buf);
-            const auto & [function, parameters, arguments_types] = decodeAggregateFunction(buf, complexity, max_complexity);
+            const auto & [function, parameters, arguments_types] = decodeAggregateFunction(buf, complexity, max_complexity, origin);
             return std::make_shared<DataTypeAggregateFunction>(function, arguments_types, parameters, version);
         }
         case BinaryTypeIndex::SimpleAggregateFunction:
         {
-            const auto & [function, parameters, arguments_types] = decodeAggregateFunction(buf, complexity, max_complexity);
+            const auto & [function, parameters, arguments_types] = decodeAggregateFunction(buf, complexity, max_complexity, origin);
             return createSimpleAggregateFunctionType(function, arguments_types, parameters);
         }
         case BinaryTypeIndex::Nested:
@@ -799,15 +863,35 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             {
                 names.emplace_back();
                 readStringBinary(names.back(), buf);
-                elements.push_back(decodeDataTypeImpl(buf, complexity, max_complexity));
+                elements.push_back(decodeDataTypeImpl(buf, complexity, max_complexity, origin));
             }
 
             return createNested(elements, names);
         }
         case BinaryTypeIndex::Custom:
         {
-            String type_name;
-            readStringBinary(type_name, buf);
+            size_t size = 0;
+            readVarUInt(size, buf);
+            if (size > DEFAULT_MAX_STRING_SIZE)
+                throw Exception(ErrorCodes::TOO_LARGE_STRING_SIZE, "Too large string size.");
+            /// The SentioWide namespace is recognized from the first bytes of the name, before the rest is read or allocated: a SentioWide
+            /// descriptor is parsed only by parseSentioWideDescriptor and is never longer than SENTIO_WIDE_DESCRIPTOR_MAX_SIZE. Every other
+            /// name keeps the upstream path (the readStringBinary limit above, then DataTypeFactory).
+            String type_name(std::min(size, SENTIO_WIDE_PREFIX.size()), '\0');
+            buf.readStrict(type_name.data(), type_name.size());
+            if (type_name == SENTIO_WIDE_PREFIX)
+            {
+                if (size > SENTIO_WIDE_DESCRIPTOR_MAX_SIZE)
+                    throw Exception(
+                        ErrorCodes::INCORRECT_DATA, "SentioWide type descriptor is too long: {} bytes, the maximum is {}", size,
+                        SENTIO_WIDE_DESCRIPTOR_MAX_SIZE);
+                type_name.resize(size);
+                buf.readStrict(type_name.data() + SENTIO_WIDE_PREFIX.size(), size - SENTIO_WIDE_PREFIX.size());
+                return parseSentioWideDescriptor(type_name);
+            }
+            const size_t probed = type_name.size();
+            type_name.resize(size);
+            buf.readStrict(type_name.data() + probed, size - probed);
             return DataTypeFactory::instance().get(type_name);
         }
         case BinaryTypeIndex::JSON:
@@ -836,7 +920,7 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             {
                 String path;
                 readStringBinary(path, buf);
-                typed_paths[path] = decodeDataTypeImpl(buf, complexity, max_complexity);
+                typed_paths[path] = decodeDataTypeImpl(buf, complexity, max_complexity, origin);
             }
             size_t paths_to_skip_size = 0;
             readVarUInt(paths_to_skip_size, buf);
@@ -880,18 +964,13 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
 
 DataTypePtr decodeDataType(ReadBuffer & buf, size_t max_complexity)
 {
+    return decodeDataType(buf, BinaryTypeOrigin::Unknown, max_complexity);
+}
+
+DataTypePtr decodeDataType(ReadBuffer & buf, BinaryTypeOrigin origin, size_t max_complexity)
+{
     size_t complexity = 0;
-    return decodeDataTypeImpl(buf, complexity, max_complexity);
-}
-
-DataTypePtr decodeDataType(ReadBuffer &, BinaryTypeOrigin, size_t)
-{
-    throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Decoding binary types with a declared origin is not implemented yet");
-}
-
-void encodeDataType(const DataTypePtr &, WriteBuffer &, BinaryTypeWriterMode)
-{
-    throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Encoding binary types with a writer mode is not implemented yet");
+    return decodeDataTypeImpl(buf, complexity, max_complexity, origin);
 }
 
 size_t getBinaryTypeDecodingComplexityLimit(const ContextPtr & context)
