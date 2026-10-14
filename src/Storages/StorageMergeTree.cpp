@@ -223,7 +223,7 @@ StorageMergeTree::StorageMergeTree(
     , support_transaction(supportTransaction(getDisks(), log.load()))
 {
     initializeDirectoriesAndFormatVersion(relative_data_path_, LoadingStrictnessLevel::ATTACH <= mode, date_column_name);
-    initializeStoredBinaryTypeOrigin(mode, stored_binary_type_origin_to_stamp);
+    loadStoredBinaryTypeOrigin();
 
     loadDataParts(LoadingStrictnessLevel::FORCE_RESTORE <= mode, std::nullopt);
 
@@ -233,6 +233,10 @@ StorageMergeTree::StorageMergeTree(
                         "it was unclean DROP table or manual intervention. "
                         "You must either clear directory by hand or use ATTACH TABLE instead "
                         "of CREATE TABLE if you need to use those parts");
+
+    /// An original CREATE stamps the table only now that it is proven to have no part (a read-only table over existing parts is not).
+    if (mode < LoadingStrictnessLevel::ATTACH)
+        stampStoredBinaryTypeOriginOfNewTable(stored_binary_type_origin_to_stamp);
 
     increment.set(getMaxBlockNumber());
 

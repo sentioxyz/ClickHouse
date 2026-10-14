@@ -475,9 +475,8 @@ StorageReplicatedMergeTree::StorageReplicatedMergeTree(
     }
 
     initializeDirectoriesAndFormatVersion(relative_data_path_, LoadingStrictnessLevel::ATTACH <= mode, date_column_name);
-    /// The stamp of an original CREATE goes into the ZooKeeper metadata if this replica creates the table; otherwise the replica takes
-    /// the origin of the existing table from ZooKeeper below (adoptStoredBinaryTypeOriginForNewReplica).
-    initializeStoredBinaryTypeOrigin(mode, stored_binary_type_origin_to_stamp);
+    /// Only loaded here: an original CREATE stamps the table once it is proven to have no part, below.
+    loadStoredBinaryTypeOrigin();
 
     /// We create and deactivate all tasks for consistency.
     /// They all will be scheduled and activated by the restarting thread.
@@ -647,6 +646,10 @@ StorageReplicatedMergeTree::StorageReplicatedMergeTree(
                         "Data directory for table already contains data parts - probably it was unclean DROP table "
                         "or manual intervention. You must either clear directory by hand "
                         "or use ATTACH TABLE instead of CREATE TABLE if you need to use those parts");
+
+    /// The stamp of an original CREATE, now that the table is proven to have no part. It goes into the ZooKeeper metadata if this
+    /// replica creates the table; otherwise the replica takes the origin of the existing table below (adoptStoredBinaryTypeOriginForNewReplica).
+    stampStoredBinaryTypeOriginOfNewTable(stored_binary_type_origin_to_stamp);
 
     try
     {
@@ -6740,13 +6743,30 @@ void StorageReplicatedMergeTree::adoptStoredBinaryTypeOriginForNewReplica(Binary
         return;
     }
 
+    /// A record that was in the directory before this CREATE is existing content: it is kept, and the replica is created only if it agrees.
+    if (stored_binary_type_origin_record_found)
+    {
+        if (!stored_binary_type_origin_record_ignored && stored_binary_type_origin.load() == origin)
+            return;
+        throw Exception(ErrorCodes::INCORRECT_DATA,
+                        "The data directory of the new replica of table {} already has a stored binary type origin record ({}) that differs "
+                        "from the origin {} of the table in ZooKeeper. A CREATE TABLE does not take over existing content: remove the "
+                        "directory by hand, or use ATTACH TABLE",
+                        getStorageID().getNameForLogs(),
+                        stored_binary_type_origin_record_ignored ? String("one that does not apply to this table")
+                                                                 : String(getBinaryTypeOriginName(stored_binary_type_origin.load())),
+                        getBinaryTypeOriginName(origin));
+    }
+
     if (origin == getStoredBinaryTypeOrigin())
         return;
 
     LOG_INFO(log, "The new replica of table {} takes its stored binary type origin {} from ZooKeeper",
              getStorageID().getNameForLogs(), getBinaryTypeOriginName(origin));
     /// Without a writable disk there is no local record: ZooKeeper alone keeps the origin.
-    if (!persistStoredBinaryTypeOrigin(origin))
+    if (persistStoredBinaryTypeOrigin(origin))
+        stored_binary_type_origin_record_written_by_create = true;
+    else
         stored_binary_type_origin = origin;
 }
 

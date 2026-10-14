@@ -390,6 +390,7 @@ namespace ErrorCodes
     extern const int ILLEGAL_COLUMN;
     extern const int ILLEGAL_TYPE_OF_COLUMN_FOR_FILTER;
     extern const int CORRUPTED_DATA;
+    extern const int INCORRECT_DATA;
     extern const int BAD_TYPE_OF_FIELD;
     extern const int BAD_ARGUMENTS;
     extern const int INVALID_PARTITION_VALUE;
@@ -598,30 +599,9 @@ void MergeTreeData::initializeDirectoriesAndFormatVersion(const std::string & re
             throw Exception(ErrorCodes::METADATA_MISMATCH, "MergeTree data format version on disk doesn't support custom partitioning");
     }
 }
-void MergeTreeData::initializeStoredBinaryTypeOrigin(LoadingStrictnessLevel mode, std::optional<BinaryTypeOrigin> origin_to_stamp)
+void MergeTreeData::loadStoredBinaryTypeOrigin()
 {
     const auto record_path = fs::path(relative_data_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME;
-    const UUID table_uuid = getStorageID().uuid;
-
-    if (mode < LoadingStrictnessLevel::ATTACH)
-    {
-        if (origin_to_stamp && table_uuid != UUIDHelpers::Nil)
-        {
-            if (!persistStoredBinaryTypeOrigin(*origin_to_stamp))
-                LOG_INFO(log, "Table {} has no writable disk for its stored binary type origin record; it stays Unknown", getStorageID().getNameForLogs());
-            return;
-        }
-
-        /// A new table that is not stamped has no record: a leftover one in its directory must not apply to it.
-        for (const auto & disk : getDisks())
-        {
-            if (disk->isBroken() || disk->isReadOnly() || disk->isWriteOnce())
-                continue;
-            disk->removeFileIfExists(record_path);
-        }
-        stored_binary_type_origin = BinaryTypeOrigin::Unknown;
-        return;
-    }
 
     std::optional<StoredBinaryTypeOriginRecord> found;
     for (const auto & disk : getDisks())
@@ -640,13 +620,14 @@ void MergeTreeData::initializeStoredBinaryTypeOrigin(LoadingStrictnessLevel mode
         found = std::move(record);
     }
 
+    stored_binary_type_origin_record_found = found.has_value();
     if (!found)
     {
         stored_binary_type_origin = BinaryTypeOrigin::Unknown;
         return;
     }
 
-    const auto match = matchTableRecord(*found, table_uuid);
+    const auto match = matchTableRecord(*found, getStorageID().uuid);
     if (match != StoredBinaryTypeOriginRecordMatch::Applies)
     {
         LOG_WARNING(log, "Ignoring the stored binary type origin record of table {}: it is {}. The table is Unknown",
@@ -657,6 +638,37 @@ void MergeTreeData::initializeStoredBinaryTypeOrigin(LoadingStrictnessLevel mode
     }
 
     stored_binary_type_origin = found->origin;
+}
+
+void MergeTreeData::stampStoredBinaryTypeOriginOfNewTable(std::optional<BinaryTypeOrigin> origin_to_stamp)
+{
+    if (!origin_to_stamp || getStorageID().uuid == UUIDHelpers::Nil)
+        return;
+
+    /// A new table with parts is a read-only table over existing data: that data keeps whatever origin it has.
+    if (!getDataPartsForInternalUsage().empty())
+        return;
+
+    if (stored_binary_type_origin_record_found)
+    {
+        if (!stored_binary_type_origin_record_ignored && stored_binary_type_origin.load() == *origin_to_stamp)
+            return;
+
+        throw Exception(ErrorCodes::INCORRECT_DATA,
+                        "The data directory of table {} already has a stored binary type origin record ({}), probably left by an unclean "
+                        "DROP TABLE or by manual intervention. A CREATE TABLE does not take over existing content: remove the directory by "
+                        "hand, or use ATTACH TABLE",
+                        getStorageID().getNameForLogs(),
+                        stored_binary_type_origin_record_ignored ? String("one that does not apply to this table")
+                                                                 : String(getBinaryTypeOriginName(stored_binary_type_origin.load())));
+    }
+
+    if (!persistStoredBinaryTypeOrigin(*origin_to_stamp))
+    {
+        LOG_INFO(log, "Table {} has no writable disk for its stored binary type origin record; it stays Unknown", getStorageID().getNameForLogs());
+        return;
+    }
+    stored_binary_type_origin_record_written_by_create = true;
 }
 
 bool MergeTreeData::persistStoredBinaryTypeOrigin(BinaryTypeOrigin origin)
@@ -5045,8 +5057,12 @@ void MergeTreeData::dropIfEmpty()
                 continue;
             /// Non recursive, exception is thrown if there are more files.
             disk->removeFileIfExists(fs::path(relative_data_path) / FORMAT_VERSION_FILE_NAME);
-            disk->removeFileIfExists(fs::path(relative_data_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
-            disk->removeFileIfExists(fs::path(relative_data_path) / (String(STORED_BINARY_TYPE_ORIGIN_FILE_NAME) + ".tmp"));
+            /// Only a stored binary type origin record this CREATE wrote: one that was there before is existing content and stays.
+            if (stored_binary_type_origin_record_written_by_create)
+            {
+                disk->removeFileIfExists(fs::path(relative_data_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
+                disk->removeFileIfExists(fs::path(relative_data_path) / (String(STORED_BINARY_TYPE_ORIGIN_FILE_NAME) + ".tmp"));
+            }
             disk->removeDirectory(fs::path(relative_data_path) / DETACHED_DIR_NAME);
             disk->removeDirectory(relative_data_path);
         }

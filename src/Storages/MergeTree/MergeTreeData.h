@@ -1668,11 +1668,17 @@ protected:
 
     void initializeDirectoriesAndFormatVersion(const std::string & relative_data_path_, bool attach, const std::string & date_column_name, bool need_create_directories = true);
 
-    /// Called right after initializeDirectoriesAndFormatVersion. A new table (`mode` below ATTACH) with a UUID gets the table record
-    /// `origin_to_stamp` if there is one (an original CREATE, see InterpreterCreateQuery); any other new table gets no record, and a
-    /// leftover one in its directory is removed. An existing table loads its record: a record of another table, of the other kind, or
-    /// found with a table without a UUID is ignored (Unknown), a malformed one or records that differ between the disks throw.
-    void initializeStoredBinaryTypeOrigin(LoadingStrictnessLevel mode, std::optional<BinaryTypeOrigin> origin_to_stamp);
+    /// Called right after initializeDirectoriesAndFormatVersion, for every table and mode: loads the table record from the disks, and
+    /// never writes or removes one. A record of another table, of the other kind, or found with a table without a UUID is ignored
+    /// (Unknown); a malformed one, or records that differ between the disks, throw.
+    void loadStoredBinaryTypeOrigin();
+
+    /// Stamps a new table with `origin_to_stamp` (an original CREATE, see InterpreterCreateQuery). The constructors call it only once the
+    /// CREATE is proven fresh: after loading the table and refusing a directory with parts, so nothing is loaded under the new stamp. A
+    /// table without a UUID, or with parts (a read-only table over existing data), is not stamped. A record that was in the directory
+    /// before is existing content that a CREATE never takes over: it is kept and the CREATE is refused, unless it is a record of this
+    /// table with the same origin (this CREATE, interrupted after its stamp).
+    void stampStoredBinaryTypeOriginOfNewTable(std::optional<BinaryTypeOrigin> origin_to_stamp);
 
     /// Writes the table record with `origin` for the UUID of this table, atomically on the first writable disk and on every other writable
     /// disk that has a record already, and makes it the origin of the table. Returns false and changes nothing if the table has no
@@ -1683,6 +1689,10 @@ protected:
     /// such a table is Unknown, and the registration refuses to replace that record.
     std::atomic<BinaryTypeOrigin> stored_binary_type_origin{BinaryTypeOrigin::Unknown};
     std::atomic<bool> stored_binary_type_origin_record_ignored{false};
+    /// A record was at the table path when the table was loaded (before anything this table wrote), and this table's CREATE wrote the
+    /// record: a failed CREATE removes only a record it wrote itself (dropIfEmpty).
+    std::atomic<bool> stored_binary_type_origin_record_found{false};
+    std::atomic<bool> stored_binary_type_origin_record_written_by_create{false};
     /// The local record conflicts with the stored origin the replicated metadata holds for the table: neither is applied implicitly, the
     /// record is kept, and the table is read as Unknown until the conflict is resolved (StorageReplicatedMergeTree).
     std::atomic<bool> stored_binary_type_origin_conflict{false};
