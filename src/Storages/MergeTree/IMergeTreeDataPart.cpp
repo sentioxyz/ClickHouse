@@ -1890,6 +1890,22 @@ void IMergeTreeDataPart::loadStoredBinaryTypeOrigin()
     stored_binary_type_origin = record.origin;
 }
 
+void IMergeTreeDataPart::writeStoredBinaryTypeOriginRecord(
+    IDataPartStorage & part_storage, BinaryTypeOrigin origin, const WriteSettings & settings, bool sync) const
+{
+    const auto record = StoredBinaryTypeOriginRecord::forPart(origin, checksums.getTotalChecksumHex());
+    part_storage.beginTransaction();
+    part_storage.removeFileIfExists(STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
+    {
+        auto out = part_storage.writeFile(STORED_BINARY_TYPE_ORIGIN_FILE_NAME, 4096, settings);
+        record.write(*out);
+        out->finalize();
+        if (sync)
+            out->sync();
+    }
+    part_storage.commitTransaction();
+}
+
 BinaryTypeOrigin IMergeTreeDataPart::getBinaryTypeOriginForReading() const
 {
     if (parent_part)
@@ -2897,13 +2913,24 @@ DataPartStoragePtr IMergeTreeDataPart::makeCloneInDetached(const String & prefix
         /// Make the detached/ clone durable so an acknowledged DETACH is not lost on power loss (#111382).
         .fsync_part_directory = (*storage_settings)[MergeTreeSetting::fsync_part_directory],
     };
-    return getDataPartStorage().freeze(
+    auto detached_storage = getDataPartStorage().freeze(
         storage.relative_data_path,
         *maybe_path_in_detached,
         Context::getGlobalContextInstance()->getReadSettings(),
         Context::getGlobalContextInstance()->getWriteSettings(),
         /* save_metadata_callback= */ {},
         params);
+
+    /// A part that leaves its table as raw files carries the stored binary type origin its data is read with (Storages/
+    /// StoredBinaryTypeOrigin.h), so that wherever it is attached it is read with the same meaning. A part with a record has it in the
+    /// clone already; a part of an Unknown table carries nothing, since Unknown says nothing about its data.
+    if (detached_storage && !disk_transaction && !parent_part && !stored_binary_type_origin)
+    {
+        const auto origin = getBinaryTypeOriginForReading();
+        if (origin != BinaryTypeOrigin::Unknown)
+            writeStoredBinaryTypeOriginRecord(*detached_storage, origin, Context::getGlobalContextInstance()->getWriteSettings(), params.fsync_part_directory);
+    }
+    return detached_storage;
 }
 
 MutableDataPartStoragePtr IMergeTreeDataPart::makeCloneOnDisk(

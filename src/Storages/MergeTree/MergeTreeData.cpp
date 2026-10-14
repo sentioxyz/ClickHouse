@@ -10090,6 +10090,17 @@ MergeTreeData::MutableDataPartsVector MergeTreeData::tryLoadPartsToAttach(const 
 
         loadPartAndFixMetadataImpl(part, local_context);
 
+        /// A part from detached/ is read with its own stored binary type origin record if it has one (bound to its checksums, see
+        /// Storages/StoredBinaryTypeOrigin.h), otherwise with the origin of this table. Without a record, nothing proves where its data
+        /// comes from: detached from an Unknown table or by an older binary, fetched from a table without an origin, or put there by hand.
+        /// A SentioLegacyV0 table would read the legacy indexes 0x37/0x38/0x39 in it with their legacy meaning, so it refuses such a part.
+        /// An Unknown or OfficialCanonical table reads it fail-closed (both refuse the legacy indexes).
+        if (!part->stored_binary_type_origin && getStoredBinaryTypeOrigin() == BinaryTypeOrigin::SentioLegacyV0)
+            throw Exception(ErrorCodes::INCORRECT_DATA,
+                            "Cannot attach part {} to table {}: the table has the stored binary type origin sentio_legacy_v0, and the part has no "
+                            "stored binary type origin record of its own, so nothing proves that its data has that origin",
+                            part->name, getStorageID().getNameForLogs());
+
         chassert(!part->version->getInfo().isRemoved());
         loaded_parts.push_back(part);
     }

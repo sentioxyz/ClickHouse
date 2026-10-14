@@ -21,6 +21,7 @@
 #include <Storages/MergeTree/ReplicatedFetchList.h>
 #include <Storages/MergeTree/checkDataPart.h>
 #include <Storages/StorageReplicatedMergeTree.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <base/scope_guard.h>
 #include <base/sort.h>
 #include <boost/algorithm/string/join.hpp>
@@ -761,7 +762,8 @@ void Fetcher::downloadBaseOrProjectionPartToDisk(
             file_name != IMergeTreeDataPart::COLUMNS_SUBSTREAMS_FILE_NAME &&
             file_name != IMergeTreeDataPart::DEFAULT_COMPRESSION_CODEC_FILE_NAME &&
             file_name != IMergeTreeDataPart::METADATA_VERSION_FILE_NAME &&
-            file_name != IMergeTreeDataPart::INVALIDATED_SYSTEM_COLUMNS_FILE_NAME)
+            file_name != IMergeTreeDataPart::INVALIDATED_SYSTEM_COLUMNS_FILE_NAME &&
+            file_name != STORED_BINARY_TYPE_ORIGIN_FILE_NAME)
             checksums.addFile(file_name, file_size, expected_hash);
     }
 

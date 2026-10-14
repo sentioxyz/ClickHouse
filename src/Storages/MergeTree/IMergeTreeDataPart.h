@@ -483,6 +483,9 @@ public:
     /// The origin the stored data of the part is read with: that of its own record if it has one, otherwise the stored origin of its table.
     /// A projection is read with the origin of its parent part.
     BinaryTypeOrigin getBinaryTypeOriginForReading() const;
+    /// Writes a part record with `origin`, bound to the checksums of this part, into `part_storage`: the directory of this part or of a
+    /// copy of it. The previous file is removed first, since it may be a hard link shared with the part this one was cloned from.
+    void writeStoredBinaryTypeOriginRecord(IDataPartStorage & part_storage, BinaryTypeOrigin origin, const WriteSettings & settings, bool sync) const;
 
     CompressionCodecPtr default_codec;
 

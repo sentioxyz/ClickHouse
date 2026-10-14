@@ -5,6 +5,7 @@
 #include <Storages/MergeTree/IMergeTreeDataPart.h>
 #include <Storages/MergeTree/MergeTreeDataPartTTLInfo.h>
 #include <Storages/MergeTree/MutateTask.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 
 #include <Columns/ColumnsNumber.h>
 #include <Columns/ColumnConst.h>
@@ -1659,6 +1660,18 @@ static void finalizeMutatedPart(
         auto out_checksums = new_data_part->getDataPartStorage().writeFile("checksums.txt", 4096, context->getWriteSettings());
         new_data_part->checksums.write(*out_checksums);
         written_files.push_back(std::move(out_checksums));
+    }
+
+    /// The mutated part keeps the stored binary type origin record of its source part (Storages/StoredBinaryTypeOrigin.h), bound to its
+    /// own checksums: the columns it does not rewrite are hard links to the source part's files and keep their meaning, and the rewritten
+    /// ones are canonical, which reads the same with every origin. The record itself is not hard linked (collectFilesToSkip skips the
+    /// files without checksums). A part without a record stays without one.
+    if (source_part->stored_binary_type_origin)
+    {
+        auto out_origin = new_data_part->getDataPartStorage().writeFile(STORED_BINARY_TYPE_ORIGIN_FILE_NAME, 4096, context->getWriteSettings());
+        StoredBinaryTypeOriginRecord::forPart(*source_part->stored_binary_type_origin, new_data_part->checksums.getTotalChecksumHex()).write(*out_origin);
+        written_files.push_back(std::move(out_origin));
+        new_data_part->stored_binary_type_origin = source_part->stored_binary_type_origin;
     }
 
     {

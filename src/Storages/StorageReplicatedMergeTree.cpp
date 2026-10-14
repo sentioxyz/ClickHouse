@@ -5784,6 +5784,20 @@ bool StorageReplicatedMergeTree::fetchPart(
         {
             // The fetched part is valuable and should not be cleaned like a temp part.
             part->is_temp = false;
+            /// A part fetched from another table (FETCH PARTITION/PART) carries the stored binary type origin of that table, which its
+            /// ZooKeeper metadata holds, unless it has a record of its own; nothing if that table has none (Unknown).
+            if (!part->stored_binary_type_origin)
+            {
+                const auto source_table_path = fs::path(source_replica_path).parent_path().parent_path();
+                const auto source_origin
+                    = ReplicatedMergeTreeTableMetadata::parseRaw(zookeeper->get(source_table_path / "metadata")).binary_type_origin;
+                if (source_origin != BinaryTypeOrigin::Unknown)
+                {
+                    part->writeStoredBinaryTypeOriginRecord(
+                        part->getDataPartStorage(), source_origin, getContext()->getWriteSettings(), (*getSettings())[MergeTreeSetting::fsync_after_insert]);
+                    part->stored_binary_type_origin = source_origin;
+                }
+            }
             part->renameTo(fs::path(DETACHED_DIR_NAME) / part_name, true);
         }
     }
