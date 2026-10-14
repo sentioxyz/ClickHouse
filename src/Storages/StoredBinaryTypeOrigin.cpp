@@ -278,6 +278,18 @@ StoredBinaryTypeOriginRecordMatch matchPartRecord(const StoredBinaryTypeOriginRe
     return StoredBinaryTypeOriginRecordMatch::Applies;
 }
 
+StoredBinaryTypeOriginReconciliation decideStoredBinaryTypeOriginReconciliation(
+    BinaryTypeOrigin local, bool local_record_ignored, BinaryTypeOrigin replicated)
+{
+    if (local_record_ignored)
+        return StoredBinaryTypeOriginReconciliation::KeepIgnoredRecord;
+    if (local == replicated)
+        return StoredBinaryTypeOriginReconciliation::Keep;
+    if (local == BinaryTypeOrigin::Unknown && replicated == BinaryTypeOrigin::SentioLegacyV0)
+        return StoredBinaryTypeOriginReconciliation::ApplyRegistration;
+    return StoredBinaryTypeOriginReconciliation::Conflict;
+}
+
 std::optional<StoredBinaryTypeOriginRecord> tryReadStoredBinaryTypeOriginRecord(const IDisk & disk, const String & path, const ReadSettings & settings)
 {
     auto in = disk.readFileIfExists(path, settings);

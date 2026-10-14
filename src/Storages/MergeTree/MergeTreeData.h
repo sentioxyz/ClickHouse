@@ -1359,8 +1359,12 @@ public:
     MergeTreeDataFormatVersion format_version;
 
     /// The stored binary type origin of the table (Storages/StoredBinaryTypeOrigin.h): the origin of its table record, Unknown if it
-    /// has no record that applies to it. A part with a valid record of its own is read with that one instead.
-    BinaryTypeOrigin getStoredBinaryTypeOrigin() const { return stored_binary_type_origin.load(); }
+    /// has no record that applies to it, or while that record conflicts with the replicated metadata of the table (the record is kept).
+    /// A part with a valid record of its own is read with that one instead.
+    BinaryTypeOrigin getStoredBinaryTypeOrigin() const
+    {
+        return stored_binary_type_origin_conflict.load() ? BinaryTypeOrigin::Unknown : stored_binary_type_origin.load();
+    }
     std::optional<BinaryTypeOrigin> tryGetStoredBinaryTypeOrigin() const override { return getStoredBinaryTypeOrigin(); }
 
     /// Merging params - what additional actions to perform during merge.
@@ -1679,6 +1683,9 @@ protected:
     /// such a table is Unknown, and the registration refuses to replace that record.
     std::atomic<BinaryTypeOrigin> stored_binary_type_origin{BinaryTypeOrigin::Unknown};
     std::atomic<bool> stored_binary_type_origin_record_ignored{false};
+    /// The local record conflicts with the stored origin the replicated metadata holds for the table: neither is applied implicitly, the
+    /// record is kept, and the table is read as Unknown until the conflict is resolved (StorageReplicatedMergeTree).
+    std::atomic<bool> stored_binary_type_origin_conflict{false};
 
     static const MergeTreePartInfo & dataPartPtrToInfo(const DataPartPtr & part)
     {

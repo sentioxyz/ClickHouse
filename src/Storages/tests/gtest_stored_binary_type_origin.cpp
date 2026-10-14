@@ -7,6 +7,7 @@
 #include <Common/Exception.h>
 
 #include <string>
+#include <tuple>
 #include <utility>
 
 /// The record of the stored binary type origin of a table and of a part: its exact text, its two kinds, and whom it applies to. A table
@@ -237,4 +238,37 @@ TEST(StoredBinaryTypeOrigin, PartRecordAppliesOnlyToItsOwnPart)
     EXPECT_EQ(matchPartRecord(part_record, String()), StoredBinaryTypeOriginRecordMatch::OtherPart);
     /// a table record in a part directory never applies to a part
     EXPECT_EQ(matchPartRecord(table_record, PART_CHECKSUM), StoredBinaryTypeOriginRecordMatch::WrongKind);
+}
+
+TEST(StoredBinaryTypeOrigin, ReplicatedReconciliationAppliesOnlyTheRegistration)
+{
+    using enum StoredBinaryTypeOriginReconciliation;
+    constexpr auto U = BinaryTypeOrigin::Unknown;
+    constexpr auto L = BinaryTypeOrigin::SentioLegacyV0;
+    constexpr auto C = BinaryTypeOrigin::OfficialCanonical;
+
+    /// {local, local record ignored, replicated} -> decision, every combination written out.
+    const std::tuple<BinaryTypeOrigin, bool, BinaryTypeOrigin, StoredBinaryTypeOriginReconciliation> cases[] = {
+        /// no record and fieldless metadata of an old table: nothing changes
+        {U, false, U, Keep},
+        /// the registration, also recovered after a restart between its ZooKeeper part and its local part
+        {U, false, L, ApplyRegistration},
+        /// an existing Unknown replica never becomes canonical implicitly
+        {U, false, C, Conflict},
+        /// an existing Legacy record is never reset by fieldless metadata, nor relabelled
+        {L, false, U, Conflict},
+        {L, false, L, Keep},
+        {L, false, C, Conflict},
+        /// an existing canonical record is never reset, nor relabelled Legacy
+        {C, false, U, Conflict},
+        {C, false, L, Conflict},
+        {C, false, C, Keep},
+        /// a record of another table or of the other kind is never replaced implicitly, whatever ZooKeeper holds
+        {U, true, U, KeepIgnoredRecord},
+        {U, true, L, KeepIgnoredRecord},
+        {U, true, C, KeepIgnoredRecord},
+    };
+    for (const auto & [local, ignored, replicated, expected] : cases)
+        EXPECT_EQ(decideStoredBinaryTypeOriginReconciliation(local, ignored, replicated), expected)
+            << getBinaryTypeOriginName(local) << " " << ignored << " " << getBinaryTypeOriginName(replicated);
 }

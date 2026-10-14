@@ -692,9 +692,15 @@ private:
     /// This prevents a race between a concurrent INSERT and DROP_RANGE processing.
     void waitForPreActivePartsInRange(const MergeTreePartInfo & drop_range) const;
 
-    /// Makes `origin`, which ZooKeeper holds for this table (`source` names where), the stored binary type origin of the table and of its
-    /// local record. A table without a UUID has no stored origin of its own and stays Unknown (Storages/StoredBinaryTypeOrigin.h).
-    void adoptStoredBinaryTypeOrigin(BinaryTypeOrigin origin, std::string_view source);
+    /// A new replica of an existing table, made by this CREATE and without any part yet, takes `origin`, the stored binary type origin
+    /// of the table in ZooKeeper, whatever its own CREATE stamped. A table without a UUID has no stored origin of its own and stays Unknown.
+    void adoptStoredBinaryTypeOriginForNewReplica(BinaryTypeOrigin origin);
+
+    /// An existing replica reconciles its stored binary type origin with `origin`, the one ZooKeeper holds for it (`source` names where):
+    /// see decideStoredBinaryTypeOriginReconciliation. Only the registration from Unknown to SentioLegacyV0 is applied; any other
+    /// difference keeps the local record and the data as they are and reads the table as Unknown; a record that does not apply to the
+    /// table is never replaced.
+    void reconcileStoredBinaryTypeOrigin(BinaryTypeOrigin origin, std::string_view source);
 
     /// Execute alter of table metadata. Set replica/metadata and replica/columns
     /// nodes in zookeeper and also changes in memory metadata.

@@ -43,8 +43,8 @@ struct ReplicatedMergeTreeTableMetadata
     UInt64 index_granularity_bytes{};
     /// The stored binary type origin of the table (Storages/StoredBinaryTypeOrigin.h). It is written last and only while it is not Unknown,
     /// so the metadata of a table that never had one stays as it was, and readers without the field ignore it. It is not compared by
-    /// checkEquals: every replica takes it from ZooKeeper (StorageReplicatedMergeTree::adoptStoredBinaryTypeOrigin), and it changes only
-    /// through a versioned ALTER_METADATA entry (the one-time registration).
+    /// checkEquals: a new replica takes it from ZooKeeper, an existing one reconciles with it (StorageReplicatedMergeTree::
+    /// reconcileStoredBinaryTypeOrigin), and it changes only through a versioned ALTER_METADATA entry (the one-time registration).
     BinaryTypeOrigin binary_type_origin = BinaryTypeOrigin::Unknown;
 
     ReplicatedMergeTreeTableMetadata() = default;
