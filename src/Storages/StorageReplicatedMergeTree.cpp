@@ -9344,8 +9344,18 @@ void StorageReplicatedMergeTree::replacePartitionFrom(
     const auto storage_settings_ptr = getSettings();
     const auto source_metadata_snapshot = source_table->getInMemoryMetadataPtr(query_context, false);
     const auto metadata_snapshot = getInMemoryMetadataPtr(query_context, false);
-    const MergeTreeData & src_data = checkStructureAndGetMergeTreeData(source_table, source_metadata_snapshot, metadata_snapshot);
-    const bool into_unset_stored_binary_type_origin = hasUnsetStoredBinaryTypeOrigin();
+    /// The check of the stored binary type origins and whether it relies on the unset origin of this table are taken together, under the
+    /// admission mutex: a registration applied on this replica comes before both or after both. The mutex is released before anything
+    /// below waits, and a registration after it is caught by the check of the replicated metadata version in the commit
+    /// (addUnsetStoredBinaryTypeOriginCheckOp).
+    const MergeTreeData * checked_src_data = nullptr;
+    bool into_unset_stored_binary_type_origin = false;
+    {
+        std::shared_lock admission_lock(stored_binary_type_origin_admission_mutex);
+        checked_src_data = &checkStructureAndGetMergeTreeData(source_table, source_metadata_snapshot, metadata_snapshot);
+        into_unset_stored_binary_type_origin = hasUnsetStoredBinaryTypeOrigin();
+    }
+    const MergeTreeData & src_data = *checked_src_data;
 
     std::unordered_set<String> partitions;
     if (partition->as<ASTPartition>()->all)
@@ -9728,8 +9738,15 @@ void StorageReplicatedMergeTree::movePartitionToTable(const StoragePtr & dest_ta
     Stopwatch watch;
     ProfileEventsScope profile_events_scope;
 
-    MergeTreeData & src_data = dest_table_storage->checkStructureAndGetMergeTreeData(*this, metadata_snapshot, dest_metadata_snapshot);
-    const bool into_unset_stored_binary_type_origin = dest_table_storage->hasUnsetStoredBinaryTypeOrigin();
+    /// See replacePartitionFrom: the destination is the table that may be registered.
+    MergeTreeData * checked_src_data = nullptr;
+    bool into_unset_stored_binary_type_origin = false;
+    {
+        std::shared_lock admission_lock(dest_table_storage->stored_binary_type_origin_admission_mutex);
+        checked_src_data = &dest_table_storage->checkStructureAndGetMergeTreeData(*this, metadata_snapshot, dest_metadata_snapshot);
+        into_unset_stored_binary_type_origin = dest_table_storage->hasUnsetStoredBinaryTypeOrigin();
+    }
+    MergeTreeData & src_data = *checked_src_data;
     auto src_data_id = src_data.getStorageID();
     String partition_id = getPartitionIDFromQuery(partition, query_context);
 
