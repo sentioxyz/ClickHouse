@@ -7,12 +7,14 @@
 #include <DataTypes/DataTypesDecimal.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <DataTypes/SentioWideTypeEncoding.h>
+#include <Formats/FormatSettings.h>
 #include <IO/ReadBufferFromString.h>
 #include <IO/VarInt.h>
 #include <IO/WriteBufferFromString.h>
 #include <Common/Exception.h>
 #include <Common/tests/gtest_global_register.h>
 #include <Common/typeid_cast.h>
+#include <base/defines.h>
 #include <base/wide_integer_to_string.h>
 
 #include <fmt/format.h>
@@ -20,6 +22,8 @@
 #include <cstring>
 #include <string>
 #include <string_view>
+#include <tuple>
+#include <utility>
 
 /// The `Custom` (0x2C) SentioWide v1 binary type descriptors of the fork's 512-bit types, the explicit binary type origin, and the parts
 /// that must not change (the hash fingerprint, the 64-byte value payloads, every other type). The expected bytes come from Root's fixture
@@ -485,7 +489,7 @@ TEST(SentioWideTypeEncoding, ValuePayloadsUnchanged)
         }
         EXPECT_EQ(text, c.value) << c.id;
         WriteBufferFromOwnString out;
-        type->getDefaultSerialization()->serializeBinary(field, out, {});
+        type->getDefaultSerialization()->serializeBinary(field, out, FormatSettings{});
         EXPECT_EQ(hexOf(out.str()), c.payload_hex) << c.id;
     }
 }
