@@ -39,6 +39,8 @@
 #include <Common/assert_cast.h>
 #include <Common/checkStackSize.h>
 
+#include <algorithm>
+
 namespace DB
 {
 
