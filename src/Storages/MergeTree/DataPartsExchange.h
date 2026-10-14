@@ -50,6 +50,9 @@ private:
         bool from_remote_disk,
         bool send_projections);
 
+    /// Sends the proof of the stored binary type origin of a part that a raw export asks for (see DataPartsExchange.cpp).
+    static void sendStoredBinaryTypeOriginProof(const IMergeTreeDataPart & part, WriteBuffer & out);
+
     /// StorageReplicatedMergeTree::shutdown() waits for all parts exchange handlers to finish,
     /// so Service will never access dangling reference to storage
     StorageReplicatedMergeTree & data;
@@ -109,7 +112,8 @@ private:
         OutputBufferGetter output_buffer_getter,
         size_t projections,
         ThrottlerPtr throttler,
-        bool sync);
+        bool sync,
+        bool with_origin_proof);
 
     MergeTreeData::MutableDataPartPtr downloadPartToDiskRemoteMeta(
        const String & part_name,

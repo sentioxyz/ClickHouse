@@ -60,6 +60,7 @@ namespace ErrorCodes
     extern const int ABORTED;
     extern const int BAD_SIZE_OF_FILE_IN_DATA_PART;
     extern const int CHECKSUM_DOESNT_MATCH;
+    extern const int CORRUPTED_DATA;
     extern const int INSECURE_PATH;
     extern const int LOGICAL_ERROR;
     extern const int S3_ERROR;
@@ -82,6 +83,13 @@ constexpr auto REPLICATION_PROTOCOL_VERSION_WITH_PARTS_PROJECTION = 7;
 constexpr auto REPLICATION_PROTOCOL_VERSION_WITH_METADATA_VERSION = 8;
 constexpr auto REPLICATION_PROTOCOL_VERSION_WITH_COLUMNS_SUBSTREAMS = 9;
 constexpr auto REPLICATION_PROTOCOL_VERSION_WITH_INVALIDATED_SYSTEM_COLUMNS = 10;
+
+/// A fetch of a raw export (into detached/: from another table, or of a part moved between shards) asks the sender for the proof of the
+/// stored binary type origin of the part (Storages/StoredBinaryTypeOrigin.h) with this request parameter. A sender that knows it answers
+/// with this cookie and sends the proof after the files of the part: the part record of the origin that the part is read with on the
+/// sender, bound to its checksums, also when that origin is Unknown. It is independent of the protocol version: a sender of an older
+/// version ignores the parameter, and a fetch of a part of the same table does not ask for it.
+constexpr auto STORED_BINARY_TYPE_ORIGIN_PROOF_PARAMETER = "stored_binary_type_origin_proof";
 
 std::string getEndpointId(const std::string & node_id)
 {
@@ -150,6 +158,10 @@ void Service::processQuery(const HTMLForm & params, ReadBufferPtr body, WriteBuf
 
     /// We pretend to work as older server version, to be sure that client will correctly process our version
     response.addCookie({"server_protocol_version", toString(std::min(client_protocol_version, REPLICATION_PROTOCOL_VERSION_WITH_INVALIDATED_SYSTEM_COLUMNS))});
+
+    const bool send_origin_proof = params.get(STORED_BINARY_TYPE_ORIGIN_PROOF_PARAMETER, "") == "1";
+    if (send_origin_proof)
+        response.addCookie({STORED_BINARY_TYPE_ORIGIN_PROOF_PARAMETER, "1"});
 
     LOG_TRACE(log, "Sending part {}", part_name);
 
@@ -222,11 +234,15 @@ void Service::processQuery(const HTMLForm & params, ReadBufferPtr body, WriteBuf
                 /// Send metadata if the receiver's capabilities covers the source disk type.
                 response.addCookie({"remote_fs_metadata", disk_type});
                 sendPartFromDisk(part, out, client_protocol_version, true, send_projections);
+                if (send_origin_proof)
+                    sendStoredBinaryTypeOriginProof(*part, out);
                 return;
             }
         }
 
         sendPartFromDisk(part, out, client_protocol_version, false, send_projections);
+        if (send_origin_proof)
+            sendStoredBinaryTypeOriginProof(*part, out);
         data.addLastSentPart(part->info);
     }
     catch (...)
@@ -237,6 +253,14 @@ void Service::processQuery(const HTMLForm & params, ReadBufferPtr body, WriteBuf
     }
 }
 
+
+void Service::sendStoredBinaryTypeOriginProof(const IMergeTreeDataPart & part, WriteBuffer & out)
+{
+    /// The origin the part is read with here: that of its own record, which is among the files sent, otherwise that of this table, which
+    /// is Unknown while the table has no determinate origin (a record that does not apply to it, a replicated conflict). The proof is made
+    /// from the part in memory; the files of the part are not modified.
+    writeStringBinary(StoredBinaryTypeOriginRecord::forPart(part.getBinaryTypeOriginForReading(), part.checksums.getTotalChecksumHex()).toString(), out);
+}
 
 MergeTreeData::DataPart::Checksums Service::sendPartFromDisk(
     const MergeTreeData::DataPartPtr & part,
@@ -454,6 +478,11 @@ std::pair<MergeTreeData::MutableDataPartPtr, scope_guard> Fetcher::fetchSelected
         zookeeper_name + ":" + replica_path :
         replica_path);
 
+    /// A raw export carries the proof of the stored binary type origin of the part (see STORED_BINARY_TYPE_ORIGIN_PROOF_PARAMETER), which is
+    /// written into the fetched part. Such a part is copied in full, never as zero-copy metadata of files shared with the source.
+    if (to_detached)
+        try_zero_copy = false;
+
     Poco::URI uri;
     uri.setScheme(interserver_scheme);
     uri.setHost(host);
@@ -465,6 +494,8 @@ std::pair<MergeTreeData::MutableDataPartPtr, scope_guard> Fetcher::fetchSelected
         {"client_protocol_version", toString(REPLICATION_PROTOCOL_VERSION_WITH_INVALIDATED_SYSTEM_COLUMNS)},
         {"compress",                "false"}
     });
+    if (to_detached)
+        uri.addQueryParameter(STORED_BINARY_TYPE_ORIGIN_PROOF_PARAMETER, "1");
 
     if (disk)
         LOG_TRACE(log, "Will fetch to disk {} with type {}", disk->getName(), disk->getDataSourceDescription().toString());
@@ -529,6 +560,7 @@ std::pair<MergeTreeData::MutableDataPartPtr, scope_guard> Fetcher::fetchSelected
                   .create(creds);
 
     int server_protocol_version = parse<int>(in->getResponseCookie("server_protocol_version", "0"));
+    const bool with_origin_proof = to_detached && in->getResponseCookie(STORED_BINARY_TYPE_ORIGIN_PROOF_PARAMETER, "") == "1";
     String remote_fs_metadata = parse<String>(in->getResponseCookie("remote_fs_metadata", ""));
 
     DiskPtr preffered_disk = disk;
@@ -641,7 +673,7 @@ std::pair<MergeTreeData::MutableDataPartPtr, scope_guard> Fetcher::fetchSelected
                 return std::make_unique<WriteBufferFromFile>(full_path, std::min<UInt64>(DBMS_DEFAULT_BUFFER_SIZE, file_size));
             };
 
-            return std::make_pair(downloadPartToDisk(part_name, replica_path, to_detached, tmp_prefix, disk, true, *in, output_buffer_getter, projections, throttler, sync), std::move(temporary_directory_lock));
+            return std::make_pair(downloadPartToDisk(part_name, replica_path, to_detached, tmp_prefix, disk, true, *in, output_buffer_getter, projections, throttler, sync, with_origin_proof), std::move(temporary_directory_lock));
         }
         catch (const Exception & e)
         {
@@ -695,7 +727,7 @@ std::pair<MergeTreeData::MutableDataPartPtr, scope_guard> Fetcher::fetchSelected
     return std::make_pair(downloadPartToDisk(
         part_name, replica_path, to_detached, tmp_prefix,
         disk, false, *in, output_buffer_getter,
-        projections, throttler, sync),std::move(temporary_directory_lock));
+        projections, throttler, sync, with_origin_proof),std::move(temporary_directory_lock));
 }
 
 
@@ -787,7 +819,8 @@ MergeTreeData::MutableDataPartPtr Fetcher::downloadPartToDisk(
     OutputBufferGetter output_buffer_getter,
     size_t projections,
     ThrottlerPtr throttler,
-    bool sync)
+    bool sync,
+    bool with_origin_proof)
 {
     String part_id;
     const auto data_settings = data.getSettings();
@@ -901,6 +934,15 @@ MergeTreeData::MutableDataPartPtr Fetcher::downloadPartToDisk(
         throw;
     }
 
+    /// The proof of the stored binary type origin of a raw export follows the files (see STORED_BINARY_TYPE_ORIGIN_PROOF_PARAMETER).
+    std::optional<StoredBinaryTypeOriginRecord> origin_proof;
+    if (with_origin_proof)
+    {
+        String origin_proof_text;
+        readStringBinary(origin_proof_text, in, /*max_string_size=*/ 4096);
+        origin_proof = StoredBinaryTypeOriginRecord::parse(origin_proof_text);
+    }
+
     assertEOF(in);
     MergeTreeData::MutableDataPartPtr new_data_part;
     try
@@ -989,6 +1031,28 @@ MergeTreeData::MutableDataPartPtr Fetcher::downloadPartToDisk(
                     part_name);
         }
         LOG_DEBUG(log, "Download of part {} onto disk {} finished.", part_name, disk->getName());
+    }
+
+    /// A raw export into detached/ is read with the stored binary type origin it had on the sender, bound to its checksums: its own record,
+    /// loaded with it, or the proof sent with it, Unknown included. A sender of an older version sends neither, so the part is Unknown: the
+    /// origin of the source table is never taken for it. The part gets the record before it is published in detached/.
+    if (to_detached)
+    {
+        if (origin_proof)
+        {
+            const auto match = matchPartRecord(*origin_proof, new_data_part->checksums.getTotalChecksumHex());
+            if (match != StoredBinaryTypeOriginRecordMatch::Applies)
+                throw Exception(ErrorCodes::CORRUPTED_DATA, "The proof of the stored binary type origin of part {} sent by {} does not apply to it: it is {}",
+                                part_name, replica_path, describeStoredBinaryTypeOriginRecordMatch(match));
+            if (new_data_part->stored_binary_type_origin && *new_data_part->stored_binary_type_origin != origin_proof->origin)
+                throw Exception(ErrorCodes::CORRUPTED_DATA,
+                                "The proof of the stored binary type origin of part {} sent by {} ({}) differs from the record of the part ({})",
+                                part_name, replica_path, getBinaryTypeOriginName(origin_proof->origin),
+                                getBinaryTypeOriginName(*new_data_part->stored_binary_type_origin));
+        }
+        if (!new_data_part->stored_binary_type_origin)
+            new_data_part->writeAndLoadStoredBinaryTypeOriginRecord(
+                origin_proof ? origin_proof->origin : BinaryTypeOrigin::Unknown, data.getContext()->getWriteSettings(), sync);
     }
 
     if (zero_copy_temporary_lock_holder)

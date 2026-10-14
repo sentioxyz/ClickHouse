@@ -5796,19 +5796,16 @@ bool StorageReplicatedMergeTree::fetchPart(
         {
             // The fetched part is valuable and should not be cleaned like a temp part.
             part->is_temp = false;
-            /// A part fetched from another table (FETCH PARTITION/PART) carries the stored binary type origin of that table, which its
-            /// ZooKeeper metadata holds, unless it has a record of its own; nothing if that table has none (Unknown).
+            /// The part gets the record of the stored binary type origin it is read with where it comes from: the fetch writes the one
+            /// of the source replica, or Unknown (DataPartsExchange); a clone of a local part with the same checksums gets the origin
+            /// that part is read with here. The metadata of the source table is no proof of the origin of this part.
             if (!part->stored_binary_type_origin)
             {
-                const auto source_table_path = fs::path(source_replica_path).parent_path().parent_path();
-                const auto source_origin
-                    = ReplicatedMergeTreeTableMetadata::parseRaw(zookeeper->get(source_table_path / "metadata")).binary_type_origin;
-                if (source_origin != BinaryTypeOrigin::Unknown)
-                {
-                    part->writeStoredBinaryTypeOriginRecord(
-                        part->getDataPartStorage(), source_origin, getContext()->getWriteSettings(), (*getSettings())[MergeTreeSetting::fsync_after_insert]);
-                    part->stored_binary_type_origin = source_origin;
-                }
+                if (!part_to_clone)
+                    throw Exception(ErrorCodes::LOGICAL_ERROR, "Part {} fetched into detached/ has no stored binary type origin record", part_name);
+                part->writeAndLoadStoredBinaryTypeOriginRecord(
+                    part_to_clone->getBinaryTypeOriginForReading(), getContext()->getWriteSettings(),
+                    (*getSettings())[MergeTreeSetting::fsync_after_insert]);
             }
             part->renameTo(fs::path(DETACHED_DIR_NAME) / part_name, true);
         }
