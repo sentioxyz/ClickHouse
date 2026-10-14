@@ -201,7 +201,9 @@ TEST(StoredBinaryTypeOrigin, RecordIsBoundedTo4096Bytes)
 TEST(StoredBinaryTypeOrigin, ReadTakesTheWholeInput)
 {
     const auto record = StoredBinaryTypeOriginRecord::forPart(BinaryTypeOrigin::SentioLegacyV0, PART_CHECKSUM);
-    ReadBufferFromString in(record.toString());
+    /// ReadBufferFromString borrows the string: it must outlive every read.
+    const String text = record.toString();
+    ReadBufferFromString in(text);
     const auto parsed = StoredBinaryTypeOriginRecord::read(in);
     EXPECT_EQ(parsed.kind, StoredBinaryTypeOriginRecordKind::Part);
     EXPECT_EQ(parsed.part_checksum, PART_CHECKSUM);
