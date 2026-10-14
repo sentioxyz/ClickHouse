@@ -3102,6 +3102,9 @@ void StorageMergeTree::replacePartitionFrom(const StoragePtr & source_table, con
     Stopwatch watch;
     ProfileEventsScope profile_events_scope;
 
+    /// From the check of the stored binary type origins of the tables to the commit of the parts, a registration of this table waits: the
+    /// parts moved in for the unset origin are among the parts it covers, or it comes first and the check refuses them.
+    std::shared_lock admission_lock(stored_binary_type_origin_admission_mutex);
     MergeTreeData & src_data = checkStructureAndGetMergeTreeData(source_table, source_metadata_snapshot, my_metadata_snapshot);
     DataPartsVector src_parts;
     DataPartsVector src_patch_parts;
@@ -3343,6 +3346,8 @@ void StorageMergeTree::movePartitionToTable(const StoragePtr & dest_table, const
     Stopwatch watch;
     ProfileEventsScope profile_events_scope;
 
+    /// See replacePartitionFrom: the destination is the table that may be registered.
+    std::shared_lock admission_lock(dest_table_storage->stored_binary_type_origin_admission_mutex);
     MergeTreeData & src_data = dest_table_storage->checkStructureAndGetMergeTreeData(*this, metadata_snapshot, dest_metadata_snapshot);
     String partition_id = getPartitionIDFromQuery(partition, local_context);
 

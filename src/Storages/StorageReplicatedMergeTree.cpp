@@ -6850,6 +6850,17 @@ std::optional<std::pair<BinaryTypeOrigin, int32_t>> StorageReplicatedMergeTree::
     return std::pair{ReplicatedMergeTreeTableMetadata::parseRaw(metadata).binary_type_origin, stat.version};
 }
 
+void StorageReplicatedMergeTree::addUnsetStoredBinaryTypeOriginCheckOp(Coordination::Requests & ops) const
+{
+    const auto replicated = getReplicatedStoredBinaryTypeOrigin();
+    if (!hasUnsetStoredBinaryTypeOrigin() || replicated->first != BinaryTypeOrigin::Unknown)
+        throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                        "Table {} got a stored binary type origin while parts of another table were moved into it for its unset origin: "
+                        "{} here, {} in its replicated metadata",
+                        getStorageID().getNameForLogs(), describeStoredBinaryTypeOrigin(), getBinaryTypeOriginName(replicated->first));
+    ops.emplace_back(zkutil::makeCheckRequest(fs::path(zookeeper_path) / "metadata", replicated->second));
+}
+
 bool StorageReplicatedMergeTree::executeMetadataAlter(const StorageReplicatedMergeTree::LogEntry & entry)
 {
     auto current_metadata = getInMemoryMetadataPtr(getContext(), false);
@@ -9334,6 +9345,7 @@ void StorageReplicatedMergeTree::replacePartitionFrom(
     const auto source_metadata_snapshot = source_table->getInMemoryMetadataPtr(query_context, false);
     const auto metadata_snapshot = getInMemoryMetadataPtr(query_context, false);
     const MergeTreeData & src_data = checkStructureAndGetMergeTreeData(source_table, source_metadata_snapshot, metadata_snapshot);
+    const bool into_unset_stored_binary_type_origin = hasUnsetStoredBinaryTypeOrigin();
 
     std::unordered_set<String> partitions;
     if (partition->as<ASTPartition>()->all)
@@ -9374,7 +9386,8 @@ void StorageReplicatedMergeTree::replacePartitionFrom(
                 replace,
                 zero_copy_enabled,
                 (*storage_settings_ptr)[MergeTreeSetting::always_use_copy_instead_of_hardlinks],
-                query_context);
+                query_context,
+                into_unset_stored_binary_type_origin);
         ++idx;
     }
 
@@ -9396,7 +9409,8 @@ std::unique_ptr<ReplicatedMergeTreeLogEntryData> StorageReplicatedMergeTree::rep
     bool replace,
     const bool & zero_copy_enabled,
     const bool & always_use_copy_instead_of_hardlinks,
-    const ContextPtr & query_context)
+    const ContextPtr & query_context,
+    bool into_unset_stored_binary_type_origin)
 {
     DataPartsVector src_all_parts;
     DataPartsVector src_patch_parts;
@@ -9603,6 +9617,8 @@ std::unique_ptr<ReplicatedMergeTreeLogEntryData> StorageReplicatedMergeTree::rep
                 getCommitPartOps(ops, dst_parts[i], block_id_paths[i]);
                 ephemeral_locks[i].getUnlockOp(ops);
             }
+            if (into_unset_stored_binary_type_origin)
+                addUnsetStoredBinaryTypeOriginCheckOp(ops);
 
             if (txn)
                 txn->moveOpsTo(ops);
@@ -9713,6 +9729,7 @@ void StorageReplicatedMergeTree::movePartitionToTable(const StoragePtr & dest_ta
     ProfileEventsScope profile_events_scope;
 
     MergeTreeData & src_data = dest_table_storage->checkStructureAndGetMergeTreeData(*this, metadata_snapshot, dest_metadata_snapshot);
+    const bool into_unset_stored_binary_type_origin = dest_table_storage->hasUnsetStoredBinaryTypeOrigin();
     auto src_data_id = src_data.getStorageID();
     String partition_id = getPartitionIDFromQuery(partition, query_context);
 
@@ -9885,6 +9902,8 @@ void StorageReplicatedMergeTree::movePartitionToTable(const StoragePtr & dest_ta
                 dest_table_storage->getCommitPartOps(ops, dst_parts[i], block_id_paths[i]);
                 ephemeral_locks[i].getUnlockOp(ops);
             }
+            if (into_unset_stored_binary_type_origin)
+                dest_table_storage->addUnsetStoredBinaryTypeOriginCheckOp(ops);
 
             /// Check and update version to avoid race with DROP_RANGE
             ops.emplace_back(zkutil::makeSetRequest(dest_alter_partition_version_path, "", dest_alter_partition_version_stat.version));

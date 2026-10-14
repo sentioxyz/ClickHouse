@@ -704,6 +704,11 @@ private:
 
     std::optional<std::pair<BinaryTypeOrigin, int32_t>> getReplicatedStoredBinaryTypeOrigin() const override;
 
+    /// For parts of another table moved into this table for its unset stored binary type origin (REPLACE/ATTACH PARTITION FROM, MOVE
+    /// PARTITION TO TABLE): adds a check of the version of its replicated metadata to the ops that commit them, so that a registration
+    /// since then fails the commit and the next attempt refuses. Throws if the table has an origin now, here or in its replicated metadata.
+    void addUnsetStoredBinaryTypeOriginCheckOp(Coordination::Requests & ops) const;
+
     /// Execute alter of table metadata. Set replica/metadata and replica/columns
     /// nodes in zookeeper and also changes in memory metadata.
     /// New metadata and columns values stored in entry.
@@ -1078,7 +1083,8 @@ private:
         bool replace,
         const bool & zero_copy_enabled,
         const bool & always_use_copy_instead_of_hardlinks,
-        const ContextPtr & query_context);
+        const ContextPtr & query_context,
+        bool into_unset_stored_binary_type_origin);
 };
 
 String getPartNamePossiblyFake(MergeTreeDataFormatVersion format_version, const MergeTreePartInfo & part_info);
