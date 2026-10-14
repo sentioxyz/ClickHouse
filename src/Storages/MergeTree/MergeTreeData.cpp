@@ -700,6 +700,15 @@ bool MergeTreeData::persistStoredBinaryTypeOrigin(BinaryTypeOrigin origin)
     return true;
 }
 
+String MergeTreeData::describeStoredBinaryTypeOrigin() const
+{
+    if (stored_binary_type_origin_record_ignored.load())
+        return "unknown (with a record that does not apply to the table)";
+    if (stored_binary_type_origin_conflict.load())
+        return fmt::format("unknown ({} in conflict with the replicated metadata)", getBinaryTypeOriginName(stored_binary_type_origin.load()));
+    return String(getBinaryTypeOriginName(stored_binary_type_origin.load()));
+}
+
 DataPartsLock::DataPartsLock(SharedMutex & data_parts_mutex_, const MergeTreeData * data_)
     : wait_watch(Stopwatch(CLOCK_MONOTONIC))
     , lock(data_parts_mutex_)
@@ -11219,12 +11228,17 @@ MergeTreeData & MergeTreeData::checkStructureAndGetMergeTreeData(IStorage & sour
     if (format_version != src_data->format_version)
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Tables have different format_version");
 
-    /// A part without a record of its own is read with the stored binary type origin of its table (Storages/StoredBinaryTypeOrigin.h):
-    /// moved between tables of different origins, its stored data would be read under another meaning. The initiator of a replicated
-    /// REPLACE refuses here, before its log entry exists; a replica that later fails this check fetches the parts the initiator cloned.
-    if (getStoredBinaryTypeOrigin() != src_data->getStoredBinaryTypeOrigin())
+    /// A part without a record of its own is read with the stored binary type origin of its table (Storages/StoredBinaryTypeOrigin.h), and
+    /// a clone gets no record: moved between tables, its stored data keeps its meaning only if both tables have the same determinate
+    /// origin, also the unset one, which the registration then states for both. A table that is read as Unknown only because of a record
+    /// that does not apply to it or of a replicated conflict takes part in no move, even with another such table: its origin is not
+    /// determined, and a conflict resolved later would give the moved parts the trust of the table they are in. The initiator of a
+    /// replicated REPLACE refuses here, before its log entry exists; a replica that later fails this check fetches the parts the
+    /// initiator cloned.
+    if (!hasDeterminateStoredBinaryTypeOrigin() || !src_data->hasDeterminateStoredBinaryTypeOrigin()
+        || stored_binary_type_origin.load() != src_data->stored_binary_type_origin.load())
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Tables have different stored binary type origins: {} and {}",
-                        getBinaryTypeOriginName(getStoredBinaryTypeOrigin()), getBinaryTypeOriginName(src_data->getStoredBinaryTypeOrigin()));
+                        describeStoredBinaryTypeOrigin(), src_data->describeStoredBinaryTypeOrigin());
 
     if (query_to_string(my_snapshot->getPrimaryKey().expression_list_ast)
         != query_to_string(src_snapshot->getPrimaryKey().expression_list_ast))

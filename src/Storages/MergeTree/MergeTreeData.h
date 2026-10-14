@@ -1376,6 +1376,17 @@ public:
             && !stored_binary_type_origin_conflict.load();
     }
 
+    /// Whether the stored binary type origin of the table is determined: the origin of its record, or unset. A table with a record at its
+    /// path that does not apply to it, or in conflict with its replicated metadata, is read as Unknown, but what its data is is not
+    /// determined: the conflict may be resolved either way.
+    bool hasDeterminateStoredBinaryTypeOrigin() const
+    {
+        return !stored_binary_type_origin_record_ignored.load() && !stored_binary_type_origin_conflict.load();
+    }
+
+    /// The stored binary type origin of the table for messages: its name, and why it is Unknown if it is not determined.
+    String describeStoredBinaryTypeOrigin() const;
+
     /// Merging params - what additional actions to perform during merge.
     const MergingParams merging_params;
 
