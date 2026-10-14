@@ -10,6 +10,7 @@ namespace DB
 {
 
 class MergeTreeIndexSet;
+struct FormatSettings;
 
 struct MergeTreeIndexGranuleSet final : public IMergeTreeIndexGranule
 {
@@ -27,6 +28,8 @@ struct MergeTreeIndexGranuleSet final : public IMergeTreeIndexGranule
 
     void serializeBinary(WriteBuffer & ostr) const override;
     void deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version) override;
+    /// Reads the granule of a part with the stored binary type origin that the part is read with.
+    void deserializeBinaryWithMultipleStreams(MergeTreeIndexInputStreams & streams, MergeTreeIndexDeserializationState & state) override;
 
     size_t size() const { return block.rows(); }
     bool empty() const override { return !size(); }
@@ -40,13 +43,16 @@ struct MergeTreeIndexGranuleSet final : public IMergeTreeIndexGranule
     Block block;
     Serializations serializations;
     Ranges set_hyperrectangle;
+
+private:
+    void deserializeBinaryImpl(ReadBuffer & istr, MergeTreeIndexVersion version, const FormatSettings * format_settings);
 };
 
 
 struct MergeTreeIndexBulkGranulesSet final : public IMergeTreeIndexBulkGranules
 {
     explicit MergeTreeIndexBulkGranulesSet(const Block & index_sample_block_);
-    void deserializeBinary(size_t granule_num, ReadBuffer & istr, MergeTreeIndexVersion version) override;
+    void deserializeBinary(size_t granule_num, ReadBuffer & istr, MergeTreeIndexVersion version, const IMergeTreeDataPart & part) override;
 
     size_t min_granule = 0;
     size_t max_granule = 0;

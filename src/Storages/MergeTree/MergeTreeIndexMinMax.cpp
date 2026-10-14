@@ -294,7 +294,7 @@ MergeTreeIndexBulkGranulesMinMax::MergeTreeIndexBulkGranulesMinMax(const String 
     granules.reserve(size_hint_);
 }
 
-void MergeTreeIndexBulkGranulesMinMax::deserializeBinary(size_t granule_num, ReadBuffer & istr, MergeTreeIndexVersion /*version*/)
+void MergeTreeIndexBulkGranulesMinMax::deserializeBinary(size_t granule_num, ReadBuffer & istr, MergeTreeIndexVersion /*version*/, const IMergeTreeDataPart & /*part*/)
 {
     Field value;
     Field scratch;

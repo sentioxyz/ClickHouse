@@ -7,6 +7,7 @@
 #include <DataTypes/DataTypeLowCardinality.h>
 #include <DataTypes/DataTypeNullable.h>
 #include <DataTypes/IDataType.h>
+#include <DataTypes/SentioWideRecode.h>
 
 #include <Interpreters/ExpressionActions.h>
 #include <Interpreters/ExpressionAnalyzer.h>
@@ -98,6 +99,21 @@ void MergeTreeIndexGranuleSet::serializeBinary(WriteBuffer & ostr) const
 
 void MergeTreeIndexGranuleSet::deserializeBinary(ReadBuffer & istr, MergeTreeIndexVersion version)
 {
+    /// Without a part, its values are read with the Unknown origin, which refuses the ambiguous legacy binary type indexes.
+    deserializeBinaryImpl(istr, version, nullptr);
+}
+
+void MergeTreeIndexGranuleSet::deserializeBinaryWithMultipleStreams(MergeTreeIndexInputStreams & streams, MergeTreeIndexDeserializationState & state)
+{
+    /// The values of types with binary type headers (`Dynamic`, `JSON`, aggregation states of them) are read as the columns of the part
+    /// are: with its own stored binary type origin record, or that of its table. They are normalized to the canonical encoding before the
+    /// granule uses them.
+    auto * stream = streams.at(MergeTreeIndexSubstream::Type::Regular);
+    deserializeBinaryImpl(*stream->getDataBuffer(), state.version, &getFormatSettingsForStoredBinaryTypeOrigin(state.part.getBinaryTypeOriginForReading()));
+}
+
+void MergeTreeIndexGranuleSet::deserializeBinaryImpl(ReadBuffer & istr, MergeTreeIndexVersion version, const FormatSettings * format_settings)
+{
     if (version != 1)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown index version {}.", version);
 
@@ -112,6 +128,7 @@ void MergeTreeIndexGranuleSet::deserializeBinary(ReadBuffer & istr, MergeTreeInd
     ISerialization::DeserializeBinaryBulkSettings settings;
     settings.getter = [&](ISerialization::SubstreamPath) -> ReadBuffer * { return &istr; };
     settings.position_independent_encoding = false;
+    settings.format_settings = format_settings;
 
     size_t num_columns = block.columns();
     set_hyperrectangle.clear();
@@ -162,7 +179,7 @@ MergeTreeIndexBulkGranulesSet::MergeTreeIndexBulkGranulesSet(
 }
 
 
-void MergeTreeIndexBulkGranulesSet::deserializeBinary(size_t granule_num, ReadBuffer & istr, MergeTreeIndexVersion version)
+void MergeTreeIndexBulkGranulesSet::deserializeBinary(size_t granule_num, ReadBuffer & istr, MergeTreeIndexVersion version, const IMergeTreeDataPart & part)
 {
     if (version != 1)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Unknown index version {}.", version);
@@ -182,6 +199,8 @@ void MergeTreeIndexBulkGranulesSet::deserializeBinary(size_t granule_num, ReadBu
     ISerialization::DeserializeBinaryBulkSettings settings;
     settings.getter = [&](ISerialization::SubstreamPath) -> ReadBuffer * { return &istr; };
     settings.position_independent_encoding = false;
+    /// As MergeTreeIndexGranuleSet::deserializeBinaryWithMultipleStreams.
+    settings.format_settings = &getFormatSettingsForStoredBinaryTypeOrigin(part.getBinaryTypeOriginForReading());
 
     size_t num_columns = block.columns() - 1;
 

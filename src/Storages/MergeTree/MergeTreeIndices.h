@@ -131,7 +131,9 @@ using MergeTreeIndexGranules = std::vector<MergeTreeIndexGranulePtr>;
 struct IMergeTreeIndexBulkGranules
 {
     virtual ~IMergeTreeIndexBulkGranules() = default;
-    virtual void deserializeBinary(size_t granule_num, ReadBuffer & istr, MergeTreeIndexVersion version) = 0;
+    /// `part` is the part the granule is read from: stored values of types with binary type headers are read with the stored binary type
+    /// origin that the part is read with (Storages/StoredBinaryTypeOrigin.h).
+    virtual void deserializeBinary(size_t granule_num, ReadBuffer & istr, MergeTreeIndexVersion version, const IMergeTreeDataPart & part) = 0;
 };
 
 using MergeTreeIndexBulkGranulesPtr = std::shared_ptr<IMergeTreeIndexBulkGranules>;

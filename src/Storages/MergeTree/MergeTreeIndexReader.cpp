@@ -182,7 +182,7 @@ void MergeTreeIndexReader::read(size_t mark, size_t current_granule_num, MergeTr
     if (stream_mark != mark)
         stream->seekToMark(mark);
 
-    granules->deserializeBinary(current_granule_num, *stream->getDataBuffer(), version);
+    granules->deserializeBinary(current_granule_num, *stream->getDataBuffer(), version, *part);
     stream_mark = mark + 1;
 }
 
