@@ -215,6 +215,34 @@ void encodeDataTypeForHashCalculation(const DataTypePtr & type, WriteBuffer & bu
 /// input; callers decoding already-stored server data (columns, shared-data) use the default (unlimited).
 DataTypePtr decodeDataType(ReadBuffer & buf, size_t max_complexity = 0);
 
+/// The origin of a binary type encoding decides what the indexes 0x37, 0x38, 0x39 and 0x3A mean: the Decimal512 fork of 26.3 LTS wrote
+/// its 512-bit types as 0x37/0x38/0x39, upstream 26.8 writes strided `QBit` as 0x37. The origin comes from a declared input setting or
+/// from stored table metadata; it is never guessed from the payload, the server version or whether a decode succeeds.
+enum class BinaryTypeOrigin : uint8_t
+{
+    /// Undeclared: the legacy indexes 0x37/0x38/0x39 are rejected as ambiguous; self-describing encodings (including the `Custom`
+    /// SentioWide descriptors, see SentioWideTypeEncoding.h) are decoded.
+    Unknown = 0,
+    /// Written by the Decimal512 fork with its legacy indexes: 0x37 `UInt512`, 0x38 `Int512`, 0x39 `Decimal512(P, S)`; 0x3A is refused.
+    SentioLegacyV0 = 1,
+    /// The upstream meaning of every index (0x37 strided `QBit`, subject to the strided `QBit` guard); never the legacy indexes.
+    OfficialCanonical = 2,
+};
+
+/// Decode a type whose origin the caller declares. There is no default origin on purpose.
+DataTypePtr decodeDataType(ReadBuffer & buf, BinaryTypeOrigin origin, size_t max_complexity = 0);
+
+/// How the 512-bit types are written.
+enum class BinaryTypeWriterMode : uint8_t
+{
+    /// `Custom` (0x2C) with the SentioWide v1 descriptors (see SentioWideTypeEncoding.h).
+    SentioWideV1 = 0,
+    /// The legacy indexes 0x37/0x38/0x39, only for a controlled bridge build that must stay readable by the old fork.
+    SentioLegacyBridge = 1,
+};
+
+void encodeDataType(const DataTypePtr & type, WriteBuffer & buf, BinaryTypeWriterMode mode);
+
 /// Resolve the effective input_format_binary_max_type_complexity from a context, to pass to decodeDataType.
 /// Reads the setting once (not per type node), so it does not reintroduce per-value context contention.
 size_t getBinaryTypeDecodingComplexityLimit(const ContextPtr & context);

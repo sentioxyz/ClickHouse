@@ -46,6 +46,7 @@ namespace ErrorCodes
     extern const int UNSUPPORTED_METHOD;
     extern const int INCORRECT_DATA;
     extern const int SUPPORT_IS_DISABLED;
+    extern const int NOT_IMPLEMENTED;
 }
 
 namespace Setting
@@ -881,6 +882,16 @@ DataTypePtr decodeDataType(ReadBuffer & buf, size_t max_complexity)
 {
     size_t complexity = 0;
     return decodeDataTypeImpl(buf, complexity, max_complexity);
+}
+
+DataTypePtr decodeDataType(ReadBuffer &, BinaryTypeOrigin, size_t)
+{
+    throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Decoding binary types with a declared origin is not implemented yet");
+}
+
+void encodeDataType(const DataTypePtr &, WriteBuffer &, BinaryTypeWriterMode)
+{
+    throw Exception(ErrorCodes::NOT_IMPLEMENTED, "Encoding binary types with a writer mode is not implemented yet");
 }
 
 size_t getBinaryTypeDecodingComplexityLimit(const ContextPtr & context)
