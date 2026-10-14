@@ -190,6 +190,10 @@ DECLARE_SETTING_ENUM(QueryResultCacheSystemTableHandling)
 
 DECLARE_SETTING_ENUM_WITH_RENAME(DateTimeInputFormat, FormatSettings::DateTimeInputFormat)
 
+DECLARE_SETTING_ENUM(BinaryTypeOrigin)
+
+DECLARE_SETTING_ENUM(BinaryTypeWriterMode)
+
 DECLARE_SETTING_ENUM_WITH_RENAME(DateTimeOutputFormat, FormatSettings::DateTimeOutputFormat)
 
 DECLARE_SETTING_ENUM_WITH_RENAME(IntervalOutputFormat, FormatSettings::IntervalOutputFormat)

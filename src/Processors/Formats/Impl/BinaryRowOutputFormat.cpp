@@ -40,7 +40,7 @@ void BinaryRowOutputFormat::writePrefix()
         if (format_settings.binary.encode_types_in_binary_format)
         {
             for (size_t i = 0; i < columns; ++i)
-                encodeDataType(header.safeGetByPosition(i).type, out);
+                encodeDataType(header.safeGetByPosition(i).type, out, format_settings.binary.type_writer_mode);
         }
         else
         {

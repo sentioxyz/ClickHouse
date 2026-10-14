@@ -1,0 +1,33 @@
+--- settings
+input_format_binary_type_origin	unknown
+output_format_binary_type_writer_mode	sentio_wide_v1
+unknown	sentio_wide_v1
+BAD_ARGUMENTS
+--- RowBinaryWithNamesAndTypes of the fork
+rejected: Binary type index 0x38 is ambiguous without a declared origin
+rejected: Unknown type code: 0x38
+Int512	UInt512	Decimal(154, 2)	-7	9	-1.25
+--- written canonically, then as a bridge
+1	1	1
+Int512	UInt512	Decimal(154, 2)	-7	9	-1.25
+1
+--- Native of the fork: nothing is stored or copied without a declared origin
+rejected: Binary type index 0x38 is ambiguous without a declared origin
+rejected: Binary type index 0x38 is ambiguous without a declared origin
+rejected: Unknown type code: 0x38
+0
+--- with the declared legacy origin
+0	-7	Int512	true
+1	9	UInt512	false
+2	-1.25	Decimal(154, 2)	true
+--- exported canonically, imported without a declared origin
+1	1	1
+0	-7	Int512	true
+1	9	UInt512	false
+2	-1.25	Decimal(154, 2)	true
+--- exported as a bridge: the indexes of the fork, read only with the declared legacy origin
+1	1
+rejected: Binary type index 0x38 is ambiguous without a declared origin
+0	-7	Int512
+1	9	UInt512
+2	-1.25	Decimal(154, 2)

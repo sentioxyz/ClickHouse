@@ -197,7 +197,8 @@ size_t NativeWriter::write(const Block & block)
         /// Type
         if (format_settings && format_settings->native.encode_types_in_binary_format)
         {
-            encodeDataType(column.type, ostr);
+            /// For the writer mode of the output (output_format_binary_type_writer_mode).
+            encodeDataType(column.type, ostr, format_settings->binary.type_writer_mode);
         }
         else
         {

@@ -118,6 +118,15 @@ IMPLEMENT_SETTING_ENUM(DateTimeInputFormat, ErrorCodes::BAD_ARGUMENTS,
      {"best_effort", FormatSettings::DateTimeInputFormat::BestEffort},
      {"best_effort_us", FormatSettings::DateTimeInputFormat::BestEffortUS}})
 
+IMPLEMENT_SETTING_ENUM(BinaryTypeOrigin, ErrorCodes::BAD_ARGUMENTS,
+    {{"unknown",            BinaryTypeOrigin::Unknown},
+     {"sentio_legacy_v0",   BinaryTypeOrigin::SentioLegacyV0},
+     {"official_canonical", BinaryTypeOrigin::OfficialCanonical}})
+
+IMPLEMENT_SETTING_ENUM(BinaryTypeWriterMode, ErrorCodes::BAD_ARGUMENTS,
+    {{"sentio_wide_v1",       BinaryTypeWriterMode::SentioWideV1},
+     {"sentio_legacy_bridge", BinaryTypeWriterMode::SentioLegacyBridge}})
+
 
 IMPLEMENT_SETTING_ENUM(DateTimeOutputFormat, ErrorCodes::BAD_ARGUMENTS,
     {{"simple",         FormatSettings::DateTimeOutputFormat::Simple},

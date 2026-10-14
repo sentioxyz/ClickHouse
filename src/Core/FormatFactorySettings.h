@@ -854,6 +854,25 @@ The maximum allowed size for Array in RowBinary format. It prevents allocating l
     DECLARE(UInt64, input_format_binary_max_type_complexity, 1000, R"(
 Max type nodes when decoding binary types (not depth, but total count). `Map(String, UInt32)` = 3 nodes. Protects against malicious inputs. 0 = unlimited.
 )", 0) \
+    DECLARE(BinaryTypeOrigin, input_format_binary_type_origin, BinaryTypeOrigin::Unknown, R"(
+The origin of the binary type headers in input data: of the column types when they are encoded in binary format, and of the values of `Dynamic` and `JSON` columns and the aggregation states that keep such values, which always carry binary type headers (also when the column types are written as names). The binary type indexes `0x37`, `0x38` and `0x39` mean different types to the Decimal512 fork of the 26.3 LTS (`UInt512`, `Int512`, `Decimal512`) and to upstream ClickHouse, so the origin of the data must be declared; it is never inferred from the data, a protocol revision or a version.
+
+Possible values:
+
+- `unknown` — the origin is not declared. These three indexes are refused as ambiguous, and every binary type header is validated before the data is accepted.
+- `sentio_legacy_v0` — the data was written by the Decimal512 fork. The indexes are read as its 512-bit types, and the headers are converted to the current encoding as the data is read.
+- `official_canonical` — the data has the upstream meaning of every index.
+
+The native TCP protocol applies it to the data blocks of an `INSERT` query. Data read from tables does not use this setting.
+)", 0) \
+    DECLARE(BinaryTypeWriterMode, output_format_binary_type_writer_mode, BinaryTypeWriterMode::SentioWideV1, R"(
+How `UInt512`, `Int512` and `Decimal512` are written in binary type headers of output data: in the column types when they are encoded in binary format, and in the values of `Dynamic` and `JSON` columns and the aggregation states that keep such values. The native TCP protocol applies it to the result blocks of a query.
+
+Possible values:
+
+- `sentio_wide_v1` — the `Custom` binary type with the `SentioWide_v1_*` descriptors, which identify these types exactly.
+- `sentio_legacy_bridge` — the indexes `0x37`, `0x38` and `0x39` of the Decimal512 fork of the 26.3 LTS, only for an explicit offline export that this fork must read. Such data is ambiguous to any reader that does not declare its origin.
+)", 0) \
     DECLARE(UInt64, format_binary_max_object_size, 100000, R"(
 The maximum allowed number of paths in a single Object for JSON type RowBinary format. It prevents allocating large amount of memory in case of corrupted data. 0 means there is no limit
 )", 0) \

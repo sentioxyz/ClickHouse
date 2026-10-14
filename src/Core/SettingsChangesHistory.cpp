@@ -47,6 +47,8 @@ const VersionToSettingsChangesMap & getSettingsChangesHistory()
         });
         addSettingsChanges(settings_changes_history, "26.8",
         {
+            {"input_format_binary_type_origin", "unknown", "unknown", "New setting to declare the origin of the binary type headers in input data (the Decimal512 fork of 26.3 or upstream). The previous value is the default: `compatibility` never declares an origin."},
+            {"output_format_binary_type_writer_mode", "sentio_wide_v1", "sentio_wide_v1", "New setting to write the 512-bit types in binary type headers with the indexes of the Decimal512 fork of 26.3, for an explicit export to it. The previous value is the default: `compatibility` never writes those ambiguous indexes."},
             {"analyzer_compatibility_allow_cte_redefinition", false, false, "New compatibility setting. When enabled, the analyzer accepts a CTE name defined more than once in a single `WITH` clause and lets a later definition shadow the earlier ones, as the query analysis before v24.3 did."},
             {"validate_group_by_all_key_types", true, true, "The validation of the key types that `GROUP BY ALL` expands the `SELECT` expressions into is kept under `compatibility` with 26.7: the previous value is deliberately equal to the new one, because 26.7 already rejected such a key and only a version before 26.7 restores the earlier acceptance."},
             {"allow_executable_tables", true, true, "New setting to disable reading through the `executable` table function and from `Executable` and `ExecutablePool` tables."},
