@@ -231,6 +231,20 @@ public:
             nested_function->deserialize(place + i * size_of_data, buf, version, arena);
     }
 
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, BinaryTypeWriterMode mode) const override
+    {
+        for (size_t i = 0; i < total; ++i)
+            nested_function->serializeWithBinaryTypeWriterMode(place + i * size_of_data, buf, version, mode);
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena * arena, const BinaryTypeDecoding & decoding) const override
+    {
+        for (size_t i = 0; i < total; ++i)
+            nested_function->deserializeWithBinaryTypeDecoding(place + i * size_of_data, buf, version, arena, decoding);
+    }
+
     static DataTypePtr createResultType(const AggregateFunctionPtr & nested_function_)
     {
         return std::make_shared<DataTypeArray>(nested_function_->getResultType());

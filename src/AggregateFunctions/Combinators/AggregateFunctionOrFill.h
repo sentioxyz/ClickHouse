@@ -273,6 +273,22 @@ public:
         readChar(place[size_of_data], buf);
     }
 
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, BinaryTypeWriterMode mode) const override
+    {
+        nested_function->serializeWithBinaryTypeWriterMode(place, buf, version, mode);
+
+        writeChar(place[size_of_data], buf);
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena * arena, const BinaryTypeDecoding & decoding) const override
+    {
+        nested_function->deserializeWithBinaryTypeDecoding(place, buf, version, arena, decoding);
+
+        readChar(place[size_of_data], buf);
+    }
+
     static DataTypePtr createResultType(const DataTypePtr & inner_type_)
     {
         if constexpr (UseNull)

@@ -6,6 +6,8 @@
 
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/DataTypesNumber.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <Formats/FormatSettings.h>
 
 #include <Columns/ColumnArray.h>
 
@@ -148,6 +150,34 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */) const override
     {
+        serializeImpl(place, buf, {});
+    }
+
+    void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena *) const override
+    {
+        deserializeImpl(place, buf, FormatSettings{});
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        serializeImpl(place, buf, getFormatSettingsForBinaryTypeWriterMode(mode));
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena *,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        std::optional<FormatSettings> settings_with_context;
+        deserializeImpl(place, buf, getFormatSettingsForBinaryTypeDecoding(decoding, settings_with_context));
+    }
+
+    /// The values are written for the writer mode of the settings and read with their origin (see SentioWideRecode.h).
+    void serializeImpl(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, const FormatSettings & settings) const
+    {
         const Array & arr = data(place).value;
         size_t size = arr.size();
         writeVarUInt(size, buf);
@@ -161,12 +191,12 @@ public:
             else
             {
                 writeBinary(UInt8(0), buf);
-                serialization->serializeBinary(elem, buf, {});
+                serialization->serializeBinary(elem, buf, settings);
             }
         }
     }
 
-    void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena *) const override
+    void deserializeImpl(AggregateDataPtr __restrict place, ReadBuffer & buf, const FormatSettings & format_settings) const
     {
         size_t size = 0;
         readVarUInt(size, buf);
@@ -177,8 +207,6 @@ public:
 
         Array & arr = data(place).value;
         arr.resize(size);
-
-        FormatSettings format_settings;
 
         for (size_t i = 0; i < size; ++i)
         {

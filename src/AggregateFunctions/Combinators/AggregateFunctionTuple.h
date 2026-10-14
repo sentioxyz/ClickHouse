@@ -138,6 +138,10 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version) const override;
     void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena * arena) const override;
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, BinaryTypeWriterMode mode) const override;
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena * arena, const BinaryTypeDecoding & decoding) const override;
 
     void insertResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena * arena) const override;
     void insertMergeResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena * arena) const override;

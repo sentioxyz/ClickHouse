@@ -8,6 +8,7 @@
 #include <Core/Field.h>
 #include <Core/IResolvedFunction.h>
 #include <Core/ValuesWithType.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <Interpreters/Context_fwd.h>
 #include <base/defines.h>
 #include <base/types.h>
@@ -276,6 +277,32 @@ public:
 
     /// Devirtualize create and deserialize calls. Used in deserialization of ColumnAggregateFunction.
     virtual void createAndDeserializeBatch(PaddedPODArray<AggregateDataPtr> & data, AggregateDataPtr __restrict place, size_t total_size_of_state, size_t limit, ReadBuffer & buf, std::optional<size_t> version, Arena * arena) const = 0;
+
+    /// Binary type headers in states (DataTypes/BinaryTypeOrigin.h). A function that keeps values of its arguments in their arena or binary
+    /// form (`groupArray`, `groupUniqArray`, `topK`, `-Distinct`, `any`, `argMin` and others, see SentioWideRecode.h) keeps the binary
+    /// type headers of the `Dynamic` and `JSON` values among them. serialize writes them canonically. deserialize reads them as the
+    /// Unknown origin without a type complexity limit and validates every one of them while the state is read, so that an ambiguous
+    /// legacy header is refused there instead of entering memory and failing at finalization. The two methods below take an explicit
+    /// writer mode, or an explicit origin and the nesting context of the value the state belongs to (a stored table origin, a declared
+    /// format origin and limit, an explicit offline export): the headers of SentioLegacyV0 are normalized to the canonical encoding while
+    /// the state is read, the values in the state are nested in it (BinaryTypeDecodingContext), and SentioLegacyBridge writes the legacy
+    /// indexes. Nothing else of the state changes, and the decoding is never stored with the state. The default implementations are those
+    /// of states without binary type headers; the combinators forward them to the nested function.
+    virtual void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, BinaryTypeWriterMode /* mode */) const
+    {
+        serialize(place, buf, version);
+    }
+
+    virtual void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> version,
+        Arena * arena,
+        const BinaryTypeDecoding & /* decoding */) const
+    {
+        deserialize(place, buf, version, arena);
+    }
 
     /// Returns true if a function requires Arena to handle own states (see add(), merge(), deserialize()).
     virtual bool allocatesMemoryInArena() const = 0;

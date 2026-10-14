@@ -21,6 +21,7 @@
 #include <AggregateFunctions/Helpers.h>
 #include <AggregateFunctions/IAggregateFunction.h>
 #include <AggregateFunctions/KeyHolderHelpers.h>
+#include <DataTypes/SentioWideRecode.h>
 
 #include <memory>
 
@@ -205,6 +206,10 @@ class AggregateFunctionGroupArrayIntersectGeneric final
         AggregateFunctionGroupArrayIntersectGeneric<is_plain_column>>
 {
     const DataTypePtr input_data_type;
+    /// The type of the elements, whose arena forms the state keeps, and whether they have binary type headers (see
+    /// IAggregateFunction::deserializeWithBinaryTypeDecoding).
+    const DataTypes element_types{assert_cast<const DataTypeArray &>(*input_data_type).getNestedType()};
+    const bool elements_have_binary_type_headers = !is_plain_column && valuesMayHaveBinaryTypeHeaders(*element_types.front());
 
     using State = AggregateFunctionGroupArrayIntersectGenericData;
 
@@ -315,16 +320,54 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */) const override
     {
+        serializeImpl(place, buf, BinaryTypeWriterMode::SentioWideV1);
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        serializeImpl(place, buf, mode);
+    }
+
+    void serializeImpl(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, BinaryTypeWriterMode mode) const
+    {
         auto & set = this->data(place).value;
         auto & version = this->data(place).version;
         writeVarUInt(version, buf);
         writeVarUInt(set.size(), buf);
+
+        if (elements_have_binary_type_headers && mode != BinaryTypeWriterMode::SentioWideV1)
+        {
+            /// An explicit bridge export: the elements are written with the legacy indexes (in memory they stay canonical).
+            std::vector<std::string_view> elements;
+            elements.reserve(set.size());
+            for (const auto & elem : set)
+                elements.push_back(elem.getValue());
+            for (const auto & element : recodeAggregationStateElementsForWrite(element_types, elements, mode))
+                writeStringBinary(element, buf);
+            return;
+        }
 
         for (const auto & elem : set)
             writeStringBinary(elem.getValue(), buf);
     }
 
     void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena * arena) const override
+    {
+        deserializeImpl(place, buf, arena, BinaryTypeDecoding{});
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        deserializeImpl(place, buf, arena, decoding);
+    }
+
+    void deserializeImpl(AggregateDataPtr __restrict place, ReadBuffer & buf, Arena * arena, const BinaryTypeDecoding & decoding) const
     {
         auto & set = this->data(place).value;
         auto & version = this->data(place).version;
@@ -337,11 +380,24 @@ public:
         /// Reserving is only an optimization here, so it is derived from payload that already arrived.
         /// Elements are variable length, so the divisor is the size of a slot, not of an element.
         set.reserve(std::min(size, buf.available() / sizeof(typename State::Set::cell_type)));
-        for (size_t i = 0; i < size; ++i)
+        if (!elements_have_binary_type_headers)
         {
-            auto key = readStringBinaryInto(*arena, buf);
-            set.insert(key);
+            for (size_t i = 0; i < size; ++i)
+            {
+                auto key = readStringBinaryInto(*arena, buf);
+                set.insert(key);
+            }
+            return;
         }
+
+        /// The binary type headers in the elements are validated with the origin before the state is used, and the legacy ones are
+        /// replaced by canonical elements, before any of them is inserted.
+        std::vector<std::string_view> elements;
+        for (size_t i = 0; i < size; ++i)
+            elements.push_back(readStringBinaryInto(*arena, buf));
+        acceptAggregationStateElements(element_types, elements, decoding, *arena);
+        for (const auto element : elements)
+            set.insert(element);
     }
 
     void insertResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena *) const override

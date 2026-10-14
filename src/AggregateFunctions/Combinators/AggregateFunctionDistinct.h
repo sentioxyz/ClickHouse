@@ -3,6 +3,7 @@
 #include <AggregateFunctions/IAggregateFunction.h>
 #include <AggregateFunctions/Combinators/AggregateFunctionNull.h>
 #include <AggregateFunctions/KeyHolderHelpers.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <IO/ReadHelpersArena.h>
 #include <Common/HashTable/HashMap.h>
 #include <Common/HashTable/HashSet.h>
@@ -80,6 +81,40 @@ struct AggregateFunctionDistinctGenericData
         readVarUInt(size, buf);
         for (size_t i = 0; i < size; ++i)
             history.insert(readStringBinaryInto(*arena, buf));
+    }
+
+    /// The same for a history of arena forms of values of `types` (one of each, one after another), whose binary type headers are written
+    /// for the writer mode and read with the decoding (see IAggregateFunction::deserializeWithBinaryTypeDecoding).
+    void serialize(WriteBuffer & buf, const DataTypes & types, BinaryTypeWriterMode mode) const
+    {
+        if (mode == BinaryTypeWriterMode::SentioWideV1)
+        {
+            serialize(buf);
+            return;
+        }
+
+        /// An explicit bridge export: the values are written with the legacy indexes (in memory they stay canonical).
+        std::vector<std::string_view> values;
+        values.reserve(history.size());
+        for (const auto & elem : history)
+            values.push_back(elem.getValue());
+        writeVarUInt(values.size(), buf);
+        for (const auto & value : recodeAggregationStateElementsForWrite(types, values, mode))
+            writeStringBinary(value, buf);
+    }
+
+    void deserialize(ReadBuffer & buf, Arena * arena, const DataTypes & types, const BinaryTypeDecoding & decoding)
+    {
+        /// The binary type headers in the values are validated with the origin before the state is used, and the legacy ones are
+        /// replaced by canonical values, before any of them is inserted.
+        size_t size = 0;
+        readVarUInt(size, buf);
+        std::vector<std::string_view> values;
+        for (size_t i = 0; i < size; ++i)
+            values.push_back(readStringBinaryInto(*arena, buf));
+        acceptAggregationStateElements(types, values, decoding, *arena);
+        for (const auto value : values)
+            history.insert(value);
     }
 };
 
@@ -271,6 +306,11 @@ public:
         addToNested(place, argument_columns, arena);
     }
 
+    /// Whether the history keeps the arena forms of the argument values, which can hold binary type headers (see
+    /// IAggregateFunction::deserializeWithBinaryTypeDecoding); the nested state is not serialized.
+    static constexpr bool history_keeps_arena_forms = std::is_same_v<Data, AggregateFunctionDistinctSingleGenericData<false>>
+        || std::is_same_v<Data, AggregateFunctionDistinctMultipleGenericData>;
+
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */) const override
     {
         this->data(place).serialize(buf);
@@ -278,7 +318,32 @@ public:
 
     void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena * arena) const override
     {
-        this->data(place).deserialize(buf, arena);
+        if constexpr (history_keeps_arena_forms)
+            this->data(place).deserialize(buf, arena, this->argument_types, BinaryTypeDecoding{});
+        else
+            this->data(place).deserialize(buf, arena);
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        if constexpr (history_keeps_arena_forms)
+            this->data(place).serialize(buf, this->argument_types, mode);
+        else
+            this->data(place).serialize(buf);
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        if constexpr (history_keeps_arena_forms)
+            this->data(place).deserialize(buf, arena, this->argument_types, decoding);
+        else
+            this->data(place).deserialize(buf, arena);
     }
 
     void insertResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena * arena) const override

@@ -9,6 +9,7 @@
 #include <DataTypes/DataTypeString.h>
 #include <Formats/FormatFactory.h>
 #include <Formats/FormatSettings.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <Formats/NativeReader.h>
 #include <Formats/NativeWriter.h>
 #include <IO/VarInt.h>
@@ -172,6 +173,35 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t>) const override
     {
+        serializeImpl(place, buf, std::nullopt);
+    }
+
+    void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t>, Arena *) const override
+    {
+        deserializeImpl(place, buf, nullptr);
+    }
+
+    /// The columns are in the native format: the binary type headers in their `Dynamic` and `JSON` data are written for the writer mode
+    /// and read with the origin (see SentioWideRecode.h); without format settings they are written canonically and read as the Unknown
+    /// origin, which validates them.
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t>, BinaryTypeWriterMode mode) const override
+    {
+        if (mode == BinaryTypeWriterMode::SentioWideV1)
+            serializeImpl(place, buf, std::nullopt);
+        else
+            serializeImpl(place, buf, getFormatSettingsForBinaryTypeWriterMode(mode));
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t>, Arena *, const BinaryTypeDecoding & decoding) const override
+    {
+        std::optional<FormatSettings> settings_with_context;
+        deserializeImpl(place, buf, &getFormatSettingsForBinaryTypeDecoding(decoding, settings_with_context));
+    }
+
+    void serializeImpl(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, const std::optional<FormatSettings> & settings) const
+    {
         const auto & state = data(place);
         UInt64 num_columns = state.columns.size();
         UInt64 num_rows = num_columns ? state.columns.front()->size() : 0;
@@ -184,11 +214,11 @@ public:
             const auto & column = state.columns[i];
             const auto & type = argument_types[i];
             auto serialization = type->getDefaultSerialization();
-            NativeWriter::writeData(*serialization, column->getPtr(), buf, std::nullopt, 0, num_rows, serialization_protocol_version);
+            NativeWriter::writeData(*serialization, column->getPtr(), buf, settings, 0, num_rows, serialization_protocol_version);
         }
     }
 
-    void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t>, Arena *) const override
+    void deserializeImpl(AggregateDataPtr __restrict place, ReadBuffer & buf, const FormatSettings * settings) const
     {
         auto & state = data(place);
         UInt64 num_columns = 0;
@@ -212,7 +242,7 @@ public:
             const auto & type = argument_types[i];
             auto serialization = type->getDefaultSerialization();
             auto column = type->createColumn();
-            NativeReader::readData(*serialization, *column, buf, nullptr, num_rows, nullptr, nullptr);
+            NativeReader::readData(*serialization, *column, buf, settings, num_rows, nullptr, nullptr);
             state.columns.emplace_back(std::move(column));
         }
     }

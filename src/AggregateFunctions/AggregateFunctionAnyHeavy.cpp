@@ -144,6 +144,22 @@ public:
         data(place).read(buf, *serialization, result_type, arena);
     }
 
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        writeSingleValueWithBinaryTypeWriterMode(data(place), buf, *serialization, mode);
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        readSingleValueWithBinaryTypeDecoding(data(place), buf, *serialization, result_type, arena, decoding);
+    }
+
     bool allocatesMemoryInArena() const override { return singleValueTypeAllocatesMemoryInArena(result_type->getTypeId()); }
 
     void insertResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena *) const override

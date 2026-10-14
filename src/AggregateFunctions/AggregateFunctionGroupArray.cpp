@@ -13,6 +13,7 @@
 
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/DataTypeString.h>
+#include <DataTypes/SentioWideRecode.h>
 
 #include <Columns/ColumnArray.h>
 #include <Columns/ColumnString.h>
@@ -414,9 +415,25 @@ struct GroupArrayNodeBase
     /// Write node to buffer
     void write(WriteBuffer & buf) const
     {
-        checkElementSize(size, AGGREGATE_FUNCTION_GROUP_ARRAY_MAX_ELEMENT_SIZE);
-        writeVarUInt(size, buf);
-        buf.write(data(), size);
+        writePayload({data(), size}, buf);
+    }
+
+    /// Write a payload to buffer the way a node is written
+    static void writePayload(std::string_view payload, WriteBuffer & buf)
+    {
+        checkElementSize(payload.size(), AGGREGATE_FUNCTION_GROUP_ARRAY_MAX_ELEMENT_SIZE);
+        writeVarUInt(payload.size(), buf);
+        buf.write(payload.data(), payload.size());
+    }
+
+    /// Allocates a node with the given payload (doesn't set next)
+    static Node * create(std::string_view payload, Arena * arena)
+    {
+        checkElementSize(payload.size(), AGGREGATE_FUNCTION_GROUP_ARRAY_MAX_ELEMENT_SIZE);
+        Node * node = reinterpret_cast<Node *>(arena->alignedAlloc(sizeof(Node) + payload.size(), alignof(Node)));
+        node->size = payload.size();
+        memcpy(node->data(), payload.data(), payload.size());
+        return node;
     }
 
     /// Reads and allocates node from ReadBuffer's data (doesn't set next)
@@ -510,6 +527,8 @@ class GroupArrayGeneralImpl final
     DataTypePtr & data_type;
     UInt64 max_elems;
     std::optional<UInt64> seed;
+    /// Whether the nodes are arena forms of values with binary type headers (see IAggregateFunction::deserializeWithBinaryTypeDecoding).
+    bool nodes_have_binary_type_headers;
 
 public:
     GroupArrayGeneralImpl(const DataTypePtr & data_type_, const Array & parameters_, UInt64 max_elems_, std::optional<UInt64> seed_)
@@ -518,6 +537,7 @@ public:
         , data_type(this->argument_types[0])
         , max_elems(max_elems_)
         , seed(seed_)
+        , nodes_have_binary_type_headers(std::is_same_v<Node, GroupArrayNodeGeneral> && valuesMayHaveBinaryTypeHeaders(*data_type_))
     {
     }
 
@@ -662,13 +682,37 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */) const override
     {
+        serializeImpl(place, buf, BinaryTypeWriterMode::SentioWideV1);
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        serializeImpl(place, buf, mode);
+    }
+
+    void serializeImpl(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, BinaryTypeWriterMode mode) const
+    {
         UInt64 elems = data(place).value.size();
         checkArraySize(elems, max_elems);
         writeVarUInt(elems, buf);
 
         auto & value = data(place).value;
-        for (auto & node : value)
-            node->write(buf);
+        if (nodes_have_binary_type_headers && mode != BinaryTypeWriterMode::SentioWideV1)
+        {
+            /// An explicit bridge export: the nodes are written with the legacy indexes (in memory they stay canonical).
+            std::vector<std::string_view> nodes;
+            nodes.reserve(value.size());
+            for (const auto & node : value)
+                nodes.emplace_back(node->data(), node->size);
+            for (const auto & payload : recodeAggregationStateElementsForWrite({data_type}, nodes, mode))
+                Node::writePayload(payload, buf);
+        }
+        else
+        {
+            for (auto & node : value)
+                node->write(buf);
+        }
 
         if constexpr (Trait::last)
             writeBinaryLittleEndian(data(place).total_values, buf);
@@ -684,6 +728,21 @@ public:
 
     void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena * arena) const override
     {
+        deserializeImpl(place, buf, arena, BinaryTypeDecoding{});
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        deserializeImpl(place, buf, arena, decoding);
+    }
+
+    void deserializeImpl(AggregateDataPtr __restrict place, ReadBuffer & buf, Arena * arena, const BinaryTypeDecoding & decoding) const
+    {
         UInt64 elems = 0;
         readVarUInt(elems, buf);
         checkArraySize(elems, max_elems);
@@ -695,6 +754,22 @@ public:
             value.resize_exact(elems, arena);
             for (UInt64 i = 0; i < elems; ++i)
                 value[i] = Node::read(buf, arena);
+
+            /// The binary type headers in the nodes are validated with the origin before the state is used, and the legacy ones are
+            /// replaced by canonical nodes.
+            if (nodes_have_binary_type_headers)
+            {
+                std::vector<std::string_view> nodes;
+                nodes.reserve(value.size());
+                for (const auto & node : value)
+                    nodes.emplace_back(node->data(), node->size);
+                acceptAggregationStateElements({data_type}, nodes, decoding, *arena);
+                if (decoding.origin == BinaryTypeOrigin::SentioLegacyV0)
+                {
+                    for (size_t i = 0; i < nodes.size(); ++i)
+                        value[i] = Node::create(nodes[i], arena);
+                }
+            }
         }
 
         if constexpr (Trait::last || Trait::sampler == Sampler::RNG)

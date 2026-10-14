@@ -20,6 +20,8 @@
 
 #include <AggregateFunctions/IAggregateFunction.h>
 #include <AggregateFunctions/KeyHolderHelpers.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <IO/ReadBufferFromMemory.h>
 
 
 namespace DB
@@ -33,6 +35,7 @@ namespace ErrorCodes
     extern const int ILLEGAL_TYPE_OF_ARGUMENT;
     extern const int BAD_ARGUMENTS;
     extern const int LOGICAL_ERROR;
+    extern const int INCORRECT_DATA;
     extern const int TOO_MANY_ARGUMENTS_FOR_FUNCTION;
 }
 
@@ -329,12 +332,52 @@ private:
     UInt64 reserved;
     bool include_counts;
     bool is_approx_top_k;
+    /// The type of the values whose arena forms are the keys, and whether they have binary type headers (see
+    /// IAggregateFunction::deserializeWithBinaryTypeDecoding). The alpha map of the set is indexed by the hashes of the keys, so the
+    /// keys must stay in one form across versions: such keys are held in their legacy projection (the arena form written with the legacy
+    /// indexes, SentioLegacyBridge), which is what the Decimal512 fork hashed. Only the written state has the canonical form (or the
+    /// legacy one for a bridge export); a state is read back into the projection, and the values are read from it at finalization.
+    DataTypes key_types;
+    bool keys_have_binary_type_headers;
+
+    /// The keys of a state read with `decoding`, validated, in their projection.
+    void projectKeys(std::vector<String> & keys, const BinaryTypeDecoding & decoding) const
+    {
+        std::vector<std::string_view> views(keys.begin(), keys.end());
+        keys = recodeAggregationStateElements(key_types, views, decoding, BinaryTypeWriterMode::SentioLegacyBridge);
+    }
+
+    /// The canonical keys of the projection, for a written state.
+    void canonicalizeKeys(std::vector<String> & keys) const
+    {
+        std::vector<std::string_view> views(keys.begin(), keys.end());
+        keys = recodeAggregationStateElements(
+            key_types, views, BinaryTypeDecoding{.origin = BinaryTypeOrigin::SentioLegacyV0}, BinaryTypeWriterMode::SentioWideV1);
+    }
+
+    /// Inserts the value of a key into a column (the projection is read with the legacy origin).
+    void insertKeyInto(std::string_view key, IColumn & to) const
+    {
+        if (!keys_have_binary_type_headers)
+        {
+            deserializeAndInsert<is_plain_column>(key, to);
+            return;
+        }
+        ReadBufferFromMemory in(key.data(), key.size());
+        auto settings = IColumn::SerializationSettings::createForAggregationState();
+        settings.binary_type_origin = BinaryTypeOrigin::SentioLegacyV0;
+        to.deserializeAndInsertFromArena(in, &settings);
+        if (!in.eof())
+            throw Exception(ErrorCodes::INCORRECT_DATA, "Extra bytes ({}) found after deserializing aggregation state", in.available());
+    }
 
 public:
     AggregateFunctionTopKGeneric(
         UInt64 threshold_, UInt64 reserved_, bool include_counts_, bool is_approx_top_k_, const DataTypes & argument_types_, const Array & params)
         : IAggregateFunctionDataHelper<AggregateFunctionTopKGenericData, AggregateFunctionTopKGeneric<is_plain_column, is_weighted>>(argument_types_, params, createResultType(argument_types_, include_counts_))
-        , threshold(threshold_), reserved(reserved_), include_counts(include_counts_), is_approx_top_k(is_approx_top_k_) {}
+        , threshold(threshold_), reserved(reserved_), include_counts(include_counts_), is_approx_top_k(is_approx_top_k_)
+        , key_types{argument_types_[0]}
+        , keys_have_binary_type_headers(!is_plain_column && valuesMayHaveBinaryTypeHeaders(*argument_types_[0])) {}
 
     String getName() const override
     {
@@ -383,13 +426,52 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */) const override
     {
-        this->data(place).value.write(buf);
+        serializeImpl(place, buf, BinaryTypeWriterMode::SentioWideV1);
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        serializeImpl(place, buf, mode);
+    }
+
+    void serializeImpl(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, BinaryTypeWriterMode mode) const
+    {
+        /// The projection of the keys is their legacy form, which a bridge export writes as it is; the canonical state gets the canonical
+        /// keys. The counters, their order and the alpha map are written as they are.
+        if (!keys_have_binary_type_headers || mode == BinaryTypeWriterMode::SentioLegacyBridge)
+            this->data(place).value.write(buf);
+        else
+            this->data(place).value.writeTransformingKeys(buf, [this](std::vector<String> & keys) { canonicalizeKeys(keys); });
     }
 
     void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena *) const override
     {
+        deserializeImpl(place, buf, BinaryTypeDecoding{});
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena *,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        deserializeImpl(place, buf, decoding);
+    }
+
+    void deserializeImpl(AggregateDataPtr __restrict place, ReadBuffer & buf, const BinaryTypeDecoding & decoding) const
+    {
         auto & set = this->data(place).value;
-        set.read(buf, reserved);
+        if (!keys_have_binary_type_headers)
+        {
+            set.read(buf, reserved);
+            return;
+        }
+
+        /// The binary type headers in the keys are validated with the origin before the set is built from them, and the keys are
+        /// held in their projection, the hash domain of the alpha map (see key_types). The alpha map is checked and streamed by the set.
+        set.readTransformingKeys(buf, reserved, [this, &decoding](std::vector<String> & keys) { projectKeys(keys, decoding); });
     }
 
     void add(AggregateDataPtr __restrict place, const IColumn ** columns, size_t row_num, Arena * arena) const override
@@ -408,6 +490,9 @@ public:
         {
             const char * begin = nullptr;
             auto settings = IColumn::SerializationSettings::createForAggregationState();
+            /// Keys with binary type headers are held in their legacy projection (see key_types).
+            if (keys_have_binary_type_headers)
+                settings.binary_type_writer_mode = BinaryTypeWriterMode::SentioLegacyBridge;
             auto str_serialized = columns[0]->serializeValueIntoArena(row_num, *arena, begin, &settings);
             if constexpr (is_weighted)
                 set.insert(str_serialized, columns[1]->getUInt(row_num));
@@ -450,14 +535,14 @@ public:
             {
                 column_count.insert(elem.count);
                 column_error.insert(elem.error);
-                deserializeAndInsert<is_plain_column>(elem.key, column_key);
+                insertKeyInto(elem.key, column_key);
             }
         }
         else
         {
             for (auto & elem : result_vec)
             {
-                deserializeAndInsert<is_plain_column>(elem.key, data_to);
+                insertKeyInto(elem.key, data_to);
             }
         }
     }

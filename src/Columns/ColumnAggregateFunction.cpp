@@ -678,15 +678,17 @@ void ColumnAggregateFunction::insertDefault()
 }
 
 std::string_view ColumnAggregateFunction::serializeValueIntoArena(
-    size_t n, Arena & arena, const char *& begin, const IColumn::SerializationSettings *) const
+    size_t n, Arena & arena, const char *& begin, const IColumn::SerializationSettings * settings) const
 {
     WriteBufferFromArena out(arena, begin);
-    func->serialize(data[n], out, version);
+    /// The binary type headers in the state are written for the writer mode (canonical by default, as in memory).
+    func->serializeWithBinaryTypeWriterMode(
+        data[n], out, version, settings ? settings->binary_type_writer_mode : BinaryTypeWriterMode::SentioWideV1);
     out.finalize();
     return out.complete();
 }
 
-void ColumnAggregateFunction::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings *)
+void ColumnAggregateFunction::deserializeAndInsertFromArena(ReadBuffer & in, const IColumn::SerializationSettings * settings)
 {
     ensureOwnership();
 
@@ -695,7 +697,15 @@ void ColumnAggregateFunction::deserializeAndInsertFromArena(ReadBuffer & in, con
       */
     Arena & dst_arena = createOrGetArena();
     pushBackAndCreateState(data, dst_arena, func.get());
-    func->deserialize(data.back(), in, version, &dst_arena);
+    /// The binary type headers in the state are read with the origin of the settings (see IAggregateFunction). If the settings carry the
+    /// nesting context of an enclosing value, the state is nested in it and the values in the state are nested in the state.
+    const BinaryTypeDecoding decoding{
+        .origin = settings ? settings->binary_type_origin : BinaryTypeOrigin::Unknown,
+        .context = settings ? settings->binary_type_decoding_context : nullptr};
+    std::optional<BinaryValueNestingScope> scope;
+    if (decoding.context)
+        scope.emplace(*decoding.context);
+    func->deserializeWithBinaryTypeDecoding(data.back(), in, version, &dst_arena, decoding);
 }
 
 void ColumnAggregateFunction::skipSerializedInArena(ReadBuffer &) const

@@ -5,6 +5,8 @@
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/DataTypeTuple.h>
 #include <DataTypes/DataTypeNullable.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <Formats/FormatSettings.h>
 
 #include <Columns/ColumnArray.h>
 #include <Columns/ColumnTuple.h>
@@ -273,6 +275,30 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version) const override
     {
+        serializeImpl(place, buf, version, {});
+    }
+
+    void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena *) const override
+    {
+        deserializeImpl(place, buf, version, FormatSettings{});
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, BinaryTypeWriterMode mode) const override
+    {
+        serializeImpl(place, buf, version, getFormatSettingsForBinaryTypeWriterMode(mode));
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena *, const BinaryTypeDecoding & decoding) const override
+    {
+        std::optional<FormatSettings> settings_with_context;
+        deserializeImpl(place, buf, version, getFormatSettingsForBinaryTypeDecoding(decoding, settings_with_context));
+    }
+
+    /// The keys and values are written for the writer mode of the settings and read with their origin (see SentioWideRecode.h).
+    void serializeImpl(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, const FormatSettings & settings) const
+    {
         if (!version)
             version = getDefaultVersion();
 
@@ -287,7 +313,7 @@ public:
             {
                 serialize = [&](size_t col_idx, const Array & values)
                 {
-                    values_serializations[col_idx]->serializeBinary(values[col_idx], buf, {});
+                    values_serializations[col_idx]->serializeBinary(values[col_idx], buf, settings);
                 };
                 break;
             }
@@ -315,7 +341,7 @@ public:
                         }
                     }
 
-                    promoted_values_serializations[col_idx]->serializeBinary(value, buf, {});
+                    promoted_values_serializations[col_idx]->serializeBinary(value, buf, settings);
                 };
                 break;
             }
@@ -329,13 +355,13 @@ public:
 
         for (const auto & elem : merged_maps)
         {
-            keys_serialization->serializeBinary(elem.first, buf, {});
+            keys_serialization->serializeBinary(elem.first, buf, settings);
             for (size_t col = 0; col < values_types.size(); ++col)
                 serialize(col, elem.second);
         }
     }
 
-    void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena *) const override
+    void deserializeImpl(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, const FormatSettings & settings) const
     {
         if (!version)
             version = getDefaultVersion();
@@ -344,7 +370,7 @@ public:
         size_t size = 0;
         readVarUInt(size, buf);
 
-        FormatSettings format_settings;
+        FormatSettings format_settings = settings;
         /// Bool keys/values must be read as 0/1 int Fields, matching what add() stores from the
         /// UInt8 column. Otherwise a bool-tagged Field reaches FieldVisitorSum on merge and throws
         /// "Cannot sum Bools" (and breaks key dedup / zero-compaction). Same as MergeTreePartition::load.

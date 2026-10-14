@@ -269,6 +269,30 @@ public:
     {
         this->data(place).result().read(buf, *serialization_res, data_type_res, arena);
         this->data(place).value().read(buf, *serialization_val, data_type_val, arena);
+        checkDeserializedState(place);
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        writeSingleValueWithBinaryTypeWriterMode(this->data(place).result(), buf, *serialization_res, mode);
+        writeSingleValueWithBinaryTypeWriterMode(this->data(place).value(), buf, *serialization_val, mode);
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        readSingleValueWithBinaryTypeDecoding(this->data(place).result(), buf, *serialization_res, data_type_res, arena, decoding);
+        readSingleValueWithBinaryTypeDecoding(this->data(place).value(), buf, *serialization_val, data_type_val, arena, decoding);
+        checkDeserializedState(place);
+    }
+
+    void checkDeserializedState(ConstAggregateDataPtr __restrict place) const
+    {
         if (unlikely(this->data(place).value().has() != this->data(place).result().has()))
             throw Exception(
                 ErrorCodes::INCORRECT_DATA,

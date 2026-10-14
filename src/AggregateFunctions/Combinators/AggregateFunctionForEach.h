@@ -342,6 +342,38 @@ public:
         }
     }
 
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        const AggregateFunctionForEachData & state = data(place);
+        writeBinaryLittleEndian(state.dynamic_array_size, buf);
+
+        const char * nested_state = state.array_of_aggregate_datas;
+        for (size_t i = 0; i < state.dynamic_array_size; ++i)
+        {
+            nested_func->serializeWithBinaryTypeWriterMode(nested_state, buf, std::nullopt, mode);
+            nested_state += nested_size_of_data;
+        }
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena * arena, const BinaryTypeDecoding & decoding) const override
+    {
+        AggregateFunctionForEachData & state = data(place);
+
+        size_t new_size = 0;
+        readBinaryLittleEndian(new_size, buf);
+
+        ensureAggregateData(place, new_size, *arena);
+
+        char * nested_state = state.array_of_aggregate_datas;
+        for (size_t i = 0; i < new_size; ++i)
+        {
+            nested_func->deserializeWithBinaryTypeDecoding(nested_state, buf, version, arena, decoding);
+            nested_state += nested_size_of_data;
+        }
+    }
+
     /// `transferred` counts the elements whose transfer returned, so a caller that catches can undo those.
     template <bool merge>
     void transferElements(AggregateDataPtr __restrict place, ColumnArray & arr_to, size_t & transferred, Arena * arena) const

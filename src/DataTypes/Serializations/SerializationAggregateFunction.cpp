@@ -4,17 +4,20 @@
 #include <Core/Defines.h>
 #include <DataTypes/DataTypeTuple.h>
 #include <DataTypes/IDataType.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <Common/SipHash.h>
 #include <DataTypes/Serializations/SerializationAggregateFunction.h>
 #include <Formats/FormatFactory.h>
 #include <Formats/FormatSettings.h>
 #include <IO/Operators.h>
+#include <IO/ReadBufferFromMemory.h>
 #include <IO/ReadBufferFromString.h>
 #include <IO/ReadHelpers.h>
 #include <IO/WriteBufferFromString.h>
 #include <IO/WriteHelpers.h>
 #include <absl/container/inlined_vector.h>
 #include <base/arithmeticOverflow.h>
+#include <Common/AlignedBuffer.h>
 #include <Common/Arena.h>
 #include <Common/assert_cast.h>
 #include <Common/typeid_cast.h>
@@ -45,26 +48,115 @@ UInt128 SerializationAggregateFunction::getHash(const AggregateFunctionPtr & fun
     return hash.get128();
 }
 
-void SerializationAggregateFunction::serializeBinary(const Field & field, WriteBuffer & ostr, const FormatSettings &) const
+namespace
 {
-    const AggregateFunctionStateData & state = field.safeGet<AggregateFunctionStateData>();
-    writeBinary(state.data, ostr);
+
+bool argumentsMayHaveBinaryTypeHeaders(const IAggregateFunction & function)
+{
+    const auto & arguments = function.getArgumentTypes();
+    return std::ranges::any_of(arguments, [](const DataTypePtr & argument) { return valuesMayHaveBinaryTypeHeaders(*argument); });
 }
 
-void SerializationAggregateFunction::deserializeBinary(Field & field, ReadBuffer & istr, const FormatSettings &) const
+/// The decoding of a state read with `settings`: their origin, and the nesting context that the settings carry (of the value the state is
+/// nested in) or `own`.
+BinaryTypeDecoding getBinaryTypeDecoding(const FormatSettings & settings, BinaryTypeDecodingContext & own)
+{
+    return BinaryTypeDecoding{
+        .origin = settings.binary.type_origin,
+        .context = settings.binary.type_decoding_context ? settings.binary.type_decoding_context : &own};
+}
+
+}
+
+SerializationAggregateFunction::SerializationAggregateFunction(const AggregateFunctionPtr & function_, String type_name_, size_t version_)
+    : function(function_)
+    , type_name(std::move(type_name_))
+    , version(version_)
+    , state_may_have_binary_type_headers(argumentsMayHaveBinaryTypeHeaders(*function_))
+{
+}
+
+String SerializationAggregateFunction::readStateWithBinaryTypeDecoding(
+    std::string_view data, const BinaryTypeDecoding & decoding, std::optional<BinaryTypeWriterMode> write_mode) const
+{
+    Arena arena;
+    AlignedBuffer place_buffer(function->sizeOfData(), function->alignOfData());
+    AggregateDataPtr place = place_buffer.data();
+
+    String result;
+    function->create(place);
+    try
+    {
+        ReadBufferFromMemory in(data.data(), data.size());
+        function->deserializeWithBinaryTypeDecoding(place, in, version, &arena, decoding);
+        /// The data is one whole state, as for deserializeFromString.
+        const size_t trailing_bytes = in.available();
+        if (trailing_bytes != 0)
+            throw Exception(
+                ErrorCodes::BAD_ARGUMENTS,
+                "AggregateFunction state for `{}` has {} trailing byte(s) after deserialization",
+                function->getName(),
+                trailing_bytes);
+        if (write_mode)
+        {
+            WriteBufferFromString out(result);
+            function->serializeWithBinaryTypeWriterMode(place, out, version, *write_mode);
+            out.finalize();
+        }
+    }
+    catch (...)
+    {
+        function->destroy(place);
+        throw;
+    }
+    function->destroy(place);
+    return result;
+}
+
+void SerializationAggregateFunction::serializeBinary(const Field & field, WriteBuffer & ostr, const FormatSettings & settings) const
+{
+    const AggregateFunctionStateData & state = field.safeGet<AggregateFunctionStateData>();
+    if (settings.binary.type_writer_mode == BinaryTypeWriterMode::SentioWideV1 || !state_may_have_binary_type_headers)
+    {
+        writeBinary(state.data, ostr);
+        return;
+    }
+
+    /// The state in the field is canonical, as in memory: it is written again for the writer mode.
+    writeBinary(
+        readStateWithBinaryTypeDecoding(
+            state.data, BinaryTypeDecoding{.origin = BinaryTypeOrigin::OfficialCanonical}, settings.binary.type_writer_mode),
+        ostr);
+}
+
+void SerializationAggregateFunction::deserializeBinary(Field & field, ReadBuffer & istr, const FormatSettings & settings) const
 {
     field = AggregateFunctionStateData();
     AggregateFunctionStateData & s = field.safeGet<AggregateFunctionStateData>();
     readBinary(s.data, istr);
     s.name = type_name;
+
+    if (!state_may_have_binary_type_headers)
+        return;
+
+    /// The field holds a canonical state, as memory does: the binary type headers in it are validated, and normalized for SentioLegacyV0.
+    /// The state is a value whose scope covers the values in it.
+    BinaryTypeDecodingContext own_context(settings.binary.max_binary_type_complexity);
+    const auto decoding = getBinaryTypeDecoding(settings, own_context);
+    BinaryValueNestingScope scope(*decoding.context);
+    if (decoding.origin == BinaryTypeOrigin::SentioLegacyV0)
+        s.data = readStateWithBinaryTypeDecoding(s.data, decoding, BinaryTypeWriterMode::SentioWideV1);
+    else
+        readStateWithBinaryTypeDecoding(s.data, decoding, std::nullopt);
 }
 
-void SerializationAggregateFunction::serializeBinary(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings &) const
+void SerializationAggregateFunction::serializeBinary(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const
 {
-    function->serialize(assert_cast<const ColumnAggregateFunction &>(column).getData()[row_num], ostr, version);
+    function->serializeWithBinaryTypeWriterMode(
+        assert_cast<const ColumnAggregateFunction &>(column).getData()[row_num], ostr, version, settings.binary.type_writer_mode);
 }
 
-void SerializationAggregateFunction::deserializeBinary(IColumn & column, ReadBuffer & istr, const FormatSettings &) const
+void SerializationAggregateFunction::deserializeBinary(IColumn & column, ReadBuffer & istr, const FormatSettings & settings) const
 {
     ColumnAggregateFunction & column_concrete = assert_cast<ColumnAggregateFunction &>(column);
 
@@ -72,10 +164,15 @@ void SerializationAggregateFunction::deserializeBinary(IColumn & column, ReadBuf
     size_t size_of_state = function->sizeOfData();
     AggregateDataPtr place = arena.alignedAlloc(size_of_state, function->alignOfData());
 
+    /// The state is a value nested in the value whose reader passes its context, or a value of its own. Its scope covers the values in it.
+    BinaryTypeDecodingContext own_context(settings.binary.max_binary_type_complexity);
+    const auto decoding = getBinaryTypeDecoding(settings, own_context);
+    BinaryValueNestingScope scope(*decoding.context);
+
     function->create(place);
     try
     {
-        function->deserialize(place, istr, version, &arena);
+        function->deserializeWithBinaryTypeDecoding(place, istr, version, &arena, decoding);
         /// Inside the guard: `push_back` can throw, and until it succeeds nothing owns `place`.
         column_concrete.getData().push_back(place);
     }
@@ -143,14 +240,101 @@ void SerializationAggregateFunction::deserializeBinaryBulk(IColumn & column, Rea
     }
 }
 
-static String serializeToString(const AggregateFunctionPtr & function, const IColumn & column, size_t row_num, size_t version)
+void SerializationAggregateFunction::serializeBinaryBulkWithMultipleStreams(
+    const IColumn & column,
+    size_t offset,
+    size_t limit,
+    SerializeBinaryBulkSettings & settings,
+    SerializeBinaryBulkStatePtr & state) const
+{
+    const auto mode = settings.format_settings ? settings.format_settings->binary.type_writer_mode : BinaryTypeWriterMode::SentioWideV1;
+    if (mode == BinaryTypeWriterMode::SentioWideV1 || !state_may_have_binary_type_headers)
+    {
+        ISerialization::serializeBinaryBulkWithMultipleStreams(column, offset, limit, settings, state);
+        return;
+    }
+
+    /// An explicit bridge export: every state is written with the legacy indexes (in memory they stay canonical).
+    settings.path.push_back(Substream::Regular);
+    if (WriteBuffer * stream = settings.getter(settings.path))
+    {
+        const auto & vec = assert_cast<const ColumnAggregateFunction &>(column).getData();
+        size_t end = vec.size();
+        if (limit)
+            end = std::min(end, offset + limit);
+        for (size_t i = offset; i < end; ++i)
+            function->serializeWithBinaryTypeWriterMode(vec[i], *stream, version, mode);
+    }
+    settings.path.pop_back();
+}
+
+void SerializationAggregateFunction::deserializeBinaryBulkWithMultipleStreams(
+    IColumn & column,
+    size_t limit,
+    DeserializeBinaryBulkSettings & settings,
+    DeserializeBinaryBulkStatePtr & state,
+    SubstreamsCache * cache) const
+{
+    /// Without format settings, or with an origin that needs no normalization and no type complexity limit (stored data, the native
+    /// protocol between servers), the states are read as before: deserialize validates their binary type headers as the Unknown origin.
+    const auto * format_settings = settings.format_settings;
+    if (!state_may_have_binary_type_headers || !format_settings
+        || (format_settings->binary.type_origin != BinaryTypeOrigin::SentioLegacyV0 && format_settings->binary.max_binary_type_complexity == 0))
+    {
+        ISerialization::deserializeBinaryBulkWithMultipleStreams(column, limit, settings, state, cache);
+        return;
+    }
+
+    settings.path.push_back(Substream::Regular);
+    if (insertDataFromSubstreamsCacheIfAny(cache, settings, column))
+    {
+        /// Data was inserted from substreams cache.
+    }
+    else if (ReadBuffer * stream = settings.getter(settings.path))
+    {
+        auto & real_column = assert_cast<ColumnAggregateFunction &>(column);
+        const size_t prev_size = real_column.size();
+        auto & vec = real_column.getData();
+        Arena & arena = real_column.createOrGetArena();
+        real_column.set(function, version);
+
+        /// Every state is a value of its own, whose scope covers the values in it; the states of the rows are not added up.
+        for (size_t i = 0; i < limit && !stream->eof(); ++i)
+        {
+            AggregateDataPtr place = arena.alignedAlloc(function->sizeOfData(), function->alignOfData());
+            BinaryTypeDecodingContext context(format_settings->binary.max_binary_type_complexity);
+            BinaryValueNestingScope scope(context);
+            function->create(place);
+            try
+            {
+                function->deserializeWithBinaryTypeDecoding(
+                    place, *stream, version, &arena, BinaryTypeDecoding{.origin = format_settings->binary.type_origin, .context = &context});
+                vec.push_back(place);
+            }
+            catch (...)
+            {
+                function->destroy(place);
+                throw;
+            }
+        }
+
+        addColumnWithNumReadRowsToSubstreamsCache(cache, settings.path, column.getPtr(), column.size() - prev_size);
+        if (settings.update_avg_value_size_hint_callback)
+            settings.update_avg_value_size_hint_callback(settings.path, column);
+    }
+    settings.path.pop_back();
+}
+
+static String serializeToString(
+    const AggregateFunctionPtr & function, const IColumn & column, size_t row_num, size_t version, BinaryTypeWriterMode mode)
 {
     WriteBufferFromOwnString buffer;
-    function->serialize(assert_cast<const ColumnAggregateFunction &>(column).getData()[row_num], buffer, version);
+    function->serializeWithBinaryTypeWriterMode(assert_cast<const ColumnAggregateFunction &>(column).getData()[row_num], buffer, version, mode);
     return buffer.str();
 }
 
-static void deserializeFromString(const AggregateFunctionPtr & function, IColumn & column, const String & s, size_t version)
+static void deserializeFromString(
+    const AggregateFunctionPtr & function, IColumn & column, const String & s, size_t version, const FormatSettings & settings)
 {
     ColumnAggregateFunction & column_concrete = assert_cast<ColumnAggregateFunction &>(column);
 
@@ -158,12 +342,18 @@ static void deserializeFromString(const AggregateFunctionPtr & function, IColumn
     size_t size_of_state = function->sizeOfData();
     AggregateDataPtr place = arena.alignedAlloc(size_of_state, function->alignOfData());
 
+    /// The state is a value of its own, unless the settings carry the nesting context of an enclosing value; its scope covers the values
+    /// in it.
+    BinaryTypeDecodingContext own_context(settings.binary.max_binary_type_complexity);
+    const auto decoding = getBinaryTypeDecoding(settings, own_context);
+    BinaryValueNestingScope scope(*decoding.context);
+
     function->create(place);
 
     try
     {
         ReadBufferFromString istr(s);
-        function->deserialize(place, istr, version, &arena);
+        function->deserializeWithBinaryTypeDecoding(place, istr, version, &arena, decoding);
 
         const size_t trailing_bytes = istr.available();
         if (trailing_bytes != 0)
@@ -291,16 +481,16 @@ SerializationPtr SerializationAggregateFunction::create(const AggregateFunctionP
     return ISerialization::pooled(getHash(function_, type_name_, version_), [&] { return new SerializationAggregateFunction(function_, std::move(type_name_), version_); });
 }
 
-void SerializationAggregateFunction::serializeText(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings &) const
+void SerializationAggregateFunction::serializeText(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const
 {
-    writeString(serializeToString(function, column, row_num, version), ostr);
+    writeString(serializeToString(function, column, row_num, version, settings.binary.type_writer_mode), ostr);
 }
 
 
 void SerializationAggregateFunction::serializeTextEscaped(
-    const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings &) const
+    const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const
 {
-    writeEscapedString(serializeToString(function, column, row_num, version), ostr);
+    writeEscapedString(serializeToString(function, column, row_num, version, settings.binary.type_writer_mode), ostr);
 }
 
 
@@ -308,7 +498,7 @@ void SerializationAggregateFunction::deserializeBasedOnInput(IColumn & column, c
 {
     if (settings.aggregate_function_input_format == DB::FormatSettings::AggregateFunctionInputFormat::State)
     {
-        deserializeFromString(function, column, s, version);
+        deserializeFromString(function, column, s, version, settings);
     }
     else if (settings.aggregate_function_input_format == DB::FormatSettings::AggregateFunctionInputFormat::Value)
     {
@@ -339,7 +529,7 @@ void SerializationAggregateFunction::deserializeTextEscaped(IColumn & column, Re
 
 void SerializationAggregateFunction::serializeTextQuoted(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const
 {
-    auto str = serializeToString(function, column, row_num, version);
+    auto str = serializeToString(function, column, row_num, version, settings.binary.type_writer_mode);
     if (settings.values.escape_quote_with_quote)
         writeQuotedStringPostgreSQL(str, ostr);
     else
@@ -365,7 +555,7 @@ void SerializationAggregateFunction::deserializeWholeText(IColumn & column, Read
 
 void SerializationAggregateFunction::serializeTextJSON(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const
 {
-    writeJSONString(serializeToString(function, column, row_num, version), ostr, settings);
+    writeJSONString(serializeToString(function, column, row_num, version, settings.binary.type_writer_mode), ostr, settings);
 }
 
 
@@ -377,15 +567,15 @@ void SerializationAggregateFunction::deserializeTextJSON(IColumn & column, ReadB
 }
 
 
-void SerializationAggregateFunction::serializeTextXML(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings &) const
+void SerializationAggregateFunction::serializeTextXML(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const
 {
-    writeXMLStringForTextElement(serializeToString(function, column, row_num, version), ostr);
+    writeXMLStringForTextElement(serializeToString(function, column, row_num, version, settings.binary.type_writer_mode), ostr);
 }
 
 
-void SerializationAggregateFunction::serializeTextCSV(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings &) const
+void SerializationAggregateFunction::serializeTextCSV(const IColumn & column, size_t row_num, WriteBuffer & ostr, const FormatSettings & settings) const
 {
-    writeCSV(serializeToString(function, column, row_num, version), ostr);
+    writeCSV(serializeToString(function, column, row_num, version, settings.binary.type_writer_mode), ostr);
 }
 
 

@@ -338,6 +338,87 @@ public:
         truncateIfNeeded(true);
     }
 
+    /// The same as write and read for String keys, with the keys of the counters written or read transformed by `transform_keys`, which
+    /// replaces the strings of a vector in place. A generic top-k set keeps its keys in the form whose hashes index its alpha map and
+    /// writes them in another form (see AggregateFunctionTopK). The counts, errors, order and alpha map are those of write and read, and
+    /// the alpha map is checked and streamed by readAlphaMap and skipAlphaMap as there.
+    template <typename TransformKeys>
+    void writeTransformingKeys(WriteBuffer & wb, TransformKeys && transform_keys) const
+    requires std::is_same_v<TKey, std::string_view>
+    {
+        std::vector<Counter> new_list;
+        new_list.reserve(counter_list.size());
+        for (auto & counter : counter_list)
+            new_list.push_back(counter);
+
+        size_t return_size = std::min(new_list.size(), capacity());
+        ::partial_sort(
+            new_list.begin(), new_list.begin() + return_size, new_list.end(), [](const auto & l, const auto & r) { return l > r; });
+
+        std::vector<String> keys;
+        keys.reserve(return_size);
+        for (size_t i = 0; i < return_size; ++i)
+            keys.emplace_back(new_list[i].key);
+        transform_keys(keys);
+
+        writeVarUInt(return_size, wb);
+        for (size_t i = 0; i < return_size; ++i)
+        {
+            writeBinary(keys[i], wb);
+            writeVarUInt(new_list[i].count, wb);
+            writeVarUInt(new_list[i].error, wb);
+        }
+
+        writeVarUInt(alpha_map.size(), wb);
+        for (auto alpha : alpha_map)
+            writeVarUInt(alpha, wb);
+    }
+
+    template <typename TransformKeys>
+    void readTransformingKeys(ReadBuffer & rb, size_t capacity, TransformKeys && transform_keys)
+    requires std::is_same_v<TKey, std::string_view>
+    {
+        size_t count = 0;
+        readVarUInt(count, rb);
+        if (count > capacity)
+            throw DB::Exception(
+                DB::ErrorCodes::TOO_LARGE_ARRAY_SIZE, "Found too large when reading counters (Passed: {}. Maximum: {})", count, capacity);
+
+        if (!count)
+        {
+            /// See read.
+            skipAlphaMap(rb);
+            return;
+        }
+
+        /// The counters (at most `capacity`) are collected as they are read, so that only data that arrived is allocated, and their keys
+        /// are transformed before the set is touched.
+        std::vector<String> keys;
+        std::vector<UInt64> counts;
+        std::vector<UInt64> errors;
+        for (size_t i = 0; i < count; ++i)
+        {
+            readBinary(keys.emplace_back(), rb);
+            readVarUInt(counts.emplace_back(), rb);
+            readVarUInt(errors.emplace_back(), rb);
+        }
+        transform_keys(keys);
+
+        resize(capacity);
+        for (size_t i = 0; i < count; ++i)
+        {
+            counter_list.emplace_back();
+            auto & counter = counter_list.back();
+            counter.key = arena.emplace(keys[i]);
+            counter.count = counts[i];
+            counter.error = errors[i];
+            counter.hash = counter_map.hash(counter.key);
+        }
+
+        readAlphaMap(rb);
+        truncateIfNeeded(true);
+    }
+
     void readAlphaMap(ReadBuffer & rb)
     {
         size_t alpha_size = 0;

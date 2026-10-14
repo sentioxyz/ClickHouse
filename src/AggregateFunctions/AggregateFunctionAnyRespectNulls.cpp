@@ -1,4 +1,6 @@
 #include <AggregateFunctions/AggregateFunctionFactory.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <Formats/FormatSettings.h>
 #include <AggregateFunctions/SingleValueData.h>
 #include <IO/ReadHelpers.h>
 #include <IO/WriteHelpers.h>
@@ -141,15 +143,43 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */) const override
     {
+        serializeImpl(place, buf, {});
+    }
+
+    void deserialize(AggregateDataPtr place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena * arena) const override
+    {
+        deserializeImpl(place, buf, arena, {});
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        serializeImpl(place, buf, getFormatSettingsForBinaryTypeWriterMode(mode));
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        std::optional<FormatSettings> settings_with_context;
+        deserializeImpl(place, buf, arena, getFormatSettingsForBinaryTypeDecoding(decoding, settings_with_context));
+    }
+
+    /// The value is written for the writer mode of the settings and read with their origin (see SentioWideRecode.h).
+    void serializeImpl(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, const FormatSettings & settings) const
+    {
         auto & d = this->data(place);
         UInt8 k = static_cast<UInt8>(d.status);
 
         writeBinaryLittleEndian<UInt8>(k, buf);
         if (d.status == Data::Status::SetOther)
-            serialization->serializeBinary(d.value, buf, {});
+            serialization->serializeBinary(d.value, buf, settings);
     }
 
-    void deserialize(AggregateDataPtr place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena *) const override
+    void deserializeImpl(AggregateDataPtr place, ReadBuffer & buf, Arena *, const FormatSettings & settings) const
     {
         auto & d = this->data(place);
         UInt8 k = 0;
@@ -165,7 +195,7 @@ public:
         }
         if (d.status == Data::Status::SetOther)
         {
-            serialization->deserializeBinary(d.value, buf, {});
+            serialization->deserializeBinary(d.value, buf, settings);
             return;
         }
         throw Exception(ErrorCodes::INCORRECT_DATA, "Incorrect type ({}) in {}State", static_cast<Int8>(k), getName());

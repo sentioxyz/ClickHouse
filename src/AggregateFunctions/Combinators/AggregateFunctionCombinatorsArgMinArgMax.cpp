@@ -212,6 +212,20 @@ public:
         data(place).data().read(buf, *serialization, data_type, arena);
     }
 
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, BinaryTypeWriterMode mode) const override
+    {
+        nested_function->serializeWithBinaryTypeWriterMode(place, buf, version, mode);
+        writeSingleValueWithBinaryTypeWriterMode(data(place).data(), buf, *serialization, mode);
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena * arena, const BinaryTypeDecoding & decoding) const override
+    {
+        nested_function->deserializeWithBinaryTypeDecoding(place, buf, version, arena, decoding);
+        readSingleValueWithBinaryTypeDecoding(data(place).data(), buf, *serialization, data_type, arena, decoding);
+    }
+
     void insertResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena * arena) const override
     {
         nested_function->insertResultInto(place, to, arena);

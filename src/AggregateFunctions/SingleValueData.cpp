@@ -1,5 +1,7 @@
 #include <AggregateFunctions/SingleValueData.h>
 #include <Columns/ColumnString.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <Formats/FormatSettings.h>
 #include <IO/ReadHelpers.h>
 #include <IO/WriteHelpers.h>
 #include <Common/Arena.h>
@@ -1453,6 +1455,24 @@ bool SingleValueDataString::setIfGreater(const SingleValueDataBase & other, Aren
     return false;
 }
 
+void writeSingleValueWithBinaryTypeWriterMode(
+    const SingleValueDataBase & data, WriteBuffer & buf, const ISerialization & serialization, BinaryTypeWriterMode mode)
+{
+    data.writeWithFormatSettings(buf, serialization, getFormatSettingsForBinaryTypeWriterMode(mode));
+}
+
+void readSingleValueWithBinaryTypeDecoding(
+    SingleValueDataBase & data,
+    ReadBuffer & buf,
+    const ISerialization & serialization,
+    const DataTypePtr & type,
+    Arena * arena,
+    const BinaryTypeDecoding & decoding)
+{
+    std::optional<FormatSettings> settings_with_context;
+    data.readWithFormatSettings(buf, serialization, type, arena, getFormatSettingsForBinaryTypeDecoding(decoding, settings_with_context));
+}
+
 /// Generic
 
 void SingleValueDataGeneric::insertResultInto(IColumn & to, const DataTypePtr & type) const
@@ -1465,22 +1485,33 @@ void SingleValueDataGeneric::insertResultInto(IColumn & to, const DataTypePtr & 
 
 void SingleValueDataGeneric::write(WriteBuffer & buf, const ISerialization & serialization) const
 {
+    writeWithFormatSettings(buf, serialization, {});
+}
+
+void SingleValueDataGeneric::read(ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena * arena)
+{
+    readWithFormatSettings(buf, serialization, type, arena, {});
+}
+
+void SingleValueDataGeneric::writeWithFormatSettings(WriteBuffer & buf, const ISerialization & serialization, const FormatSettings & settings) const
+{
     if (!value.isNull())
     {
         writeBinary(true, buf);
-        serialization.serializeBinary(value, buf, {});
+        serialization.serializeBinary(value, buf, settings);
     }
     else
         writeBinary(false, buf);
 }
 
-void SingleValueDataGeneric::read(ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr &, Arena *)
+void SingleValueDataGeneric::readWithFormatSettings(
+    ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr &, Arena *, const FormatSettings & settings)
 {
     bool is_not_null = false;
     readBinary(is_not_null, buf);
 
     if (is_not_null)
-        serialization.deserializeBinary(value, buf, {});
+        serialization.deserializeBinary(value, buf, settings);
 }
 
 bool SingleValueDataGeneric::isEqualTo(const IColumn & column, size_t row_num) const
@@ -1576,16 +1607,28 @@ void SingleValueDataGenericWithColumn::insertResultInto(IColumn & to, const Data
 
 void SingleValueDataGenericWithColumn::write(WriteBuffer & buf, const ISerialization & serialization) const
 {
+    writeWithFormatSettings(buf, serialization, {});
+}
+
+void SingleValueDataGenericWithColumn::read(ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena * arena)
+{
+    readWithFormatSettings(buf, serialization, type, arena, {});
+}
+
+void SingleValueDataGenericWithColumn::writeWithFormatSettings(
+    WriteBuffer & buf, const ISerialization & serialization, const FormatSettings & settings) const
+{
     if (value)
     {
         writeBinary(true, buf);
-        serialization.serializeBinary(*value, 0, buf, {});
+        serialization.serializeBinary(*value, 0, buf, settings);
     }
     else
         writeBinary(false, buf);
 }
 
-void SingleValueDataGenericWithColumn::read(ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena *)
+void SingleValueDataGenericWithColumn::readWithFormatSettings(
+    ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena *, const FormatSettings & settings)
 {
     bool is_not_null = false;
     readBinary(is_not_null, buf);
@@ -1594,7 +1637,7 @@ void SingleValueDataGenericWithColumn::read(ReadBuffer & buf, const ISerializati
     {
         auto new_value = type->createColumn();
         new_value->reserve(1);
-        serialization.deserializeBinary(*new_value, buf, {});
+        serialization.deserializeBinary(*new_value, buf, settings);
         value = std::move(new_value);
     }
 }

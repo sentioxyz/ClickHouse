@@ -10,6 +10,8 @@
 #include <DataTypes/DataTypeNullable.h>
 #include <DataTypes/DataTypeObject.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <Formats/FormatSettings.h>
 #include <IO/WriteHelpers.h>
 #include <IO/ReadHelpers.h>
 #include <IO/ReadBufferFromString.h>
@@ -35,6 +37,7 @@ void registerAggregateFunctionMergedJSONPatch(AggregateFunctionFactory & factory
 
 namespace ErrorCodes
 {
+    extern const int INCORRECT_DATA;
     extern const int NUMBER_OF_ARGUMENTS_DOESNT_MATCH;
     extern const int ILLEGAL_TYPE_OF_ARGUMENT;
 }
@@ -365,8 +368,69 @@ class AggregateFunctionMergedJSONPatchImpl final
 {
 private:
     UnorderedMapWithMemoryTracking<String, SerializationPtr> typed_path_serializations;
+    /// The value blobs hold binary type headers (see IAggregateFunction::deserializeWithBinaryTypeDecoding): the binary Dynamic values of
+    /// dynamic and shared data paths, and the values of the typed paths whose types can hold them (these types, by path).
+    std::unordered_map<String, DataTypePtr> typed_paths_with_binary_type_headers;
 
     using Data = AggregateFunctionMergedJSONPatchData<KeyData>;
+
+    bool isTypedPath(const String & path) const { return typed_path_serializations.contains(path); }
+
+    /// Accepts the value blobs of a state read with `decoding`: validated, and canonical for SentioLegacyV0. Every value is nested in the
+    /// state as a sibling of the others.
+    void acceptValueBlobs(Data & data, const BinaryTypeDecoding & decoding) const
+    {
+        std::optional<FormatSettings> settings_with_context;
+        const auto & settings = getFormatSettingsForBinaryTypeDecoding(decoding, settings_with_context);
+        String canonical;
+        for (auto & entry : data.entries)
+        {
+            if (isTypedPath(entry.path))
+            {
+                auto type_it = typed_paths_with_binary_type_headers.find(entry.path);
+                if (type_it == typed_paths_with_binary_type_headers.end())
+                    continue;
+                const auto & serialization = typed_path_serializations.at(entry.path);
+                auto column = type_it->second->createColumn();
+                ReadBufferFromString in(entry.value_blob);
+                serialization->deserializeBinary(*column, in, settings);
+                if (!in.eof())
+                    throw Exception(ErrorCodes::INCORRECT_DATA, "Unexpected {} bytes after a value of the typed path {}", in.available(), entry.path);
+                if (decoding.origin == BinaryTypeOrigin::SentioLegacyV0)
+                {
+                    WriteBufferFromOwnString out;
+                    serialization->serializeBinary(*column, 0, out, getFormatSettingsForBinaryTypeWriterMode(BinaryTypeWriterMode::SentioWideV1));
+                    entry.value_blob = std::move(out.str());
+                }
+            }
+            else
+            {
+                auto accepted = acceptBinaryDynamicValue(entry.value_blob, settings, canonical);
+                if (decoding.origin == BinaryTypeOrigin::SentioLegacyV0)
+                    entry.value_blob = String(accepted);
+            }
+        }
+    }
+
+    /// The value blob of a canonical (in-memory) entry written for `mode`.
+    String writeValueBlob(const typename Data::Entry & entry, BinaryTypeWriterMode mode) const
+    {
+        if (isTypedPath(entry.path))
+        {
+            auto type_it = typed_paths_with_binary_type_headers.find(entry.path);
+            if (type_it == typed_paths_with_binary_type_headers.end())
+                return entry.value_blob;
+            const auto & serialization = typed_path_serializations.at(entry.path);
+            auto column = type_it->second->createColumn();
+            ReadBufferFromString in(entry.value_blob);
+            serialization->deserializeBinary(*column, in, getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical));
+            WriteBufferFromOwnString out;
+            serialization->serializeBinary(*column, 0, out, getFormatSettingsForBinaryTypeWriterMode(mode));
+            return std::move(out.str());
+        }
+        String recoded;
+        return String(recodeBinaryDynamicValueForWrite(entry.value_blob, mode, recoded));
+    }
 
 public:
     explicit AggregateFunctionMergedJSONPatchImpl(
@@ -376,6 +440,14 @@ public:
             argument_types_, {}, argument_types_[0])
         , typed_path_serializations(typed_path_serializations_)
     {
+        if (const auto * object_type = typeid_cast<const DataTypeObject *>(argument_types_[0].get()))
+        {
+            for (const auto & [path, type] : object_type->getTypedPaths())
+            {
+                if (valuesMayHaveBinaryTypeHeaders(*type))
+                    typed_paths_with_binary_type_headers.emplace(path, type);
+            }
+        }
     }
 
     String getName() const override { return "mergedJSONPatch"; }
@@ -415,6 +487,38 @@ public:
     void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena *) const override
     {
         this->data(place).deserialize(buf);
+        acceptValueBlobs(this->data(place), BinaryTypeDecoding{});
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        if (mode == BinaryTypeWriterMode::SentioWideV1)
+        {
+            this->data(place).serialize(buf);
+            return;
+        }
+
+        /// An explicit bridge export: the same entries as Data::serialize writes, with the value blobs written for the mode.
+        const auto & entries = this->data(place).entries;
+        writeVarUInt(entries.size(), buf);
+        for (const auto & entry : entries)
+        {
+            writeStringBinary(entry.pathView(), buf);
+            writeStringBinary(writeValueBlob(entry, mode), buf);
+            entry.sort_key.serialize(buf);
+        }
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena *,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        this->data(place).deserialize(buf);
+        acceptValueBlobs(this->data(place), decoding);
     }
 
     void insertResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena *) const override

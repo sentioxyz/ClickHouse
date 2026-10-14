@@ -13,6 +13,7 @@ class Arena;
 class ReadBuffer;
 struct Settings;
 class WriteBuffer;
+struct FormatSettings;
 
 /// Base class for Aggregation data that stores one of passed values: min, any, argMax...
 /// It's setup as a virtual class so we can avoid templates when we need to extend them (argMax, SingleValueOrNull)
@@ -28,6 +29,16 @@ struct SingleValueDataBase
     virtual void insertResultInto(IColumn &, const DataTypePtr & type) const = 0;
     virtual void write(WriteBuffer &, const ISerialization &) const = 0;
     virtual void read(ReadBuffer &, const ISerialization &, const DataTypePtr & type, Arena *) = 0;
+    /// The same with the format settings for values that can hold binary type headers (see SentioWideRecode.h): the generic values are
+    /// written for the writer mode of the settings and read with their origin and nesting context. Other values ignore them.
+    virtual void writeWithFormatSettings(WriteBuffer & buf, const ISerialization & serialization, const FormatSettings &) const
+    {
+        write(buf, serialization);
+    }
+    virtual void readWithFormatSettings(ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena * arena, const FormatSettings &)
+    {
+        read(buf, serialization, type, arena);
+    }
 
     virtual bool isEqualTo(const IColumn & column, size_t row_num) const = 0;
     virtual bool isEqualTo(const SingleValueDataBase &) const = 0;
@@ -333,6 +344,9 @@ public:
     void insertResultInto(IColumn & to, const DataTypePtr & type) const override;
     void write(WriteBuffer & buf, const ISerialization & serialization) const override;
     void read(ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena *) override;
+    void writeWithFormatSettings(WriteBuffer & buf, const ISerialization & serialization, const FormatSettings & settings) const override;
+    void readWithFormatSettings(
+        ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena * arena, const FormatSettings & settings) override;
 
     bool isEqualTo(const IColumn & column, size_t row_num) const override;
     bool isEqualTo(const SingleValueDataBase & other) const override;
@@ -366,6 +380,9 @@ public:
     void insertResultInto(IColumn & to, const DataTypePtr & type) const override;
     void write(WriteBuffer & buf, const ISerialization & serialization) const override;
     void read(ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena *) override;
+    void writeWithFormatSettings(WriteBuffer & buf, const ISerialization & serialization, const FormatSettings & settings) const override;
+    void readWithFormatSettings(
+        ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena * arena, const FormatSettings & settings) override;
 
     bool isEqualTo(const IColumn & column, size_t row_num) const override;
     bool isEqualTo(const SingleValueDataBase & other) const override;
@@ -413,6 +430,38 @@ struct SingleValueReference final : public SingleValueDataBase
 static_assert(sizeof(SingleValueReference) <= SingleValueDataBase::MAX_STORAGE_SIZE, "Incorrect size of SingleValueReference struct");
 
 bool canUseFieldForValueData(const DataTypePtr & value_type);
+
+/// The state codec of a single value for IAggregateFunction::serializeWithBinaryTypeWriterMode and deserializeWithBinaryTypeDecoding: the
+/// generic values write their binary type headers for the writer mode and read them with the origin and the nesting context.
+void writeSingleValueWithBinaryTypeWriterMode(
+    const SingleValueDataBase & data, WriteBuffer & buf, const ISerialization & serialization, BinaryTypeWriterMode mode);
+void readSingleValueWithBinaryTypeDecoding(
+    SingleValueDataBase & data,
+    ReadBuffer & buf,
+    const ISerialization & serialization,
+    const DataTypePtr & type,
+    Arena * arena,
+    const BinaryTypeDecoding & decoding);
+
+/// The same for any data of a single value (the fixed numeric data has no binary type headers).
+template <typename Data>
+void writeSingleValueWithBinaryTypeWriterMode(const Data & data, WriteBuffer & buf, const ISerialization & serialization, BinaryTypeWriterMode mode)
+{
+    if constexpr (std::is_base_of_v<SingleValueDataBase, Data>)
+        writeSingleValueWithBinaryTypeWriterMode(static_cast<const SingleValueDataBase &>(data), buf, serialization, mode);
+    else
+        data.write(buf, serialization);
+}
+
+template <typename Data>
+void readSingleValueWithBinaryTypeDecoding(
+    Data & data, ReadBuffer & buf, const ISerialization & serialization, const DataTypePtr & type, Arena * arena, const BinaryTypeDecoding & decoding)
+{
+    if constexpr (std::is_base_of_v<SingleValueDataBase, Data>)
+        readSingleValueWithBinaryTypeDecoding(static_cast<SingleValueDataBase &>(data), buf, serialization, type, arena, decoding);
+    else
+        data.read(buf, serialization, type, arena);
+}
 
 /// min, max, any, anyLast, anyHeavy, etc...
 template <template <typename, bool...> class AggregateFunctionTemplate, bool unary, bool... isMin>

@@ -304,6 +304,35 @@ public:
 
     void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena * arena) const override
     {
+        deserializeImpl(place, buf, arena, nullptr);
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        auto & merged_maps = this->data(place).merged_maps;
+        writeVarUInt(merged_maps.size(), buf);
+
+        for (const auto & elem : merged_maps)
+        {
+            this->data(place).writeKey(elem.first, buf);
+            nested_func->serializeWithBinaryTypeWriterMode(elem.second, buf, std::nullopt, mode);
+        }
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        deserializeImpl(place, buf, arena, &decoding);
+    }
+
+    /// Without a decoding the nested states are read by the plain deserialize.
+    void deserializeImpl(AggregateDataPtr __restrict place, ReadBuffer & buf, Arena * arena, const BinaryTypeDecoding * decoding) const
+    {
         auto & merged_maps = this->data(place).merged_maps;
         UInt64 size = 0;
 
@@ -336,7 +365,10 @@ public:
                 throw;
             }
 
-            nested_func->deserialize(it->second, buf, std::nullopt, arena);
+            if (decoding)
+                nested_func->deserializeWithBinaryTypeDecoding(it->second, buf, std::nullopt, arena, *decoding);
+            else
+                nested_func->deserialize(it->second, buf, std::nullopt, arena);
         }
     }
 

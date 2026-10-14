@@ -23,6 +23,8 @@
 #include <Columns/ColumnVector.h>
 
 #include <Columns/IColumn.h>
+#include <DataTypes/SentioWideRecode.h>
+#include <Formats/FormatSettings.h>
 #include <Common/VectorWithMemoryTracking.h>
 
 namespace DB
@@ -272,6 +274,34 @@ public:
 
     void serialize(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */) const override
     {
+        serializeImpl(place, buf, {});
+    }
+
+    void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena * arena) const override
+    {
+        deserializeImpl(place, buf, arena, {});
+    }
+
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> /* version */, BinaryTypeWriterMode mode) const override
+    {
+        serializeImpl(place, buf, getFormatSettingsForBinaryTypeWriterMode(mode));
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place,
+        ReadBuffer & buf,
+        std::optional<size_t> /* version */,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const override
+    {
+        std::optional<FormatSettings> settings_with_context;
+        deserializeImpl(place, buf, arena, getFormatSettingsForBinaryTypeDecoding(decoding, settings_with_context));
+    }
+
+    /// The values are written for the writer mode of the settings and read with their origin (see SentioWideRecode.h).
+    void serializeImpl(ConstAggregateDataPtr __restrict place, WriteBuffer & buf, const FormatSettings & settings) const
+    {
         auto & values = this->data(place).values;
         size_t size = values.size();
         writeVarUInt(size, buf);
@@ -287,7 +317,7 @@ public:
                 else
                 {
                     writeBinary(true, buf);
-                    serialization->serializeBinary(element, buf, {});
+                    serialization->serializeBinary(element, buf, settings);
                 }
             }
         }
@@ -305,7 +335,7 @@ public:
         }
     }
 
-    void deserialize(AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> /* version */, Arena * arena) const override
+    void deserializeImpl(AggregateDataPtr __restrict place, ReadBuffer & buf, Arena * arena, const FormatSettings & settings) const
     {
         size_t size = 0;
         readVarUInt(size, buf);
@@ -323,7 +353,7 @@ public:
                 bool has_value = false;
                 readBinary(has_value, buf);
                 if (has_value)
-                    serialization->deserializeBinary(element, buf, {});
+                    serialization->deserializeBinary(element, buf, settings);
             }
         }
         else

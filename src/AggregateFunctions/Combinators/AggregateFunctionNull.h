@@ -239,6 +239,29 @@ public:
         }
     }
 
+    void serializeWithBinaryTypeWriterMode(
+        ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, BinaryTypeWriterMode mode) const override
+    {
+        bool flag = getFlag(place);
+        if constexpr (serialize_flag)
+            writeBinary(flag, buf);
+        if (flag)
+            nested_function->serializeWithBinaryTypeWriterMode(nestedPlace(place), buf, version, mode);
+    }
+
+    void deserializeWithBinaryTypeDecoding(
+        AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena * arena, const BinaryTypeDecoding & decoding) const override
+    {
+        bool flag = true;
+        if constexpr (serialize_flag)
+            readBinary(flag, buf);
+        if (flag)
+        {
+            setFlag(place);
+            nested_function->deserializeWithBinaryTypeDecoding(nestedPlace(place), buf, version, arena, decoding);
+        }
+    }
+
     template <bool merge>
     void insertResultIntoImpl(AggregateDataPtr __restrict place, IColumn & to, Arena * arena) const
     {

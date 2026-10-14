@@ -489,6 +489,20 @@ void AggregateFunctionTuple::deserialize(AggregateDataPtr __restrict place, Read
         nested_functions[i]->deserialize(place + state_offsets[i], buf, version, arena);
 }
 
+void AggregateFunctionTuple::serializeWithBinaryTypeWriterMode(
+    ConstAggregateDataPtr __restrict place, WriteBuffer & buf, std::optional<size_t> version, BinaryTypeWriterMode mode) const
+{
+    for (size_t i = 0; i < nested_functions.size(); ++i)
+        nested_functions[i]->serializeWithBinaryTypeWriterMode(place + state_offsets[i], buf, version, mode);
+}
+
+void AggregateFunctionTuple::deserializeWithBinaryTypeDecoding(
+    AggregateDataPtr __restrict place, ReadBuffer & buf, std::optional<size_t> version, Arena * arena, const BinaryTypeDecoding & decoding) const
+{
+    for (size_t i = 0; i < nested_functions.size(); ++i)
+        nested_functions[i]->deserializeWithBinaryTypeDecoding(place + state_offsets[i], buf, version, arena, decoding);
+}
+
 void AggregateFunctionTuple::insertResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena * arena) const
 {
     insertResultIntoImpl<false>(place, to, arena);
