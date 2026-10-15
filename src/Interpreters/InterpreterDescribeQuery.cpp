@@ -30,6 +30,7 @@
 #include <Parsers/ASTTablesInSelectQuery.h>
 #include <Parsers/TablePropertiesQueriesASTs.h>
 #include <DataTypes/NestedUtils.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Common/Exception.h>
 
 namespace DB
@@ -282,6 +283,9 @@ void InterpreterDescribeQuery::fillColumnsFromTable(const ASTTableExpression & t
 
 void InterpreterDescribeQuery::addColumn(const ColumnDescription & column, bool is_virtual, MutableColumns & res_columns)
 {
+    /// A reader of the result, such as getStructureOfRemoteTable, takes the type from its name.
+    checkTypeIsIdentifiedByName(*column.type, column.name, "the result of DESCRIBE");
+
     size_t i = 0;
     res_columns[i++]->insert(column.name);
 
@@ -327,6 +331,8 @@ void InterpreterDescribeQuery::addSubcolumns(const ColumnDescription & column, b
 {
     IDataType::forEachSubcolumn([&](const auto & path, const auto & name, const auto & data)
     {
+        checkTypeIsIdentifiedByName(*data.type, Nested::concatenateName(column.name, name), "the result of DESCRIBE");
+
         size_t i = 0;
         res_columns[i++]->insert(Nested::concatenateName(column.name, name));
 

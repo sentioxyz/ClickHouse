@@ -9,6 +9,7 @@
 #include <Processors/Transforms/AddingDefaultsTransform.h>
 #include <Processors/Sources/RemoteSource.h>
 #include <QueryPipeline/RemoteQueryExecutor.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Storages/StorageFileCluster.h>
 #include <Storages/IStorage.h>
 #include <Storages/StorageFile.h>
@@ -111,9 +112,13 @@ void StorageFileCluster::updateQueryToSendIfNeeded(DB::ASTPtr & query, const Sto
     if (!table_function)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected SELECT query from table function fileCluster, got '{}'", query->formatForErrorMessage());
 
+    /// The workers create the column types from their names in the structure.
+    const auto columns = storage_snapshot->metadata->getColumns().getAll();
+    checkTypesAreIdentifiedByName(columns, "the structure that fileCluster sends to its workers");
+
     TableFunctionFileCluster::updateStructureAndFormatArgumentsIfNeeded(
         table_function,
-        storage_snapshot->metadata->getColumns().getAll().toNamesAndTypesDescription(),
+        columns.toNamesAndTypesDescription(),
         format_name,
         context
     );

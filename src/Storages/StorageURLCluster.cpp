@@ -15,6 +15,7 @@
 #include <Storages/IStorage.h>
 #include <Storages/StorageURL.h>
 #include <Storages/StorageURLCluster.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Storages/VirtualColumnUtils.h>
 #include <Storages/extractTableFunctionFromSelectQuery.h>
 
@@ -119,9 +120,13 @@ void StorageURLCluster::updateQueryToSendIfNeeded(ASTPtr & query, const StorageS
     if (!expression_list)
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Expected SELECT query from table function urlCluster, got '{}'", query->formatForErrorMessage());
 
+    /// The workers create the column types from their names in the structure.
+    const auto columns = storage_snapshot->metadata->getColumns().getAll();
+    checkTypesAreIdentifiedByName(columns, "the structure that urlCluster sends to its workers");
+
     TableFunctionURLCluster::updateStructureAndFormatArgumentsIfNeeded(
         table_function,
-        storage_snapshot->metadata->getColumns().getAll().toNamesAndTypesDescription(),
+        columns.toNamesAndTypesDescription(),
         format_name,
         context
     );

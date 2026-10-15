@@ -1,14 +1,21 @@
 #include <DataTypes/TypeNameIdentity.h>
 
 #include <Core/DecimalFunctions.h>
+#include <Core/NamesAndTypes.h>
 #include <DataTypes/DataTypeAggregateFunction.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
 #include <DataTypes/DataTypesDecimal.h>
 #include <DataTypes/IDataType.h>
+#include <Common/Exception.h>
 #include <Common/assert_cast.h>
 
 namespace DB
 {
+
+namespace ErrorCodes
+{
+    extern const int INCORRECT_DATA;
+}
 
 namespace
 {
@@ -104,6 +111,26 @@ String getTypeIdentityKey(const DataTypePtr & type)
         return type->getName();
     /// A binary encoding starts with a type index byte, so with the leading zero byte it never equals a type name.
     return '\0' + encodeDataType(type);
+}
+
+void checkTypeIsIdentifiedByName(const IDataType & type, std::string_view column_name, std::string_view schema)
+{
+    if (!isTypeIdentifiedByName(type))
+        throw Exception(
+            ErrorCodes::INCORRECT_DATA,
+            "Type {} of column {} cannot be written by its name in {}: the name does not identify it (it holds a decimal with a precision "
+            "of another decimal class, or with a scale greater than its precision), and the reader takes the type from the name",
+            type.getName(), column_name, schema);
+}
+
+void checkTypesAreIdentifiedByName(const NamesAndTypesList & columns, std::string_view schema)
+{
+    for (const auto & column : columns)
+    {
+        checkTypeIsIdentifiedByName(*column.type, column.name, schema);
+        if (column.isSubcolumn())
+            checkTypeIsIdentifiedByName(*column.getTypeInStorage(), column.getNameInStorage(), schema);
+    }
 }
 
 }

@@ -8,6 +8,7 @@
 #include <Interpreters/ExpressionActions.h>
 #include <Interpreters/RequiredSourceColumnsVisitor.h>
 #include <Interpreters/DatabaseCatalog.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Storages/IStorage.h>
 #include <Storages/VirtualColumnUtils.h>
 #include <Processors/QueryPlan/SourceStepWithFilter.h>
@@ -350,6 +351,16 @@ SerializationInfoByName getSerializationHintsForFileLikeStorage(const StorageMet
 
 void ReadFromFormatInfo::serialize(IQueryPlanStep::Serialization & ctx) const
 {
+    /// Every list below is written with the names of its types (and of the types in storage of its subcolumns), and deserialize creates
+    /// the types from these names. The prewhere actions encode their types in binary format.
+    static constexpr std::string_view schema = "a serialized plan of reading from a format";
+    checkTypesAreIdentifiedByName(source_header.getNamesAndTypesList(), schema);
+    checkTypesAreIdentifiedByName(format_header.getNamesAndTypesList(), schema);
+    checkTypesAreIdentifiedByName(columns_description.getAll(), schema);
+    checkTypesAreIdentifiedByName(requested_columns, schema);
+    checkTypesAreIdentifiedByName(requested_virtual_columns, schema);
+    checkTypesAreIdentifiedByName(hive_partition_columns_to_read_from_file_path, schema);
+
     source_header.getNamesAndTypesList().writeTextWithNamesInStorage(ctx.out);
     format_header.getNamesAndTypesList().writeTextWithNamesInStorage(ctx.out);
     writeStringBinary(columns_description.toString(false), ctx.out);

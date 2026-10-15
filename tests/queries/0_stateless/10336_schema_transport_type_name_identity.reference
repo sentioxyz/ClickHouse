@@ -1,0 +1,20 @@
+--- DESCRIBE
+D_P50: refused
+D_S90: refused
+D_ARRAY: refused
+D_STATE: refused
+D_D64_P5: refused
+x	Decimal(80, 2)
+x	Decimal(50, 2)
+x	Int32
+--- DESCRIBE of a temporary table
+TEMPORARY TABLE: refused
+--- a table with JSON is described
+j	JSON
+--- remote: the structure of a remote table function comes from DESCRIBE on the remote server
+remote DESCRIBE: refused
+remote SELECT: refused
+Decimal(80, 2)	64	123.45
+--- fileCluster: the structure that it sends to its workers
+fileCluster: refused
+Decimal(80, 2)	64	123.45

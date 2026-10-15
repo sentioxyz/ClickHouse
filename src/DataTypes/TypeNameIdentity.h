@@ -3,10 +3,13 @@
 #include <DataTypes/IDataType_fwd.h>
 #include <base/types.h>
 
+#include <string_view>
+
 namespace DB
 {
 
 class IDataType;
+class NamesAndTypesList;
 
 /// Whether the name of the type identifies it, so that structures that hold or look types up by name (the regular variants of `Dynamic`,
 /// caches of serializations by type name, subcolumns named by a type) can do so for it. Every type created from its name is identified by
@@ -27,5 +30,12 @@ bool isTypeNameUnambiguous(const IDataType & type);
 /// A key that tells types apart where they are grouped or cached by name: the name of a type that it identifies, otherwise the binary
 /// encoding of the type after a zero byte (which never equals a type name).
 String getTypeIdentityKey(const DataTypePtr & type);
+
+/// Throws INCORRECT_DATA unless the name of the type of the column identifies it: before the name is written to a schema that a reader takes
+/// the types from by their names (`schema` says which one, for the message).
+void checkTypeIsIdentifiedByName(const IDataType & type, std::string_view column_name, std::string_view schema);
+
+/// The same for every column, for its type and, for a subcolumn, the type of the column in storage, where the schema has both.
+void checkTypesAreIdentifiedByName(const NamesAndTypesList & columns, std::string_view schema);
 
 }

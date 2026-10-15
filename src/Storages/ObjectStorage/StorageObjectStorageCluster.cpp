@@ -20,6 +20,7 @@
 #include <QueryPipeline/RemoteQueryExecutor.h>
 #include <Storages/IPartitionStrategy.h>
 
+#include <DataTypes/TypeNameIdentity.h>
 #include <Storages/VirtualColumnUtils.h>
 #include <Storages/HivePartitioningUtils.h>
 #include <Storages/ObjectStorage/Utils.h>
@@ -290,7 +291,10 @@ void StorageObjectStorageCluster::updateQueryToSendIfNeeded(
     }
 
     ASTs & args = expression_list->children;
-    const auto & structure = storage_snapshot->metadata->getColumns().getAll().toNamesAndTypesDescription();
+    /// The workers create the column types from their names in the structure.
+    const auto columns = storage_snapshot->metadata->getColumns().getAll();
+    checkTypesAreIdentifiedByName(columns, fmt::format("the structure that {}Cluster sends to its workers", configuration->getEngineName()));
+    const auto & structure = columns.toNamesAndTypesDescription();
     if (args.empty())
     {
         throw Exception(
