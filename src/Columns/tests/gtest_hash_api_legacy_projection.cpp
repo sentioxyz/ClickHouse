@@ -1776,7 +1776,7 @@ TEST(HashApiLegacyProjection, StridedQBitSharedHashDoesNotDependOnOtherRows)
     insertShared(canonical, qbit_type, *qbit_value);
     const String canonical_bytes = String{"\x37\x0d\x10\x08", 4} + String(64, '\0');
     const String legacy_bytes = String{"\x3a\x0d\x10\x08", 4} + String(64, '\0');
-    EXPECT_EQ(canonical.getSharedVariant().getDataAt(0).toString(), canonical_bytes);
+    EXPECT_EQ(canonical.getSharedVariant().getDataAt(0), std::string_view(canonical_bytes));
 
     auto legacy_column = canonical.cloneEmpty();
     auto & legacy = assert_cast<ColumnDynamic &>(*legacy_column);

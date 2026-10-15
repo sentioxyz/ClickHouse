@@ -2,6 +2,7 @@
 
 #include <Core/Field.h>
 #include <DataTypes/DataTypeFactory.h>
+#include <DataTypes/BinaryTypeOriginRequiredException.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
 #include <DataTypes/DataTypesCache.h>
 #include <DataTypes/DataTypesDecimal.h>
@@ -604,7 +605,18 @@ TEST(SentioWideTypeEncoding, StridedQBitOfficialOriginRoundTrip)
         auto type = decode(unhex(header), BinaryTypeOrigin::OfficialCanonical);
         EXPECT_EQ(type->getName(), name);
         EXPECT_EQ(hexOf(encodeDataType(type)), header);
-        EXPECT_EQ(errorOf([&] { decode(unhex(header), BinaryTypeOrigin::Unknown); }).first, ErrorCodes::INCORRECT_DATA);
+        const auto bytes = unhex(header);
+        ReadBufferFromString in(bytes);
+        try
+        {
+            decodeDataType(in, BinaryTypeOrigin::Unknown);
+            FAIL() << "Undeclared origin must be refused before reading the QBit payload";
+        }
+        catch (const BinaryTypeOriginRequiredException & e)
+        {
+            EXPECT_EQ(e.code(), ErrorCodes::INCORRECT_DATA);
+            EXPECT_EQ(in.count(), 1);
+        }
     }
     EXPECT_EQ(decode(unhex("37"), BinaryTypeOrigin::SentioLegacyV0)->getName(), "UInt512");
 }
