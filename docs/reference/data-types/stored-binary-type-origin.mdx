@@ -32,7 +32,7 @@ A table without a UUID (an `Ordinary` database) has no record: its data is read 
   - `CREATE TABLE ... AS` another table and `CLONE AS` take the origin of the source table, or none if the source is unset.
 - `ATTACH TABLE`, a server restart and `RESTORE` never write an origin.
   - A table that existed before this version therefore stays unset until it is registered.
-  - A `RESTORE` writes only the record that the backup carries for the table.
+  - A table that `RESTORE` creates is unset. The parts that it restores come with records of their own (see [Backups](#backups)).
 
 ## Registering the origin of old data {#registration}
 
@@ -78,7 +78,9 @@ For data read by input formats and table functions, the origin is declared with 
 
 ## Backups {#backups}
 
-- **`MergeTree` backups** carry the record of the table and the records of its parts, and `RESTORE` writes them back.
+- **`MergeTree` backups** carry a record for every part: the part's own record or, for a part without one, the record of the origin that
+  the part is read with, made when the backup is taken. `RESTORE` writes them with the parts, so a restored part is read with its record,
+  whatever table it is restored into. A backup carries no record of the table.
 - **`Log`, `TinyLog` and `StripeLog` backups** hold the files of the table and no origin.
   - Their columns whose values can carry binary type headers are restored only into a table without an origin, such as the one that `RESTORE` creates. That table can then be registered.
   - A restore into a table with an origin is refused before anything is written.
