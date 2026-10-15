@@ -198,7 +198,7 @@ TEST(BinaryIndexCollisionLocks, FieldIndexes)
         EXPECT_TRUE(in.eof());
     }
 
-    for (const UInt8 index : {0x19, 0x1A, 0x20, 0x7F, 0xFD})
+    for (const UInt8 index : {UInt8(0x19), UInt8(0x1A), UInt8(0x20), UInt8(0x7F), UInt8(0xFD)})
     {
         ReadBufferFromOwnString in(String(1, static_cast<char>(index)));
         try
