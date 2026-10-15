@@ -5618,8 +5618,10 @@ bool StorageReplicatedMergeTree::fetchPart(
         covered_part_info.mutation = 0;
         auto source_part = getActiveContainingPart(covered_part_info);
 
-        /// Fetch for zero-copy replication is cheap and straightforward, so we don't use local clone here
-        if (source_part && !is_zero_copy_part(source_part))
+        /// Fetch for zero-copy replication is cheap and straightforward, so we don't use local clone here.
+        /// A raw export into detached/ is fetched with the proof of the stored binary type origin of the part on the source replica
+        /// (DataPartsExchange): a local part with the same checksums is no proof of it, since the part record is outside the checksums.
+        if (!to_detached && source_part && !is_zero_copy_part(source_part))
         {
             auto source_part_header = ReplicatedMergeTreePartHeader::fromColumnsAndChecksums(
                 source_part->getColumns(), source_part->checksums);
@@ -5796,17 +5798,10 @@ bool StorageReplicatedMergeTree::fetchPart(
         {
             // The fetched part is valuable and should not be cleaned like a temp part.
             part->is_temp = false;
-            /// The part gets the record of the stored binary type origin it is read with where it comes from: the fetch writes the one
-            /// of the source replica, or Unknown (DataPartsExchange); a clone of a local part with the same checksums gets the origin
-            /// that part is read with here. The metadata of the source table is no proof of the origin of this part.
+            /// The fetch wrote the record of the stored binary type origin that the part is read with on the source replica, or of
+            /// Unknown (DataPartsExchange). Neither the metadata of the source table nor a local part with the same checksums is proof of it.
             if (!part->stored_binary_type_origin)
-            {
-                if (!part_to_clone)
-                    throw Exception(ErrorCodes::LOGICAL_ERROR, "Part {} fetched into detached/ has no stored binary type origin record", part_name);
-                part->writeAndLoadStoredBinaryTypeOriginRecord(
-                    part_to_clone->getBinaryTypeOriginForReading(), getContext()->getWriteSettings(),
-                    (*getSettings())[MergeTreeSetting::fsync_after_insert]);
-            }
+                throw Exception(ErrorCodes::LOGICAL_ERROR, "Part {} fetched into detached/ has no stored binary type origin record", part_name);
             part->renameTo(fs::path(DETACHED_DIR_NAME) / part_name, true);
         }
     }
