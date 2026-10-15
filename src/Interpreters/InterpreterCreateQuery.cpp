@@ -2988,7 +2988,8 @@ BlockIO InterpreterCreateQuery::doCreateOrReplaceTemporaryTable(ASTCreateQuery &
             properties.constraints,
             mode,
             is_restore_from_backup,
-            getStoredBinaryTypeOriginToStamp(create, mode));
+            getStoredBinaryTypeOriginToStamp(create, mode),
+            isOriginalCreate(create, mode));
         validateStorage(*res, mode, getContext(), /*is_temporary=*/true);
         return res;
     };

@@ -1,0 +1,16 @@
+Log	1	created
+Log	2	create or replace
+Log	3	replace
+Log	4	create or replace new
+TinyLog	1	created
+TinyLog	2	create or replace
+TinyLog	3	replace
+TinyLog	4	create or replace new
+StripeLog	1	created
+StripeLog	2	create or replace
+StripeLog	3	replace
+StripeLog	4	create or replace new
+Memory	1	created
+Memory	2	create or replace
+Memory	3	replace
+Memory	4	create or replace new
