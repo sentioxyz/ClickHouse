@@ -16,6 +16,7 @@
 #include <DataTypes/DataTypeLowCardinality.h>
 #include <DataTypes/DataTypeAggregateFunction.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Common/logger_useful.h>
 
 namespace DB
@@ -23,6 +24,7 @@ namespace DB
 
 namespace ErrorCodes
 {
+    extern const int INCORRECT_DATA;
     extern const int LOGICAL_ERROR;
 }
 
@@ -202,6 +204,15 @@ size_t NativeWriter::write(const Block & block)
         }
         else
         {
+            /// A reader resolves the type from its name, which must identify it: a native decimal named like another class would be read
+            /// with the width of that class (see isTypeIdentifiedByName).
+            if (!isTypeIdentifiedByName(*column.type))
+                throw Exception(
+                    ErrorCodes::INCORRECT_DATA,
+                    "Type {} of column {} cannot be written by its name: the name does not identify it. Encode the types in binary format "
+                    "(output_format_native_encode_types_in_binary_format) to write it",
+                    column.type->getName(), column.name);
+
             String type_name = column.type->getName();
 
             /// For compatibility, we will not send explicit timezone parameter in DateTime data type

@@ -1,8 +1,10 @@
 #include <IO/WriteBuffer.h>
 #include <IO/WriteHelpers.h>
+#include <Common/Exception.h>
 #include <Columns/IColumn.h>
 #include <DataTypes/IDataType.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Processors/Formats/Impl/BinaryRowOutputFormat.h>
 #include <Processors/Port.h>
 #include <Formats/FormatFactory.h>
@@ -11,6 +13,11 @@
 
 namespace DB
 {
+
+namespace ErrorCodes
+{
+    extern const int INCORRECT_DATA;
+}
 
 BinaryRowOutputFormat::BinaryRowOutputFormat(WriteBuffer & out_, SharedHeader header, bool with_names_, bool with_types_, const FormatSettings & format_settings_)
     : IRowOutputFormat(header, out_), with_names(with_names_), with_types(with_types_), format_settings(format_settings_)
@@ -45,7 +52,17 @@ void BinaryRowOutputFormat::writePrefix()
         else
         {
             for (size_t i = 0; i < columns; ++i)
-                writeStringBinary(header.safeGetByPosition(i).type->getName(), out);
+            {
+                /// A reader resolves the type from its name, which must identify it (see NativeWriter::write).
+                const auto & column = header.safeGetByPosition(i);
+                if (!isTypeIdentifiedByName(*column.type))
+                    throw Exception(
+                        ErrorCodes::INCORRECT_DATA,
+                        "Type {} of column {} cannot be written by its name: the name does not identify it. Encode the types in binary "
+                        "format (output_format_binary_encode_types_in_binary_format) to write it",
+                        column.type->getName(), column.name);
+                writeStringBinary(column.type->getName(), out);
+            }
         }
     }
 }
