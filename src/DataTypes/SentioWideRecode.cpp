@@ -128,8 +128,22 @@ void readValue(std::string_view value, const FormatSettings & settings, BinaryTy
     if (!in.eof())
         throw Exception(
             ErrorCodes::INCORRECT_DATA, "Unexpected {} bytes after a binary Dynamic value of type {}", in.available(), type->getName());
-    if (out)
-        serialization->serializeBinary(*column, 0, *out, nested_settings);
+    if (!out)
+        return;
+
+    /// Written again only if the writer modes write it differently, that is, if it holds a 512-bit type. Otherwise its payload is written
+    /// byte for byte as it was read: writing it again may change more than its headers (an aggregation state that keeps its elements in a
+    /// hash set writes them in the order of the set it was read into), and a value with only bytes that look like a SentioWide descriptor
+    /// in ordinary content has no header to change.
+    WriteBufferFromOwnString written;
+    serialization->serializeBinary(*column, 0, written, nested_settings);
+    const auto other_mode = mode == BinaryTypeWriterMode::SentioWideV1 ? BinaryTypeWriterMode::SentioLegacyBridge : BinaryTypeWriterMode::SentioWideV1;
+    WriteBufferFromOwnString written_for_other_mode;
+    serialization->serializeBinary(*column, 0, written_for_other_mode, makeNestedSettings(settings, other_mode, context));
+    if (written.stringView() == written_for_other_mode.stringView())
+        out->write(value.data() + header_size, value.size() - header_size);
+    else
+        out->write(written.stringView().data(), written.stringView().size());
 }
 
 bool typeItselfMayHaveBinaryTypeHeaders(const IDataType & type)

@@ -2,6 +2,7 @@
 
 #include <AggregateFunctions/AggregateFunctionFactory.h>
 #include <AggregateFunctions/IAggregateFunction.h>
+#include <Columns/ColumnAggregateFunction.h>
 #include <Columns/ColumnArray.h>
 #include <Columns/ColumnDynamic.h>
 #include <Columns/ColumnString.h>
@@ -23,6 +24,8 @@
 #include <Common/AlignedBuffer.h>
 #include <Common/Arena.h>
 #include <Common/Exception.h>
+#include <Common/SipHash.h>
+#include <Common/assert_cast.h>
 #include <Common/tests/gtest_global_register.h>
 #include <base/StringViewHash.h>
 
@@ -536,6 +539,45 @@ TEST(AggregateStateBinaryTypeOrigin, TopKContinuesALegacyStateInItsHashDomain)
             EXPECT_EQ(hexOf(state.serialize()), hexOf(topKState(merged, merged_alpha, false))) << where;
             EXPECT_EQ(hexOf(state.serialize(BinaryTypeWriterMode::SentioLegacyBridge)), hexOf(topKState(merged, merged_alpha, true)))
                 << where;
+
+            /// The hashes of a column of states (ColumnAggregateFunction) hash the bytes that the fork writes for them: the same read, stream
+            /// and merge on a state in a column hash as the legacy expected states.
+            {
+                auto column = ColumnAggregateFunction::create(function);
+                auto & states = assert_cast<ColumnAggregateFunction &>(*column);
+                Arena & arena = states.createOrGetArena();
+                states.insertDefault();
+                states.insertDefault();
+                const auto continued_place = states.getData()[0];
+                const auto fixture_place = states.getData()[1];
+                for (const auto place : {continued_place, fixture_place})
+                {
+                    ReadBufferFromString in(from_legacy ? legacy_state : canonical_state);
+                    if (from_legacy)
+                        function->deserializeWithBinaryTypeDecoding(place, in, std::nullopt, &arena, LEGACY);
+                    else
+                        function->deserialize(place, in, std::nullopt, &arena);
+                }
+                for (size_t row = 0; row < values->size(); ++row)
+                {
+                    const size_t times = weighted ? 1 : weights->getElement(row);
+                    for (size_t i = 0; i < times; ++i)
+                        function->add(continued_place, columns, row, &arena);
+                }
+                auto sip_hash_of = [](const String & bytes)
+                {
+                    SipHash hash;
+                    hash.update(bytes.data(), bytes.size());
+                    return hash.get64();
+                };
+                SipHash continued_hash;
+                column->updateHashWithValue(0, continued_hash);
+                EXPECT_EQ(continued_hash.get64(), sip_hash_of(topKState(continued, continued_alpha, true))) << where;
+                function->merge(continued_place, fixture_place, &arena);
+                SipHash merged_hash;
+                column->updateHashWithValue(0, merged_hash);
+                EXPECT_EQ(merged_hash.get64(), sip_hash_of(topKState(merged, merged_alpha, true))) << where;
+            }
 
             /// The result is read from the projection: Y, a Decimal512 value.
             auto result = function->getResultType()->createColumn();

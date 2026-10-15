@@ -13,6 +13,7 @@
 #include <Columns/ColumnsNumber.h>
 #include <Core/Field.h>
 #include <DataTypes/BinaryTypeOrigin.h>
+#include <DataTypes/DataTypeAggregateFunction.h>
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/DataTypeDynamic.h>
 #include <DataTypes/DataTypeString.h>
@@ -25,9 +26,11 @@
 #include <IO/WriteHelpers.h>
 #include <Common/Exception.h>
 #include <Common/HashTable/Hash.h>
+#include <Common/HashTable/HashSet.h>
 #include <Common/SipHash.h>
 #include <Common/assert_cast.h>
 #include <Common/tests/gtest_global_register.h>
+#include <base/StringViewHash.h>
 
 #include <functional>
 #include <vector>
@@ -455,4 +458,173 @@ TEST(HashApiLegacyProjection, SimpleAggregateFunctionRefusesUnidentifiedTypes)
     EXPECT_EQ(
         getFunction("anySimpleState", {std::make_shared<DataTypeDecimal<Decimal256>>(50, 2)})->getResultType()->getName(),
         "SimpleAggregateFunction(any, Decimal(50, 2))");
+}
+
+namespace
+{
+
+/// The set of the generic `groupUniqArray` (AggregateFunctionGroupUniqArrayGenericData) with the algorithm of the fork: its keys are the arena
+/// forms of the values as the fork had them in memory, hashed by StringViewHash. Insertions, merges (the keys of the other set in its order)
+/// and reads (the keys in the order they were written) are those of the function.
+using ForkUniqSet = HashSetWithSavedHashWithStackMemory<std::string_view, StringViewHash, 3>;
+
+/// The serialization of the state of the generic `groupUniqArray`: the number of keys, then every key as a string, in the order of the set.
+String uniqState(const ForkUniqSet & set)
+{
+    WriteBufferFromOwnString out;
+    writeVarUInt(set.size(), out);
+    for (const auto & elem : set)
+        writeStringBinary(elem.getValue(), out);
+    return out.str();
+}
+
+/// The keys of a serialized `groupUniqArray` state, in order.
+std::vector<String> uniqStateKeys(const String & state)
+{
+    ReadBufferFromString in(state);
+    size_t size = 0;
+    readVarUInt(size, in);
+    std::vector<String> keys(size);
+    for (auto & key : keys)
+        readStringBinary(key, in);
+    return keys;
+}
+
+/// A column of Dynamic values read from their binary forms, as the column reads them.
+MutableColumnPtr dynamicColumn(const std::vector<String> & values)
+{
+    auto column = ColumnDynamic::create();
+    for (const auto & value : values)
+    {
+        ReadBufferFromString in(value);
+        DataTypeDynamic().getDefaultSerialization()->deserializeBinary(*column, in, FormatSettings{});
+    }
+    return column;
+}
+
+/// The same operations on the states of `groupUniqArray(Dynamic)` and on the sets of the fork: A gets the values `first` one by one, B the
+/// values `second`, A merges B, and C reads the serialization of A. The canonical values are what the states get, the fork values are what
+/// the fork had in memory for the same values. Returns the column with the states A and C and the fork serializations of A and C.
+struct UniqStates
+{
+    MutableColumnPtr column;
+    String fork_a;
+    String fork_c;
+};
+
+UniqStates runUniqStates(
+    const std::vector<String> & first_canonical, const std::vector<String> & first_fork,
+    const std::vector<String> & second_canonical, const std::vector<String> & second_fork)
+{
+    const auto function = getFunction("groupUniqArray", {std::make_shared<DataTypeDynamic>()});
+    auto column = ColumnAggregateFunction::create(function);
+    auto & states = assert_cast<ColumnAggregateFunction &>(*column);
+    Arena & arena = states.createOrGetArena();
+
+    auto add_all = [&](AggregateDataPtr place, const std::vector<String> & values)
+    {
+        auto values_column = dynamicColumn(values);
+        const IColumn * arguments[] = {values_column.get()};
+        for (size_t row = 0; row != values.size(); ++row)
+            function->add(place, arguments, row, &arena);
+    };
+
+    states.insertDefault();
+    const auto place_a = states.getData().back();
+    add_all(place_a, first_canonical);
+    auto b = ColumnAggregateFunction::create(function);
+    auto & b_states = assert_cast<ColumnAggregateFunction &>(*b);
+    b_states.insertDefault();
+    add_all(b_states.getData().back(), second_canonical);
+    function->merge(place_a, b_states.getData().back(), &arena);
+
+    WriteBufferFromOwnString serialized_a;
+    function->serialize(place_a, serialized_a);
+    states.insertDefault();
+    ReadBufferFromString in(serialized_a.str());
+    function->deserialize(states.getData().back(), in, std::nullopt, &arena);
+
+    /// The fork: the arena forms of the fork values, inserted, merged and read in the same order.
+    std::vector<String> keys;
+    keys.reserve(first_fork.size() + second_fork.size());
+    ForkUniqSet set_a;
+    for (const auto & value : first_fork)
+        set_a.insert(keys.emplace_back(arenaForm(value)));
+    ForkUniqSet set_b;
+    for (const auto & value : second_fork)
+        set_b.insert(keys.emplace_back(arenaForm(value)));
+    for (const auto & elem : set_b)
+        set_a.insert(elem.getValue());
+    const String fork_a = uniqState(set_a);
+    const auto fork_a_keys = uniqStateKeys(fork_a);
+    ForkUniqSet set_c;
+    for (const auto & key : fork_a_keys)
+        set_c.insert(key);
+    return {std::move(column), fork_a, uniqState(set_c)};
+}
+
+void expectStatesHashTheForkBytes(const IColumn & column, const String & fork_a, const String & fork_c, const String & where)
+{
+    const std::vector<String> fork_states{fork_a, fork_c};
+    for (size_t row = 0; row != fork_states.size(); ++row)
+    {
+        SipHash hash;
+        column.updateHashWithValue(row, hash);
+        EXPECT_EQ(hash.get64(), sipHashOf(fork_states[row])) << where << " " << row;
+
+        UInt32 weak = 0;
+        column.computeHashInto(row, row + 1, &weak, true);
+        EXPECT_EQ(weak, ::updateWeakHash32(
+            reinterpret_cast<const UInt8 *>(fork_states[row].data()), fork_states[row].size(), WEAK_HASH32_INITIAL_VALUE)) << where << " " << row;
+    }
+    EXPECT_EQ(fastHash(column), sipHashOf(fork_a + fork_c)) << where;
+}
+
+}
+
+/// Several keys without a 512-bit type, one of them an ordinary String whose bytes look like a SentioWide header: the keys are the same
+/// bytes in both encodings, so the states are the sets of the fork, and their hashes after adds, a merge and a read are those of the fork.
+/// The same state as a value of `Dynamic` (its type is AggregateFunction(groupUniqArray, Dynamic)) keeps its bytes in the hashes of the
+/// shared variant, although they hold bytes of the SentioWide namespace.
+TEST(HashApiLegacyProjection, UnorderedStatesWithHeaderLikeContent)
+{
+    const std::vector<String> first{stringValue(HEADER_LIKE_CONTENT), stringValue("a"), int64Value(7), stringValue("bb")};
+    const std::vector<String> second{stringValue("ccc"), int64Value(7), stringValue(HEADER_LIKE_CONTENT + "x"), int64Value(9)};
+    auto [column, fork_a, fork_c] = runUniqStates(first, first, second, second);
+    expectStatesHashTheForkBytes(*column, fork_a, fork_c, "no 512-bit key");
+
+    const auto function = assert_cast<const ColumnAggregateFunction &>(*column).getAggregateFunction();
+    const auto state_type = std::make_shared<DataTypeAggregateFunction>(function, DataTypes{std::make_shared<DataTypeDynamic>()}, Array{});
+    auto dynamic = ColumnDynamic::create(0);
+    insertShared(assert_cast<ColumnDynamic &>(*dynamic), state_type, *column);
+    const auto & variant = assert_cast<const ColumnDynamic &>(*dynamic).getVariantColumn();
+    EXPECT_EQ(rangeHash(*dynamic, 0, 1), rangeHash(variant, 0, 1));
+    EXPECT_EQ(weakHash(*dynamic, 0, 1, true), weakHash(variant, 0, 1, true));
+    EXPECT_EQ(fastHash(*dynamic), fastHash(variant));
+}
+
+/// The strict historical oracle for keys with 512-bit types: the fork kept their legacy arena forms in its sets, so the order of its sets
+/// and of its states follows their hashes, while the states here keep the canonical arena forms. The hashes are compared with those of the
+/// fork's sets after the same adds, merge and read. This is the fixture that tells whether the states keep the fork's order; it must not be
+/// weakened to accept another one (see STATUS: the decision on the hash domain of unordered states is pending).
+TEST(HashApiLegacyProjection, UnorderedStatesWithWideKeysHaveTheForkOrder)
+{
+    std::vector<String> first_canonical;
+    std::vector<String> first_fork;
+    for (UInt64 raw = 1; raw <= 6; ++raw)
+    {
+        const String descriptor = "SentioWide_v1_Decimal512(76,10)";
+        first_canonical.push_back(String(1, '\x2C') + varUInt(descriptor.size()) + descriptor + littleEndian(raw, 64));
+        first_fork.push_back(legacyDecimal512(76, 10, raw));
+    }
+    std::vector<String> second_canonical{int64Value(5)};
+    std::vector<String> second_fork{int64Value(5)};
+    for (UInt64 raw : {3, 7, 8})
+    {
+        const String descriptor = "SentioWide_v1_UInt512";
+        second_canonical.push_back(String(1, '\x2C') + varUInt(descriptor.size()) + descriptor + littleEndian(raw, 64));
+        second_fork.push_back(legacyUInt512(raw));
+    }
+    auto [column, fork_a, fork_c] = runUniqStates(first_canonical, first_fork, second_canonical, second_fork);
+    expectStatesHashTheForkBytes(*column, fork_a, fork_c, "512-bit keys");
 }
