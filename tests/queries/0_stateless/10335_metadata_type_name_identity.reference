@@ -1,0 +1,45 @@
+--- decoded types: the name of a native Decimal512(50, 2) is the name of Decimal256(50, 2)
+Decimal(50, 2)	64	123.45
+Decimal(80, 2)	64	123.45
+Decimal(50, 2)	32	123.45
+Decimal(5, 2)	8	123.45
+Int32	4	7
+--- CREATE TABLE AS SELECT
+D_P50: refused
+D_S90: refused
+D_ARRAY: refused
+D_TUPLE: refused
+D_NULLABLE: refused
+D_MAP: refused
+D_VARIANT: refused
+D_STATE: refused
+D_D64_P5: refused
+D_D32_S7: refused
+--- CREATE VIEW, a refreshable materialized view with an inner table
+VIEW: refused
+MATERIALIZED VIEW: refused
+--- a table function and a storage that infer their columns
+AS file(): refused
+ENGINE = File: refused
+0
+1
+Decimal(80, 2)	64	123.45
+1
+--- ALTER MODIFY QUERY of a refreshable materialized view
+MODIFY QUERY: refused
+1
+--- a declared type, kept over DETACH and ATTACH
+Decimal(80, 2)	64	123.45
+Decimal(50, 2)	32	123.45
+--- controls: types identified by their names, kept over DETACH and ATTACH
+Decimal(80, 2)	64	123.45
+Decimal(50, 2)	32	123.45
+Int32	4	7
+--- a temporary table stores no definition
+Decimal(50, 2)	64	123.45
+--- the formats with the types in binary format keep the type exactly; by its name it is refused
+1
+RowBinaryWithNamesAndTypes by name: refused
+Decimal(50, 2)	64	123.45
+Native by name: refused
+result sent by name: refused

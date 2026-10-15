@@ -1,4 +1,5 @@
 #include <Storages/StorageFactory.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Interpreters/Context.h>
 #include <Parsers/ASTFunction.h>
 #include <Parsers/ASTLiteral.h>
@@ -34,6 +35,22 @@ void checkAllTypesAreAllowedInTable(const NamesAndTypesList & names_and_types)
     for (const auto & elem : names_and_types)
         if (elem.type->cannotBeStoredInTables())
             throw Exception(ErrorCodes::DATA_TYPE_CANNOT_BE_USED_IN_TABLES, "Data type {} of column '{}' cannot be used in tables", elem.type->getName(), elem.name);
+}
+
+/// A declared type is created from its name, so it is identified by it. An inferred type may not be (see isTypeIdentifiedByName): a
+/// decimal that a binary type decoder constructs with a precision of another decimal class, or with a scale greater than its precision,
+/// has the name of another type or of no type, as has any type that holds one. Kept by that name, the column would be loaded with the
+/// width of the other class, or the table would not load at all.
+void checkAllTypesAreIdentifiedByNameInTable(const NamesAndTypesList & names_and_types)
+{
+    for (const auto & elem : names_and_types)
+        if (!isTypeIdentifiedByName(*elem.type))
+            throw Exception(
+                ErrorCodes::DATA_TYPE_CANNOT_BE_USED_IN_TABLES,
+                "Data type {} of column '{}' cannot be used in tables: a table definition keeps the type of a column by its name, and this "
+                "name does not identify the type (it holds a decimal with a precision of another decimal class, or with a scale greater "
+                "than its precision). Cast the column to a type created from its name",
+                elem.type->getName(), elem.name);
 }
 
 

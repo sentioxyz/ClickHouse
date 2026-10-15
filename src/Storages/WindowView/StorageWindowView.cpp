@@ -944,6 +944,8 @@ ASTPtr StorageWindowView::getInnerTableCreateQuery(const ASTPtr & inner_query, c
         = InterpreterSelectQuery(inner_select_query, getContext(), SelectQueryOptions(QueryProcessingStage::WithMergeableState))
               .getSampleBlock();
 
+    /// The inner table is created from a definition that has the columns by the names of their types.
+    checkAllTypesAreIdentifiedByNameInTable(t_sample_block->getNamesAndTypesList());
     ASTPtr columns_list = InterpreterCreateQuery::formatColumns(t_sample_block->getNamesAndTypesList());
 
     if (is_time_column_func_now)

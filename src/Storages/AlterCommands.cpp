@@ -1166,6 +1166,8 @@ void AlterCommand::apply(StorageInMemoryMetadata & metadata, ContextPtr context,
                 metadata.refresh != nullptr /* is_create_parameterized_view */);
         }
 
+        /// The stored definition gets the columns by the names of their types.
+        checkAllTypesAreIdentifiedByNameInTable(as_select_sample->getNamesAndTypesList());
         metadata.columns = ColumnsDescription(as_select_sample->getNamesAndTypesList());
     }
     else if (type == MODIFY_REFRESH)

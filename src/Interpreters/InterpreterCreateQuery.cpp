@@ -1061,6 +1061,11 @@ InterpreterCreateQuery::TableProperties InterpreterCreateQuery::getTableProperti
     if (!create.columns_list)
         create.set(create.columns_list, make_intrusive<ASTColumns>());
 
+    /// The definition gets the columns by the names of their types, before it is stored or sent to the replicas of a Replicated
+    /// database. Inferred types are checked here, as they are. A short ATTACH and a temporary table store no definition.
+    if (!create.attach_short_syntax && !create.isTemporary())
+        checkAllTypesAreIdentifiedByNameInTable(properties.columns.getAll());
+
     ASTPtr new_columns = formatColumns(properties.columns);
     ASTPtr new_indices = formatIndices(properties.indices);
     ASTPtr new_constraints = formatConstraints(properties.constraints);
@@ -2141,9 +2146,14 @@ BlockIO InterpreterCreateQuery::createTable(ASTCreateQuery & create)
 namespace
 {
 
-void checkForUnsupportedColumns(IStorage & storage, LoadingStrictnessLevel mode, ContextPtr context, bool is_temporary)
+void checkForUnsupportedColumns(IStorage & storage, LoadingStrictnessLevel mode, ContextPtr context, bool is_temporary, bool stores_definition)
 {
     auto metadata_snapshot = storage.getInMemoryMetadataPtr(context, false);
+
+    /// The definition gets the columns by the names of their types, also the columns that the storage inferred
+    /// (addColumnsDescriptionToCreateQueryIfNecessary), which getTablePropertiesAndNormalizeCreateQuery did not see.
+    if (stores_definition && !is_temporary)
+        checkAllTypesAreIdentifiedByNameInTable(metadata_snapshot->getColumns().getAll());
 
     /// Re-check inferred column types only for a fresh, persisted table: the pre-construction check
     /// does not see inferred columns, and ATTACH/RESTORE, temporary tables and views/dictionaries are
@@ -2186,11 +2196,12 @@ void validateVirtualColumns(IStorage & storage, ContextPtr context)
     }
 }
 
-void validateStorage(IStorage & storage, LoadingStrictnessLevel mode, ContextPtr context, bool is_temporary)
+/// stores_definition: the query stores the definition of the table, which is not the case for a short ATTACH.
+void validateStorage(IStorage & storage, LoadingStrictnessLevel mode, ContextPtr context, bool is_temporary, bool stores_definition = false)
 try
 {
     validateVirtualColumns(storage, context);
-    checkForUnsupportedColumns(storage, mode, context, is_temporary);
+    checkForUnsupportedColumns(storage, mode, context, is_temporary, stores_definition);
 }
 catch (...)
 {
@@ -2466,7 +2477,7 @@ bool InterpreterCreateQuery::doCreateTable(ASTCreateQuery & create,
             res->addInferredEngineArgsToCreateQuery(*engine_args, getContext());
     }
 
-    validateStorage(*res, mode, getContext(), create.isTemporary());
+    validateStorage(*res, mode, getContext(), create.isTemporary(), /*stores_definition=*/ !create.attach_short_syntax);
 
     if (!create.attach && getContext()->getSettingsRef()[Setting::database_replicated_allow_only_replicated_engine])
     {

@@ -161,4 +161,7 @@ private:
 
 void checkAllTypesAreAllowedInTable(const NamesAndTypesList & names_and_types);
 
+/// A table definition keeps the type of a column by its name, and the table is loaded with the type created from that name.
+void checkAllTypesAreIdentifiedByNameInTable(const NamesAndTypesList & names_and_types);
+
 }
