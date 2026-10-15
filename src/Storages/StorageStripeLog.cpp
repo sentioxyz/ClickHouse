@@ -23,9 +23,11 @@
 #include <DataTypes/DataTypeFactory.h>
 #include <DataTypes/DataTypeLowCardinality.h>
 #include <DataTypes/DataTypeString.h>
+#include <DataTypes/SentioWideRecode.h>
 
 #include <Interpreters/Context.h>
 
+#include <Storages/AlterCommands.h>
 #include <Storages/StorageFactory.h>
 #include <Storages/StorageStripeLog.h>
 #include <Storages/StorageLogSettings.h>
@@ -52,6 +54,7 @@ namespace DB
 {
 namespace Setting
 {
+    extern const SettingsBool fsync_metadata;
     extern const SettingsSeconds lock_acquire_timeout;
     extern const SettingsUInt64 max_compress_block_size;
     extern const SettingsSeconds max_execution_time;
@@ -66,6 +69,7 @@ namespace ErrorCodes
     extern const int CANNOT_RESTORE_TABLE;
     extern const int NOT_IMPLEMENTED;
     extern const int FAULT_INJECTED;
+    extern const int INCORRECT_DATA;
 }
 
 namespace FailPoints
@@ -96,7 +100,8 @@ public:
         std::shared_ptr<const IndexForNativeFormat> indices_,
         IndexForNativeFormat::Blocks::const_iterator index_begin_,
         IndexForNativeFormat::Blocks::const_iterator index_end_,
-        size_t file_size_)
+        size_t file_size_,
+        BinaryTypeOrigin stored_binary_type_origin_)
         : ISource(std::make_shared<const Block>(getHeader(physical_columns_, virtual_columns_)))
         , physical_columns(std::move(physical_columns_))
         , virtual_columns(std::move(virtual_columns_))
@@ -106,6 +111,7 @@ public:
         , index_begin(index_begin_)
         , index_end(index_end_)
         , file_size(file_size_)
+        , stored_binary_type_origin(stored_binary_type_origin_)
     {
     }
 
@@ -135,6 +141,8 @@ private:
     IndexForNativeFormat::Blocks::const_iterator index_begin;
     IndexForNativeFormat::Blocks::const_iterator index_end;
     size_t file_size;
+    /// The stored binary type origin that the read took.
+    const BinaryTypeOrigin stored_binary_type_origin;
 
     /** optional - to create objects only on first reading
       *  and delete objects (release buffers) after the source is exhausted
@@ -159,6 +167,7 @@ private:
             data_in->setReadUntilPosition(file_size);
 
             block_in.emplace(*data_in, 0, index_begin, index_end);
+            block_in->setStoredBinaryTypeOrigin(stored_binary_type_origin);
         }
     }
 
@@ -296,7 +305,9 @@ StorageStripeLog::StorageStripeLog(
     const ConstraintsDescription & constraints_,
     const String & comment,
     LoadingStrictnessLevel mode,
-    ContextMutablePtr context_)
+    ContextMutablePtr context_,
+    bool is_original_create,
+    std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp)
     : StorageWithCommonVirtualColumns(table_id_)
     , WithMutableContext(context_)
     , disk(std::move(disk_))
@@ -324,6 +335,10 @@ StorageStripeLog::StorageStripeLog(
         file_checker.setEmpty(index_file_path);
     }
 
+    /// Before the directory is created or changed: an original CREATE requires that it does not exist yet.
+    const auto origin_to_stamp = stored_binary_type_origin.load(
+        *disk, table_path, table_id_, is_original_create, stored_binary_type_origin_to_stamp, context_->getReadSettings());
+
     if (mode < LoadingStrictnessLevel::ATTACH)
     {
         /// create directories if they do not exist
@@ -340,6 +355,10 @@ StorageStripeLog::StorageStripeLog(
             tryLogCurrentException(__PRETTY_FUNCTION__);
         }
     }
+
+    if (origin_to_stamp)
+        stored_binary_type_origin.stampNewTable(
+            *disk, table_path, table_id_, *origin_to_stamp, context_->getWriteSettings(), context_->getSettingsRef()[Setting::fsync_metadata]);
 
     total_bytes = file_checker.getTotalSize();
 }
@@ -399,6 +418,9 @@ Pipe StorageStripeLog::read(
     if (!lock)
         throw Exception(ErrorCodes::TIMEOUT_EXCEEDED, "Lock timeout exceeded");
 
+    /// One stored binary type origin for the whole read, taken under the lock that the registration takes exclusively.
+    const auto origin = stored_binary_type_origin.get();
+
     size_t data_file_size = file_checker.getFileSize(data_file_path);
     if (!data_file_size)
         return Pipe(std::make_shared<NullSource>(std::make_shared<const Block>(storage_snapshot->getSampleBlockForColumns(column_names))));
@@ -427,7 +449,7 @@ Pipe StorageStripeLog::read(
             physical_columns, virtual_columns,
             std::static_pointer_cast<const StorageStripeLog>(shared_from_this()),
             read_settings,
-            indices_for_selected_columns, begin, end, data_file_size));
+            indices_for_selected_columns, begin, end, data_file_size, origin));
     }
 
     /// We do not keep read lock directly at the time of reading, because we read ranges of data that do not change.
@@ -484,6 +506,34 @@ void StorageStripeLog::truncate(const ASTPtr &, const StorageMetadataPtr &, Cont
     total_rows = 0;
     total_bytes = 0;
     getContext()->clearMMappedFileCache();
+}
+
+void StorageStripeLog::checkAlterIsPossible(const AlterCommands & commands, ContextPtr local_context) const
+{
+    /// The registration of the stored binary type origin changes nothing else, and AlterCommands::validate allows it only alone.
+    if (commands.isStoredBinaryTypeOriginRegistration())
+    {
+        stored_binary_type_origin.checkCanBeRegistered(commands.front().binary_type_origin, getStorageID());
+        return;
+    }
+    IStorage::checkAlterIsPossible(commands, local_context);
+}
+
+void StorageStripeLog::alter(const AlterCommands & params, ContextPtr local_context, AlterLockHolder & alter_lock_holder)
+{
+    /// The registration writes the record of the table and changes no metadata. The write lock waits for every insert and restore, which
+    /// hold it until they finish, and every read that takes the origin after it gets the new one.
+    if (params.isStoredBinaryTypeOriginRegistration())
+    {
+        WriteLock lock{rwlock, getLockTimeout(local_context)};
+        if (!lock)
+            throw Exception(ErrorCodes::TIMEOUT_EXCEEDED, "Lock timeout exceeded");
+        stored_binary_type_origin.registerOrigin(
+            *disk, table_path, getStorageID(), params.front().binary_type_origin, getContext()->getWriteSettings(),
+            getContext()->getSettingsRef()[Setting::fsync_metadata]);
+        return;
+    }
+    IStorage::alter(params, local_context, alter_lock_holder);
 }
 
 
@@ -683,10 +733,33 @@ void StorageStripeLog::restoreDataFromBackup(RestorerFromBackup & restorer, cons
     if (!restorer.isNonEmptyTableAllowed() && total_bytes)
         RestorerFromBackup::throwTableIsNotEmpty(getStorageID());
 
+    checkRestoreOfBinaryTypeHeaders();
+
     auto lock_timeout = getLockTimeout(restorer.getContext());
     restorer.addDataRestoreTask(
         [storage = std::static_pointer_cast<StorageStripeLog>(shared_from_this()), backup, data_path_in_backup, lock_timeout]
         { storage->restoreDataImpl(backup, data_path_in_backup, lock_timeout); });
+}
+
+void StorageStripeLog::checkRestoreOfBinaryTypeHeaders() const
+{
+    /// A backup of this engine holds the named files of the table and no stored binary type origin, so nothing tells what the binary type
+    /// headers in it mean. A table whose values can have such headers takes them only while it has no stored origin at all, which the
+    /// registration can state later. Other columns are restored as always.
+    if (stored_binary_type_origin.isUnset())
+        return;
+
+    for (const auto & column : getInMemoryMetadataPtr(getContext(), false)->getColumns().getAllPhysical())
+    {
+        if (valuesMayHaveBinaryTypeHeaders(*column.type))
+            throw Exception(
+                ErrorCodes::INCORRECT_DATA,
+                "Cannot restore the data of table {} from a backup: the values of its column {} of type {} can have binary type headers, "
+                "the backup does not tell their stored binary type origin, and the table has the stored binary type origin {}. Restore "
+                "it into a table without a stored binary type origin (as the one that RESTORE creates), whose origin can then be "
+                "registered",
+                getStorageID().getNameForLogs(), column.name, column.type->getName(), stored_binary_type_origin.describe());
+    }
 }
 
 void StorageStripeLog::restoreDataImpl(const BackupPtr & backup, const String & data_path_in_backup, std::chrono::seconds lock_timeout)
@@ -694,6 +767,9 @@ void StorageStripeLog::restoreDataImpl(const BackupPtr & backup, const String & 
     WriteLock lock{rwlock, lock_timeout};
     if (!lock)
         throw Exception(ErrorCodes::TIMEOUT_EXCEEDED, "Lock timeout exceeded");
+
+    /// Again under the lock of the registration, before anything is appended or saved.
+    checkRestoreOfBinaryTypeHeaders();
 
     /// Load the indices if not loaded yet. We have to do that now because we're going to update these indices.
     loadIndices(lock);
@@ -775,7 +851,9 @@ void registerStorageStripeLog(StorageFactory & factory)
             args.constraints,
             args.comment,
             args.mode,
-            args.getContext());
+            args.getContext(),
+            args.is_original_create,
+            args.stored_binary_type_origin_to_stamp);
     }, features, Documentation{
         .description = R"DOCS_MD(
 import CloudNotSupportedBadge from '@theme/badges/CloudNotSupportedBadge';

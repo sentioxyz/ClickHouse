@@ -9,6 +9,7 @@
 #include <Columns/ColumnLazy.h>
 #include <Columns/ColumnTuple.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <base/range.h>
 #include <Common/typeid_cast.h>
 
@@ -80,6 +81,13 @@ NativeReader::NativeReader(ReadBuffer & istr_, UInt64 server_revision_,
         auto type = DataTypeFactory::instance().get(column.type);
         header.insert(ColumnWithTypeAndName{ type, column.name });
     }
+}
+
+void NativeReader::setStoredBinaryTypeOrigin(BinaryTypeOrigin origin)
+{
+    if (format_settings)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "A NativeReader with format settings cannot read with a stored binary type origin");
+    stored_format_settings = &getFormatSettingsForStoredBinaryTypeOrigin(origin);
 }
 
 void NativeReader::resetParser()
@@ -256,7 +264,7 @@ Block NativeReader::read()
         /// If no rows, nothing to read.
         if (rows)
         {
-            const auto * format = format_settings ? &*format_settings : nullptr;
+            const auto * format = format_settings ? &*format_settings : stored_format_settings;
             NameAndTypePair name_and_type = {column.name, column.type};
             readData(*serialization, *read_column, istr, format, rows, &name_and_type, &avg_value_size_hints);
         }

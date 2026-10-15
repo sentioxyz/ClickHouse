@@ -1,6 +1,7 @@
 #include <Storages/StoredBinaryTypeOrigin.h>
 
 #include <Disks/IDisk.h>
+#include <Interpreters/StorageID.h>
 #include <IO/ReadBufferFromFileBase.h>
 #include <IO/ReadBufferFromMemory.h>
 #include <IO/ReadHelpers.h>
@@ -8,16 +9,24 @@
 #include <IO/WriteBufferFromString.h>
 #include <IO/WriteHelpers.h>
 #include <Common/Exception.h>
+#include <Common/logger_useful.h>
 
 #include <fmt/format.h>
+
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 namespace DB
 {
 
 namespace ErrorCodes
 {
+    extern const int BAD_ARGUMENTS;
     extern const int CORRUPTED_DATA;
     extern const int LOGICAL_ERROR;
+    extern const int TABLE_ALREADY_EXISTS;
+    extern const int TABLE_IS_READ_ONLY;
 }
 
 namespace
@@ -310,6 +319,112 @@ void writeStoredBinaryTypeOriginRecord(
             out->sync();
     }
     disk.replaceFile(tmp_path, path);
+}
+
+std::optional<BinaryTypeOrigin> StoredBinaryTypeOriginOfTableDirectory::load(
+    const IDisk & disk,
+    const String & table_path,
+    const StorageID & table_id,
+    bool is_original_create,
+    std::optional<BinaryTypeOrigin> origin_to_stamp,
+    const ReadSettings & read_settings)
+{
+    if (is_original_create)
+    {
+        /// On the disk of the table, which may not be the one that InterpreterCreateQuery checks for an existing directory.
+        if (disk.existsFileOrDirectory(table_path))
+            throw Exception(ErrorCodes::TABLE_ALREADY_EXISTS,
+                            "Directory {} for the data of table {} already exists on disk {}, probably left by an unclean DROP TABLE or by "
+                            "manual intervention. A CREATE TABLE does not take over existing content: remove the directory by hand, or use "
+                            "ATTACH TABLE", table_path, table_id.getNameForLogs(), disk.getName());
+
+        if (table_id.uuid == UUIDHelpers::Nil)
+            return {};
+        return origin_to_stamp;
+    }
+
+    if (origin_to_stamp)
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Table {} gets a stored binary type origin to stamp without an original CREATE",
+                        table_id.getNameForLogs());
+
+    const String record_path = fs::path(table_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME;
+    const auto record = tryReadStoredBinaryTypeOriginRecord(disk, record_path, read_settings);
+    record_exists = record.has_value();
+    if (!record)
+        return {};
+
+    const auto match = matchTableRecord(*record, table_id.uuid);
+    if (match == StoredBinaryTypeOriginRecordMatch::Applies)
+    {
+        origin = record->origin;
+    }
+    else
+    {
+        LOG_WARNING(getLogger("StoredBinaryTypeOrigin"), "Ignoring the stored binary type origin record of table {}: it is {}. The table is Unknown",
+                    table_id.getNameForLogs(), describeStoredBinaryTypeOriginRecordMatch(match));
+        record_ignored = true;
+    }
+    return {};
+}
+
+void StoredBinaryTypeOriginOfTableDirectory::stampNewTable(
+    IDisk & disk, const String & table_path, const StorageID & table_id, BinaryTypeOrigin origin_to_stamp, const WriteSettings & write_settings,
+    bool sync)
+{
+    if (disk.isReadOnly() || disk.isWriteOnce())
+    {
+        LOG_INFO(getLogger("StoredBinaryTypeOrigin"), "Table {} has no writable disk for its stored binary type origin record; it stays unset",
+                 table_id.getNameForLogs());
+        return;
+    }
+
+    const String record_path = fs::path(table_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME;
+    writeStoredBinaryTypeOriginRecord(disk, record_path, StoredBinaryTypeOriginRecord::forTable(origin_to_stamp, table_id.uuid), write_settings, sync);
+    origin = origin_to_stamp;
+    record_exists = true;
+    record_ignored = false;
+}
+
+void StoredBinaryTypeOriginOfTableDirectory::checkCanBeRegistered(BinaryTypeOrigin origin_to_register, const StorageID & table_id) const
+{
+    if (origin_to_register != BinaryTypeOrigin::SentioLegacyV0)
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "Only sentio_legacy_v0 can be registered as the stored binary type origin of a table, not {}",
+                        getBinaryTypeOriginName(origin_to_register));
+    if (table_id.uuid == UUIDHelpers::Nil)
+        throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                        "Table {} has no UUID (its database has the Ordinary engine): it cannot have a stored binary type origin record, so its "
+                        "origin cannot be registered", table_id.getNameForLogs());
+    if (!isUnset())
+        throw Exception(ErrorCodes::BAD_ARGUMENTS,
+                        "Table {} has the stored binary type origin {}: only the origin of a table without a stored binary type origin record "
+                        "can be registered", table_id.getNameForLogs(), describe());
+}
+
+void StoredBinaryTypeOriginOfTableDirectory::registerOrigin(
+    IDisk & disk, const String & table_path, const StorageID & table_id, BinaryTypeOrigin origin_to_register,
+    const WriteSettings & write_settings, bool sync)
+{
+    checkCanBeRegistered(origin_to_register, table_id);
+    if (disk.isReadOnly() || disk.isWriteOnce())
+        throw Exception(ErrorCodes::TABLE_IS_READ_ONLY, "Table {} has no writable disk for its stored binary type origin record",
+                        table_id.getNameForLogs());
+
+    const String record_path = fs::path(table_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME;
+    writeStoredBinaryTypeOriginRecord(disk, record_path, StoredBinaryTypeOriginRecord::forTable(origin_to_register, table_id.uuid), write_settings, sync);
+    origin = origin_to_register;
+    record_exists = true;
+    record_ignored = false;
+    LOG_INFO(getLogger("StoredBinaryTypeOrigin"), "Registered the stored binary type origin {} of table {}",
+             getBinaryTypeOriginName(origin_to_register), table_id.getNameForLogs());
+}
+
+String StoredBinaryTypeOriginOfTableDirectory::describe() const
+{
+    if (record_ignored.load())
+        return "unknown (with a record that does not apply to the table)";
+    if (!record_exists.load())
+        return "unknown (without a record)";
+    return String(getBinaryTypeOriginName(origin.load()));
 }
 
 }

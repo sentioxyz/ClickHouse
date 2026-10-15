@@ -5,6 +5,7 @@
 #include <Formats/MarkInCompressedFile.h>
 #include <Core/Block.h>
 #include <Core/BlockMissingValues.h>
+#include <DataTypes/BinaryTypeOrigin.h>
 #include <DataTypes/Serializations/ISerialization.h>
 
 #include <map>
@@ -53,6 +54,11 @@ public:
 
     Block getHeader() const;
 
+    /// For data that a storage keeps in this format (StripeLog): the values are read with the static settings of the stored binary type
+    /// origin of the table (getFormatSettingsForStoredBinaryTypeOrigin), which the caller takes once for its whole read. Only for a reader
+    /// without format settings, and only for the values: every other behaviour of the reader stays the one without format settings.
+    void setStoredBinaryTypeOrigin(BinaryTypeOrigin origin);
+
     void resetParser();
 
     Block read();
@@ -71,6 +77,8 @@ private:
     Block header;
     UInt64 server_revision;
     std::optional<FormatSettings> format_settings = std::nullopt;
+    /// The settings of setStoredBinaryTypeOrigin, passed only to readData.
+    const FormatSettings * stored_format_settings = nullptr;
     BlockMissingValues * block_missing_values = nullptr;
     ISerialization::KindSet allowed_kinds = default_allowed_kinds;
 

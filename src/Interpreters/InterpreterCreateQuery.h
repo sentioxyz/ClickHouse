@@ -126,6 +126,9 @@ private:
     /// or for `CREATE ... AS` and `CLONE AS` the origin of the source table. Nothing for any other way to make a table: ATTACH, startup,
     /// restore, a secondary query of a Replicated database, or metadata replayed or recovered from stored metadata.
     std::optional<BinaryTypeOrigin> getStoredBinaryTypeOriginToStamp(const ASTCreateQuery & create, LoadingStrictnessLevel mode) const;
+    /// An original CREATE on this binary: not ATTACH, startup, restore, a secondary query of a Replicated database, or metadata replayed or
+    /// recovered from stored metadata.
+    bool isOriginalCreate(const ASTCreateQuery & create, LoadingStrictnessLevel mode) const;
     BlockIO doCreateOrReplaceTable(ASTCreateQuery & create, const InterpreterCreateQuery::TableProperties & properties, LoadingStrictnessLevel mode);
     BlockIO doCreateOrReplaceTemporaryTable(ASTCreateQuery & create, const InterpreterCreateQuery::TableProperties & properties, LoadingStrictnessLevel mode);
 #if CLICKHOUSE_CLOUD

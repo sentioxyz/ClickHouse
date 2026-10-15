@@ -57,6 +57,9 @@ public:
         /// The stored binary type origin (Storages/StoredBinaryTypeOrigin.h) the new table gets: set only for an original CREATE (see
         /// InterpreterCreateQuery), never for ATTACH, startup, restore, or replayed or recovered metadata.
         std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {};
+        /// An original CREATE (InterpreterCreateQuery::isOriginalCreate): the storage makes a new table and takes over no content that is
+        /// already there. It does not depend on the origin to stamp, which an original CREATE does not always have.
+        bool is_original_create = false;
 
         ContextMutablePtr getContext() const;
         ContextMutablePtr getLocalContext() const;
@@ -108,7 +111,8 @@ public:
         const ConstraintsDescription & constraints,
         LoadingStrictnessLevel mode,
         bool is_restore_from_backup = false,
-        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {}) const;
+        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {},
+        bool is_original_create = false) const;
 
     /// Register a table engine by its name.
     /// No locking, you must register all engines before usage of get.

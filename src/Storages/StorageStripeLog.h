@@ -5,6 +5,7 @@
 
 #include <Core/Defines.h>
 #include <Storages/StorageWithCommonVirtualColumns.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <Storages/VirtualColumnsDescription.h>
 #include <Formats/IndexForNativeFormat.h>
 #include <Common/FileChecker.h>
@@ -35,7 +36,9 @@ public:
         const ConstraintsDescription & constraints_,
         const String & comment,
         LoadingStrictnessLevel mode,
-        ContextMutablePtr context_);
+        ContextMutablePtr context_,
+        bool is_original_create = false,
+        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {});
 
     ~StorageStripeLog() override;
 
@@ -63,6 +66,10 @@ public:
     Strings getDataPaths() const override { return {DB::fullPath(disk, table_path)}; }
 
     void truncate(const ASTPtr &, const StorageMetadataPtr &, ContextPtr, TableExclusiveLockHolder&) override;
+
+    /// The registration of the stored binary type origin of the table, and the default for every other command.
+    void checkAlterIsPossible(const AlterCommands & commands, ContextPtr context) const override;
+    void alter(const AlterCommands & params, ContextPtr context, AlterLockHolder & alter_lock_holder) override;
 
     std::optional<UInt64> totalRows(ContextPtr query_context) const override;
     std::optional<UInt64> totalBytes(ContextPtr query_context) const override;
@@ -100,6 +107,9 @@ private:
     /// Restores the data of this table from backup.
     void restoreDataImpl(const BackupPtr & backup, const String & data_path_in_backup, std::chrono::seconds lock_timeout);
 
+    /// Throws if the data of a backup cannot be appended for its binary type headers (see the definition).
+    void checkRestoreOfBinaryTypeHeaders() const;
+
     const DiskPtr disk;
     String table_path;
 
@@ -127,6 +137,10 @@ private:
 
     std::atomic<UInt64> total_rows = 0;
     std::atomic<UInt64> total_bytes = 0;
+
+    /// The stored binary type origin of the data of the table. Every read takes it once, under the read lock; the registration changes it
+    /// under the write lock, which every insert and restore holds until it finishes.
+    StoredBinaryTypeOriginOfTableDirectory stored_binary_type_origin;
 
     const size_t max_compress_block_size;
 

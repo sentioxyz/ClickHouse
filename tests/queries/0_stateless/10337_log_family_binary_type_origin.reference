@@ -1,0 +1,38 @@
+--- Log
+stamped by CREATE: refused
+1	[1.50]
+restored into the stamped table: refused
+1
+2
+1	[1.50]
+combined with another command: refused
+registered twice: refused
+1	[1.50]
+kept over TRUNCATE and RENAME: refused
+--- TinyLog
+stamped by CREATE: refused
+1	[1.50]
+restored into the stamped table: refused
+1
+2
+1	[1.50]
+combined with another command: refused
+registered twice: refused
+1	[1.50]
+kept over TRUNCATE and RENAME: refused
+--- StripeLog
+stamped by CREATE: refused
+1	[1.50]
+restored into the stamped table: refused
+1
+2
+1	[1.50]
+combined with another command: refused
+registered twice: refused
+1	[1.50]
+kept over TRUNCATE and RENAME: refused
+--- the grant
+without the grant: refused
+with the grant, twice: refused
+--- a table without a UUID
+no UUID: refused

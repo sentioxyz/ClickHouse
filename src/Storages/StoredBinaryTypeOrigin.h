@@ -4,6 +4,7 @@
 #include <DataTypes/BinaryTypeOrigin.h>
 #include <base/types.h>
 
+#include <atomic>
 #include <optional>
 #include <string_view>
 
@@ -14,6 +15,7 @@ class IDisk;
 class ReadBuffer;
 class WriteBuffer;
 struct ReadSettings;
+struct StorageID;
 struct WriteSettings;
 
 /// The stored binary type origin (see BinaryTypeOrigin.h) of a table and of a data part: what the binary type headers in their stored
@@ -124,5 +126,57 @@ std::optional<StoredBinaryTypeOriginRecord> tryReadStoredBinaryTypeOriginRecord(
 /// then replaces `path`. A failure leaves the previous file, or no file, in place.
 void writeStoredBinaryTypeOriginRecord(
     IDisk & disk, const String & path, const StoredBinaryTypeOriginRecord & record, const WriteSettings & settings, bool sync);
+
+/// The stored binary type origin of a table that keeps its data in one directory of one disk (`Log`, `TinyLog`, `StripeLog`, `Set` and
+/// `Join`): its table record in that directory, with the rules of the table record of MergeTree. A table without a record is unset: it is
+/// read as Unknown, and the registration states its origin. A record that does not apply to the table (of another table, of the other
+/// kind, or found with a table without a UUID) is ignored: the table is read as Unknown, and its origin cannot be registered. A record of
+/// the Unknown origin is a statement as well: such a table is not unset, and its origin cannot be registered either.
+class StoredBinaryTypeOriginOfTableDirectory
+{
+public:
+    /// Called by the constructor of the storage, in every mode, before it creates or changes anything in its directory.
+    ///  - An original CREATE (`is_original_create`, see InterpreterCreateQuery::isOriginalCreate) requires that the directory does not exist
+    ///    on `disk`, with or without a UUID, and whether or not it stamps the table: a CREATE never takes over existing content (ATTACH
+    ///    loads it), so everything in the directory belongs to this CREATE and a failed one removes only what it created. Returns
+    ///    `origin_to_stamp` (InterpreterCreateQuery::getStoredBinaryTypeOriginToStamp) for the storage to stamp the new table with once it
+    ///    has created its directory (stampNewTable); nothing for a table without a UUID, which has no record, or without an origin to
+    ///    stamp, which stays unset.
+    ///  - Every other mode loads the record (a malformed one throws) and returns nothing; it has no origin to stamp.
+    std::optional<BinaryTypeOrigin> load(
+        const IDisk & disk,
+        const String & table_path,
+        const StorageID & table_id,
+        bool is_original_create,
+        std::optional<BinaryTypeOrigin> origin_to_stamp,
+        const ReadSettings & read_settings);
+
+    /// Writes the record of the new table with the origin that load returned, after the storage has created its directory. A table on a
+    /// read-only or write-once disk is not stamped and stays unset.
+    void stampNewTable(
+        IDisk & disk, const String & table_path, const StorageID & table_id, BinaryTypeOrigin origin_to_stamp, const WriteSettings & write_settings,
+        bool sync);
+
+    /// Throws unless `origin_to_register` can be registered: it is SentioLegacyV0, and the table has a UUID and no record at all.
+    void checkCanBeRegistered(BinaryTypeOrigin origin_to_register, const StorageID & table_id) const;
+
+    /// The registration (`ALTER TABLE ... MODIFY SENTIO BINARY TYPE ORIGIN`): checks it again and writes the record atomically. The caller
+    /// holds the lock that excludes every reader that takes the origin and every writer of the data of the table.
+    void registerOrigin(
+        IDisk & disk, const String & table_path, const StorageID & table_id, BinaryTypeOrigin origin_to_register,
+        const WriteSettings & write_settings, bool sync);
+
+    BinaryTypeOrigin get() const { return origin.load(); }
+    bool isUnset() const { return !record_exists.load(); }
+
+    /// The origin for messages: its name, and why it is Unknown.
+    String describe() const;
+
+private:
+    std::atomic<BinaryTypeOrigin> origin{BinaryTypeOrigin::Unknown};
+    /// A record is in the directory, whether it applies to the table or not.
+    std::atomic<bool> record_exists{false};
+    std::atomic<bool> record_ignored{false};
+};
 
 }

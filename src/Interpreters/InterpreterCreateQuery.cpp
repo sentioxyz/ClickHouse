@@ -2221,12 +2221,17 @@ catch (...)
 
 }
 
+bool InterpreterCreateQuery::isOriginalCreate(const ASTCreateQuery & create, LoadingStrictnessLevel mode) const
+{
+    /// Replayed or recovered metadata can arrive in mode CREATE, so the flags that mark it are checked as well.
+    return !create.attach && mode == LoadingStrictnessLevel::CREATE && !is_restore_from_backup && !is_metadata_replay
+        && !getContext()->isRecoveryFromStoredMetadata();
+}
+
 std::optional<BinaryTypeOrigin> InterpreterCreateQuery::getStoredBinaryTypeOriginToStamp(const ASTCreateQuery & create, LoadingStrictnessLevel mode) const
 {
-    /// Only an original CREATE on this binary stamps a new table. Replayed or recovered metadata can arrive in mode CREATE, so the flags
-    /// that mark it are checked as well.
-    if (create.attach || mode != LoadingStrictnessLevel::CREATE || is_restore_from_backup || is_metadata_replay
-        || getContext()->isRecoveryFromStoredMetadata())
+    /// Only an original CREATE on this binary stamps a new table.
+    if (!isOriginalCreate(create, mode))
         return {};
 
     /// `CREATE ... AS` and `CLONE AS` give the new table the origin of their source table, so that `ATTACH PARTITION ... FROM` the source
@@ -2269,7 +2274,8 @@ bool InterpreterCreateQuery::doCreateTable(ASTCreateQuery & create,
                 properties.constraints,
                 mode,
                 is_restore_from_backup,
-                stored_binary_type_origin_to_stamp);
+                stored_binary_type_origin_to_stamp,
+                isOriginalCreate(create, mode));
             validateStorage(*res, mode, getContext(), /*is_temporary=*/true);
             return res;
         };
@@ -2467,7 +2473,8 @@ bool InterpreterCreateQuery::doCreateTable(ASTCreateQuery & create,
             properties.constraints,
             mode,
             is_restore_from_backup,
-            stored_binary_type_origin_to_stamp);
+            stored_binary_type_origin_to_stamp,
+            isOriginalCreate(create, mode));
 
         /// If schema was inferred while storage creation, add columns description to create query.
         auto & create_query = query_ptr->as<ASTCreateQuery &>();

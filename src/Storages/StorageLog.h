@@ -6,6 +6,7 @@
 #include <Disks/IDisk.h>
 #include <Processors/QueryPlan/ISourceStep.h>
 #include <Storages/StorageWithCommonVirtualColumns.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 #include <Storages/VirtualColumnsDescription.h>
 #include <Common/FileChecker.h>
 #include <Common/escapeForFileName.h>
@@ -43,7 +44,9 @@ public:
         const ConstraintsDescription & constraints_,
         const String & comment,
         LoadingStrictnessLevel mode,
-        ContextMutablePtr context_);
+        ContextMutablePtr context_,
+        bool is_original_create = false,
+        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {});
 
     ~StorageLog() override;
     String getName() const override { return engine_name; }
@@ -76,6 +79,10 @@ public:
     void truncate(const ASTPtr &, const StorageMetadataPtr &, ContextPtr, TableExclusiveLockHolder &) override;
 
     void drop() override;
+
+    /// The registration of the stored binary type origin of the table, and the default for every other command.
+    void checkAlterIsPossible(const AlterCommands & commands, ContextPtr context) const override;
+    void alter(const AlterCommands & params, ContextPtr context, AlterLockHolder & alter_lock_holder) override;
 
     bool storesDataOnDisk() const override { return true; }
     Strings getDataPaths() const override { return {DB::fullPath(disk, table_path)}; }
@@ -121,6 +128,9 @@ private:
 
     /// Restores the data of this table from backup.
     void restoreDataImpl(const BackupPtr & backup, const String & data_path_in_backup, std::chrono::seconds lock_timeout);
+
+    /// Throws if the data of a backup cannot be appended for its binary type headers (see the definition).
+    void checkRestoreOfBinaryTypeHeaders() const;
 
     /** Offsets to some row number in a file for column in table.
       * They are needed so that you can read the data in several threads.
@@ -179,6 +189,10 @@ private:
     };
 
     FileChecker file_checker;
+
+    /// The stored binary type origin of the data of the table. Every read takes it once, under the read lock; the registration changes it
+    /// under the write lock, which every insert and restore holds until it finishes.
+    StoredBinaryTypeOriginOfTableDirectory stored_binary_type_origin;
 
     const size_t max_compress_block_size;
 
