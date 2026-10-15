@@ -288,9 +288,10 @@ public:
 
             // We have to copy the keys to our arena.
             chassert(arena != nullptr);
-            /// The saved hash of an element with binary type headers is the hash of the fork's key (see add).
+            /// The saved hash of an element with binary type headers is the hash of the fork's key (see add). A cell with a saved hash
+            /// returns it whatever hash function it is given; the hash function of the set is a protected base of the set.
             if (elements_have_binary_type_headers)
-                cur_set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted, rhs_elem.getHash(rhs_set));
+                cur_set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted, rhs_elem.getHash(StringViewHash{}));
             else
                 cur_set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted);
         }
