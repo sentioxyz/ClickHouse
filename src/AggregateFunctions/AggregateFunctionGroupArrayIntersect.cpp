@@ -189,37 +189,53 @@ public:
 
 
 /// Generic implementation, it uses serialized representation as object descriptor.
-struct AggregateFunctionGroupArrayIntersectGenericData
+template <typename SetType>
+struct AggregateFunctionGroupArrayIntersectGenericDataImpl
 {
-    using Set = HashSet<std::string_view>;
+    using Set = SetType;
 
     Set value;
     UInt64 version = 0;
 };
 
+/// The set of the elements of the fork, whose cells the reads reserve (see deserializeImpl).
+using AggregateFunctionGroupArrayIntersectGenericSet = HashSet<std::string_view>;
+
 /** Template parameter with true value should be used for columns that store their elements in memory continuously.
  *  For such columns GroupArrayIntersect() can be implemented more efficiently (especially for small numeric arrays).
+ *  `fork_key_hashes`: the elements have binary type headers. Their canonical arena forms are placed with the hashes of the Decimal512 fork's
+ *  keys (hashArenaKeyInLegacyDomain), in a set that saves them, so that growth keeps them: the set has the layout and the order of the fork's
+ *  set. Every other instantiation keeps its set as it is.
  */
-template <bool is_plain_column = false>
+template <bool is_plain_column = false, bool fork_key_hashes = false>
 class AggregateFunctionGroupArrayIntersectGeneric final
-    : public IAggregateFunctionDataHelper<AggregateFunctionGroupArrayIntersectGenericData,
-        AggregateFunctionGroupArrayIntersectGeneric<is_plain_column>>
+    : public IAggregateFunctionDataHelper<
+        AggregateFunctionGroupArrayIntersectGenericDataImpl<
+            std::conditional_t<fork_key_hashes, HashSetWithSavedHash<std::string_view>, AggregateFunctionGroupArrayIntersectGenericSet>>,
+        AggregateFunctionGroupArrayIntersectGeneric<is_plain_column, fork_key_hashes>>
 {
+    static_assert(!fork_key_hashes || !is_plain_column);
     const DataTypePtr input_data_type;
     /// The type of the elements, whose arena forms the state keeps, and whether they have binary type headers (see
     /// IAggregateFunction::deserializeWithBinaryTypeDecoding).
     const DataTypes element_types{assert_cast<const DataTypeArray &>(*input_data_type).getNestedType()};
     const bool elements_have_binary_type_headers = !is_plain_column && valuesMayHaveBinaryTypeHeaders(*element_types.front());
 
-    using State = AggregateFunctionGroupArrayIntersectGenericData;
+    using State = AggregateFunctionGroupArrayIntersectGenericDataImpl<
+        std::conditional_t<fork_key_hashes, HashSetWithSavedHash<std::string_view>, AggregateFunctionGroupArrayIntersectGenericSet>>;
+    using Base = IAggregateFunctionDataHelper<State, AggregateFunctionGroupArrayIntersectGeneric<is_plain_column, fork_key_hashes>>;
+
+    /// The hash of the fork's key for a new element, or the saved hash of an element of a set.
+    size_t forkKeyHash(std::string_view element) const { return hashArenaKeyInLegacyDomain(element, element_types); }
+    static size_t savedHash(const typename State::Set::cell_type & cell) { return cell.getHash(DefaultHash<std::string_view>{}); }
 
 public:
     AggregateFunctionGroupArrayIntersectGeneric(const DataTypePtr & input_data_type_, const Array & parameters_)
-        : IAggregateFunctionDataHelper<AggregateFunctionGroupArrayIntersectGenericData, AggregateFunctionGroupArrayIntersectGeneric<is_plain_column>>({input_data_type_}, parameters_, input_data_type_)
+        : Base({input_data_type_}, parameters_, input_data_type_)
         , input_data_type(this->argument_types[0]) {}
 
     AggregateFunctionGroupArrayIntersectGeneric(const DataTypePtr & input_data_type_, const Array & parameters_, const DataTypePtr & result_type_)
-        : IAggregateFunctionDataHelper<AggregateFunctionGroupArrayIntersectGenericData, AggregateFunctionGroupArrayIntersectGeneric<is_plain_column>>({input_data_type_}, parameters_, result_type_)
+        : Base({input_data_type_}, parameters_, result_type_)
         , input_data_type(result_type_) {}
 
     String getName() const override { return "groupArrayIntersect"; }
@@ -231,7 +247,7 @@ public:
         auto & set = this->data(place).value;
         auto & version = this->data(place).version;
         bool inserted = false;
-        State::Set::LookupResult it = nullptr;
+        typename State::Set::LookupResult it = nullptr;
 
         const auto data_column = assert_cast<const ColumnArray &>(*columns[0]).getDataPtr();
         const auto & offsets = assert_cast<const ColumnArray &>(*columns[0]).getOffsets();
@@ -251,7 +267,10 @@ public:
                     auto settings = IColumn::SerializationSettings::createForAggregationState();
                     auto serialized = data_column->serializeValueIntoArena(offset + i, *arena, begin, &settings);
                     chassert(!serialized.empty());
-                    set.emplace(SerializedKeyHolder{serialized, *arena}, it, inserted);
+                    if constexpr (fork_key_hashes)
+                        set.emplace(SerializedKeyHolder{serialized, *arena}, it, inserted, forkKeyHash(serialized));
+                    else
+                        set.emplace(SerializedKeyHolder{serialized, *arena}, it, inserted);
                 }
             }
         }
@@ -272,10 +291,20 @@ public:
                     auto settings = IColumn::SerializationSettings::createForAggregationState();
                     auto serialized = data_column->serializeValueIntoArena(offset + i, *arena, begin, &settings);
                     chassert(!serialized.empty());
-                    it = set.find(serialized);
+                    if constexpr (fork_key_hashes)
+                    {
+                        const size_t hash = forkKeyHash(serialized);
+                        it = set.find(serialized, hash);
+                        if (it != nullptr)
+                            new_set.emplace(SerializedKeyHolder{serialized, *arena}, it, inserted, hash);
+                    }
+                    else
+                    {
+                        it = set.find(serialized);
 
-                    if (it != nullptr)
-                        new_set.emplace(SerializedKeyHolder{serialized, *arena}, it, inserted);
+                        if (it != nullptr)
+                            new_set.emplace(SerializedKeyHolder{serialized, *arena}, it, inserted);
+                    }
                 }
             }
             set = std::move(new_set);
@@ -294,10 +323,13 @@ public:
         if (version == 0)
         {
             bool inserted = false;
-            State::Set::LookupResult it = nullptr;
+            typename State::Set::LookupResult it = nullptr;
             for (auto & rhs_elem : rhs_value)
             {
-                set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted);
+                if constexpr (fork_key_hashes)
+                    set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted, savedHash(rhs_elem));
+                else
+                    set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted);
             }
         }
         else if (!set.empty())
@@ -307,9 +339,22 @@ public:
                 typename State::Set new_map;
                 for (auto & lhs_elem : lhs_val)
                 {
-                    auto val = rhs_val.find(lhs_elem.getValue());
-                    if (val != nullptr)
-                        new_map.insert(lhs_elem.getValue());
+                    if constexpr (fork_key_hashes)
+                    {
+                        const size_t hash = savedHash(lhs_elem);
+                        if (rhs_val.find(lhs_elem.getValue(), hash) != nullptr)
+                        {
+                            typename State::Set::LookupResult new_it = nullptr;
+                            bool new_inserted = false;
+                            new_map.emplace(lhs_elem.getValue(), new_it, new_inserted, hash);
+                        }
+                    }
+                    else
+                    {
+                        auto val = rhs_val.find(lhs_elem.getValue());
+                        if (val != nullptr)
+                            new_map.insert(lhs_elem.getValue());
+                    }
                 }
                 return new_map;
             };
@@ -378,26 +423,74 @@ public:
             throw Exception(ErrorCodes::TOO_LARGE_ARRAY_SIZE,
                 "Too large array size ({}) in groupArrayIntersect deserialization", size);
         /// Reserving is only an optimization here, so it is derived from payload that already arrived.
-        /// Elements are variable length, so the divisor is the size of a slot, not of an element.
-        set.reserve(std::min(size, buf.available() / sizeof(typename State::Set::cell_type)));
-        if (!elements_have_binary_type_headers)
+        /// Elements are variable length, so the divisor is the size of a slot, not of an element: of a slot of the fork's set, also for a set
+        /// that saves hashes, whose slots are larger.
+        const size_t reserve_from_available
+            = std::min(size, buf.available() / sizeof(AggregateFunctionGroupArrayIntersectGenericSet::cell_type));
+        if constexpr (fork_key_hashes)
         {
-            for (size_t i = 0; i < size; ++i)
-            {
-                auto key = readStringBinaryInto(*arena, buf);
-                set.insert(key);
-            }
-            return;
+            deserializeElementsWithForkKeyHashes(set, size, reserve_from_available, buf, arena, decoding);
         }
+        else
+        {
+            set.reserve(reserve_from_available);
+            if (!elements_have_binary_type_headers)
+            {
+                for (size_t i = 0; i < size; ++i)
+                {
+                    auto key = readStringBinaryInto(*arena, buf);
+                    set.insert(key);
+                }
+                return;
+            }
 
-        /// The binary type headers in the elements are validated with the origin before the state is used, and the legacy ones are
-        /// replaced by canonical elements, before any of them is inserted.
+            /// The binary type headers in the elements are validated with the origin before the state is used, and the legacy ones are
+            /// replaced by canonical elements, before any of them is inserted.
+            std::vector<std::string_view> elements;
+            for (size_t i = 0; i < size; ++i)
+                elements.push_back(readStringBinaryInto(*arena, buf));
+            acceptAggregationStateElements(element_types, elements, decoding, *arena);
+            for (const auto element : elements)
+                set.insert(element);
+        }
+    }
+
+    /// The elements of a state whose elements have binary type headers. All of them are read and validated with the origin, and the legacy
+    /// ones replaced by canonical elements, before the set reserves anything. Each is placed with the hash of the fork's key, in the order
+    /// they were written. An element with a 512-bit type is longer in the canonical form than in the fork's, so a reservation from the bytes
+    /// of the buffer would depend on the form the state was written in: a state with such an element reserves all its elements, as the fork's
+    /// build a394e92fb5d did for every state. Any other state reserves from the bytes that the buffer held after the version and the size,
+    /// `reserve_from_available`, as before.
+    void deserializeElementsWithForkKeyHashes(
+        typename State::Set & set,
+        size_t size,
+        size_t reserve_from_available,
+        ReadBuffer & buf,
+        Arena * arena,
+        const BinaryTypeDecoding & decoding) const
+    {
         std::vector<std::string_view> elements;
         for (size_t i = 0; i < size; ++i)
             elements.push_back(readStringBinaryInto(*arena, buf));
         acceptAggregationStateElements(element_types, elements, decoding, *arena);
+
+        std::vector<size_t> hashes;
+        hashes.reserve(elements.size());
+        bool has_wide_element = false;
         for (const auto element : elements)
-            set.insert(element);
+        {
+            const auto key_hash = hashArenaKeyInLegacyDomainWithChange(element, element_types);
+            hashes.push_back(key_hash.hash);
+            has_wide_element = has_wide_element || key_hash.changed;
+        }
+
+        set.reserve(has_wide_element ? size : reserve_from_available);
+        for (size_t i = 0; i < elements.size(); ++i)
+        {
+            typename State::Set::LookupResult it = nullptr;
+            bool inserted = false;
+            set.emplace(elements[i], it, inserted, hashes[i]);
+        }
     }
 
     void insertResultInto(AggregateDataPtr __restrict place, IColumn & to, Arena *) const override
@@ -464,6 +557,9 @@ IAggregateFunction * createWithExtraTypes(const DataTypePtr & argument_type, con
     /// Check that we can use plain version of AggregateFunctionGroupArrayIntersectGeneric
     if (argument_type->isValueUnambiguouslyRepresentedInContiguousMemoryRegion())
         return new AggregateFunctionGroupArrayIntersectGeneric<true>(argument_type, parameters);
+    /// Elements with binary type headers are placed with the hashes of the fork's keys.
+    if (valuesMayHaveBinaryTypeHeaders(*assert_cast<const DataTypeArray &>(*argument_type).getNestedType()))
+        return new AggregateFunctionGroupArrayIntersectGeneric<false, true>(argument_type, parameters);
     return new AggregateFunctionGroupArrayIntersectGeneric<false>(argument_type, parameters);
 }
 

@@ -24,15 +24,23 @@
 #include <IO/VarInt.h>
 #include <IO/WriteBufferFromString.h>
 #include <IO/WriteHelpers.h>
+#include <Common/CurrentThread.h>
 #include <Common/Exception.h>
 #include <Common/HashTable/Hash.h>
 #include <Common/HashTable/HashSet.h>
+#include <Common/MemoryTracker.h>
 #include <Common/SipHash.h>
+#include <Common/ThreadStatus.h>
 #include <Common/assert_cast.h>
+#include <Common/scope_guard_safe.h>
 #include <Common/tests/gtest_global_register.h>
 #include <base/StringViewHash.h>
 
+#include <algorithm>
 #include <functional>
+#include <optional>
+#include <string>
+#include <thread>
 #include <vector>
 
 /// The hash APIs that hash the bytes of binary `Dynamic` values hash them as the Decimal512 fork had them in memory, with the legacy indexes
@@ -44,13 +52,18 @@
 /// canonical values are inserted through the columns. A control hashes the canonical bytes as they are, which differs, so the projection is
 /// what makes the hashes equal. An ordinary `String` whose bytes look like a SentioWide descriptor is content, not a type, and stays as it
 /// is. States without binary type headers hash as before. A SimpleAggregateFunction type, which is created from names, refuses a type that
-/// its name does not identify.
+/// its name does not identify. The unordered states (`groupUniqArray`, `-Distinct`, `groupArrayIntersect`) keep the order of the fork's
+/// sets: their bridge serializations are those of the fork's sets after the same operations, simulated here with the fork's set types.
 
 using namespace DB;
 
 namespace DB::ErrorCodes
 {
+extern const int ATTEMPT_TO_READ_AFTER_EOF;
+extern const int CANNOT_READ_ALL_DATA;
 extern const int INCORRECT_DATA;
+extern const int MEMORY_LIMIT_EXCEEDED;
+extern const int TOO_LARGE_ARRAY_SIZE;
 }
 
 namespace
@@ -676,4 +689,1071 @@ TEST(HashApiLegacyProjection, UniqStateCrcWitnessKeepsTheForkOrder)
 
     auto [column, fork_a, fork_c] = runUniqStates(canonical, legacy, {}, {});
     expectStatesHashTheForkBytes(*column, fork_a, fork_c, "UInt512 1 and 4");
+}
+
+namespace
+{
+
+/// A `Dynamic` value of UInt8, and the canonical `Dynamic` value of a native Decimal512(P, S).
+String uint8Value(UInt8 value)
+{
+    return String{'\x01', static_cast<char>(value)};
+}
+
+String canonicalDecimal512(UInt8 precision, UInt8 scale, UInt64 raw)
+{
+    const String descriptor = "SentioWide_v1_Decimal512(" + std::to_string(precision) + "," + std::to_string(scale) + ")";
+    return String(1, '\x2C') + varUInt(descriptor.size()) + descriptor + littleEndian(raw, 64);
+}
+
+/// A state as it is stored (canonical), and as the explicit bridge export writes it: the bytes that the fork wrote for the same state.
+String storedState(const IAggregateFunction & function, ConstAggregateDataPtr place)
+{
+    WriteBufferFromOwnString out;
+    function.serialize(place, out);
+    return out.str();
+}
+
+String bridgeState(const IAggregateFunction & function, ConstAggregateDataPtr place)
+{
+    WriteBufferFromOwnString out;
+    function.serializeWithBinaryTypeWriterMode(place, out, std::nullopt, BinaryTypeWriterMode::SentioLegacyBridge);
+    return out.str();
+}
+
+/// An Array(Dynamic) column whose rows hold `rows`, read from their binary forms.
+MutableColumnPtr dynamicArrayRows(const std::vector<std::vector<String>> & rows)
+{
+    std::vector<String> values;
+    auto offsets = ColumnArray::ColumnOffsets::create();
+    for (const auto & row : rows)
+    {
+        values.insert(values.end(), row.begin(), row.end());
+        offsets->getData().push_back(values.size());
+    }
+    return ColumnArray::create(dynamicColumn(values), std::move(offsets));
+}
+
+/// The binary forms of the values of the first row of an Array(Dynamic) column, in order.
+std::vector<String> firstRowValues(const IColumn & column)
+{
+    const auto & array = assert_cast<const ColumnArray &>(column);
+    const DataTypeDynamic type;
+    const auto serialization = type.getDefaultSerialization();
+    std::vector<String> values;
+    for (size_t i = 0; i != array.getOffsets()[0]; ++i)
+    {
+        WriteBufferFromOwnString out;
+        serialization->serializeBinary(array.getData(), i, out, FormatSettings{});
+        values.push_back(out.str());
+    }
+    return values;
+}
+
+/// The arena forms of `Dynamic` values (see arenaForm).
+std::vector<String> arenaForms(const std::vector<String> & values)
+{
+    std::vector<String> keys;
+    keys.reserve(values.size());
+    for (const auto & value : values)
+        keys.push_back(arenaForm(value));
+    return keys;
+}
+
+/// The indices in `keys` of the keys of a set, in the order of the set.
+template <typename Set>
+std::vector<size_t> keyOrder(const Set & set, const std::vector<String> & keys)
+{
+    std::vector<size_t> order;
+    for (const auto & elem : set)
+        for (size_t i = 0; i != keys.size(); ++i)
+            if (elem.getValue() == keys[i])
+                order.push_back(i);
+    return order;
+}
+
+/// The history of the generic `-Distinct` of the fork (AggregateFunctionDistinctGenericData): the arena forms of the values as the fork had
+/// them in memory, hashed by StringViewHash. Its serialization is the number of keys, then every key as a string, in the order of the set.
+using ForkDistinctSet = HashSetWithSavedHashWithStackMemory<std::string_view, StringViewHash, 4>;
+
+String historyState(const ForkDistinctSet & set)
+{
+    WriteBufferFromOwnString out;
+    writeVarUInt(set.size(), out);
+    for (const auto & elem : set)
+        writeStringBinary(elem.getValue(), out);
+    return out.str();
+}
+
+}
+
+/// `groupArrayDistinct(Dynamic)` with 512-bit values (UInt512 1 to 12, the CRC witness 1 and 4 among them), an Int64 and an ordinary String
+/// whose bytes look like a SentioWide header: A adds `first` one by one, B adds `second` in one batch with a filter (the path of the -If
+/// combinator), E adds all of `second` in one batch without one, A merges B, and C reads A. The histories are the fork's: their bridge
+/// serializations are those of the fork's histories after the same operations. A's result has the values of B that are new to A in the
+/// order of B's history, in which the fork's merge fed them to the nested function.
+TEST(HashApiLegacyProjection, DistinctStatesWithWideKeysHaveTheForkOrder)
+{
+    std::vector<String> first_canonical{int64Value(5), stringValue(HEADER_LIKE_CONTENT)};
+    std::vector<String> first_fork = first_canonical;
+    for (UInt64 raw = 1; raw <= 6; ++raw)
+    {
+        first_canonical.push_back(canonicalDecimal512(76, 10, raw));
+        first_fork.push_back(legacyDecimal512(76, 10, raw));
+    }
+    /// UInt512 1 to 12, then Int64 5 (A has it) and 6. The filter drops UInt512 7.
+    std::vector<String> second_canonical;
+    std::vector<String> second_fork;
+    for (UInt64 value = 1; value <= 12; ++value)
+    {
+        second_canonical.push_back(canonicalUInt512(value));
+        second_fork.push_back(legacyUInt512(value));
+    }
+    for (UInt64 value : {5, 6})
+    {
+        second_canonical.push_back(int64Value(value));
+        second_fork.push_back(int64Value(value));
+    }
+    auto flags = ColumnUInt8::create();
+    for (size_t i = 0; i != second_canonical.size(); ++i)
+        flags->getData().push_back(i != 6);
+
+    /// The fork: the same operations on the arena forms of the fork values.
+    const auto first_keys = arenaForms(first_fork);
+    const auto second_keys = arenaForms(second_fork);
+    const auto second_canonical_keys = arenaForms(second_canonical);
+    ForkDistinctSet fork_a;
+    for (const auto & key : first_keys)
+        fork_a.insert(key);
+    const String fork_a_added = historyState(fork_a);
+    ForkDistinctSet fork_b;
+    ForkDistinctSet fork_e;
+    /// B with the canonical keys placed by their own hashes, which the fixture must tell from the fork's B.
+    ForkDistinctSet canonical_b;
+    for (size_t i = 0; i != second_keys.size(); ++i)
+    {
+        fork_e.insert(second_keys[i]);
+        if (flags->getData()[i])
+        {
+            fork_b.insert(second_keys[i]);
+            canonical_b.insert(second_canonical_keys[i]);
+        }
+    }
+    ASSERT_NE(keyOrder(canonical_b, second_canonical_keys), keyOrder(fork_b, second_keys));
+    std::vector<String> expected_result = first_canonical;
+    for (const auto & elem : fork_b)
+        if (fork_a.insert(elem.getValue()).second)
+            for (size_t i = 0; i != second_keys.size(); ++i)
+                if (elem.getValue() == second_keys[i])
+                    expected_result.push_back(second_canonical[i]);
+    const String fork_a_merged = historyState(fork_a);
+    const auto fork_a_written = uniqStateKeys(fork_a_merged);
+    ForkDistinctSet fork_c;
+    for (const auto & key : fork_a_written)
+        fork_c.insert(key);
+
+    const auto function = getFunction("groupArrayDistinct", {std::make_shared<DataTypeDynamic>()});
+    auto column = ColumnAggregateFunction::create(function);
+    auto & states = assert_cast<ColumnAggregateFunction &>(*column);
+    Arena & arena = states.createOrGetArena();
+    auto first_values = dynamicColumn(first_canonical);
+    auto second_values = dynamicColumn(second_canonical);
+
+    states.insertDefault();
+    const auto place_a = states.getData().back();
+    const IColumn * first_arguments[] = {first_values.get()};
+    for (size_t row = 0; row != first_canonical.size(); ++row)
+        function->add(place_a, first_arguments, row, &arena);
+    EXPECT_EQ(bridgeState(*function, place_a), fork_a_added);
+
+    states.insertDefault();
+    const auto place_b = states.getData().back();
+    const IColumn * filtered_arguments[] = {second_values.get(), flags.get()};
+    function->addBatchSinglePlace(0, second_canonical.size(), place_b, filtered_arguments, &arena, 1);
+    EXPECT_EQ(bridgeState(*function, place_b), historyState(fork_b));
+
+    states.insertDefault();
+    const auto place_e = states.getData().back();
+    const IColumn * second_arguments[] = {second_values.get()};
+    function->addBatchSinglePlace(0, second_canonical.size(), place_e, second_arguments, &arena);
+    EXPECT_EQ(bridgeState(*function, place_e), historyState(fork_e));
+
+    function->merge(place_a, place_b, &arena);
+    EXPECT_EQ(bridgeState(*function, place_a), fork_a_merged);
+    auto result = function->getResultType()->createColumn();
+    function->insertResultInto(place_a, *result, &arena);
+    EXPECT_EQ(firstRowValues(*result), expected_result);
+
+    states.insertDefault();
+    const auto place_c = states.getData().back();
+    const String stored_a = storedState(*function, place_a);
+    ReadBufferFromString in(stored_a);
+    function->deserialize(place_c, in, std::nullopt, &arena);
+    EXPECT_TRUE(in.eof());
+    EXPECT_EQ(bridgeState(*function, place_c), historyState(fork_c));
+}
+
+/// `uniqExactDistinct(Dynamic, UInt8)`: the keys of its history are the arena forms of both arguments, one after another. A adds pairs, B
+/// adds pairs (A has some of them), A merges B (it looks the keys of B up with their saved hashes), and C reads A. The histories are the
+/// fork's, and A counts the pairs of both.
+TEST(HashApiLegacyProjection, DistinctOfSeveralArgumentsWithWideKeysHasTheForkOrder)
+{
+    struct Pairs
+    {
+        std::vector<String> canonical;
+        std::vector<String> fork;
+        std::vector<UInt8> bytes;
+
+        void add(String canonical_value, String fork_value, UInt8 byte)
+        {
+            canonical.push_back(std::move(canonical_value));
+            fork.push_back(std::move(fork_value));
+            bytes.push_back(byte);
+        }
+
+        std::vector<String> keys(const std::vector<String> & values) const
+        {
+            std::vector<String> result;
+            for (size_t i = 0; i != values.size(); ++i)
+                result.push_back(arenaForm(values[i]) + String(1, static_cast<char>(bytes[i])));
+            return result;
+        }
+    };
+    Pairs first;
+    for (UInt64 value = 1; value <= 10; ++value)
+        first.add(canonicalUInt512(value), legacyUInt512(value), static_cast<UInt8>(value % 3));
+    first.add(int64Value(5), int64Value(5), 1);
+    /// UInt512 4 to 13 with the bytes of A (A has the pairs of 4 to 10), and UInt512 1 with another byte than in A.
+    Pairs second;
+    for (UInt64 value = 4; value <= 13; ++value)
+        second.add(canonicalUInt512(value), legacyUInt512(value), static_cast<UInt8>(value % 3));
+    second.add(canonicalUInt512(1), legacyUInt512(1), 2);
+
+    const auto first_keys = first.keys(first.fork);
+    const auto first_canonical_keys = first.keys(first.canonical);
+    const auto second_keys = second.keys(second.fork);
+    ForkDistinctSet fork_a;
+    ForkDistinctSet canonical_a;
+    for (size_t i = 0; i != first_keys.size(); ++i)
+    {
+        fork_a.insert(first_keys[i]);
+        canonical_a.insert(first_canonical_keys[i]);
+    }
+    ASSERT_NE(keyOrder(canonical_a, first_canonical_keys), keyOrder(fork_a, first_keys));
+    const String fork_a_added = historyState(fork_a);
+    ForkDistinctSet fork_b;
+    for (const auto & key : second_keys)
+        fork_b.insert(key);
+    for (const auto & elem : fork_b)
+        fork_a.insert(elem.getValue());
+    const String fork_a_merged = historyState(fork_a);
+    const auto fork_a_written = uniqStateKeys(fork_a_merged);
+    ForkDistinctSet fork_c;
+    for (const auto & key : fork_a_written)
+        fork_c.insert(key);
+
+    const auto function = getFunction("uniqExactDistinct", {std::make_shared<DataTypeDynamic>(), std::make_shared<DataTypeUInt8>()});
+    auto column = ColumnAggregateFunction::create(function);
+    auto & states = assert_cast<ColumnAggregateFunction &>(*column);
+    Arena & arena = states.createOrGetArena();
+    auto add_all = [&](AggregateDataPtr place, const Pairs & pairs)
+    {
+        auto values = dynamicColumn(pairs.canonical);
+        auto bytes = ColumnUInt8::create();
+        for (const auto byte : pairs.bytes)
+            bytes->getData().push_back(byte);
+        const IColumn * arguments[] = {values.get(), bytes.get()};
+        for (size_t row = 0; row != pairs.canonical.size(); ++row)
+            function->add(place, arguments, row, &arena);
+    };
+
+    states.insertDefault();
+    const auto place_a = states.getData().back();
+    add_all(place_a, first);
+    EXPECT_EQ(bridgeState(*function, place_a), fork_a_added);
+    states.insertDefault();
+    const auto place_b = states.getData().back();
+    add_all(place_b, second);
+    EXPECT_EQ(bridgeState(*function, place_b), historyState(fork_b));
+
+    function->merge(place_a, place_b, &arena);
+    EXPECT_EQ(bridgeState(*function, place_a), fork_a_merged);
+    auto count = function->getResultType()->createColumn();
+    function->insertResultInto(place_a, *count, &arena);
+    EXPECT_EQ(assert_cast<const ColumnUInt64 &>(*count).getData()[0], fork_a.size());
+
+    states.insertDefault();
+    const auto place_c = states.getData().back();
+    const String stored_a = storedState(*function, place_a);
+    ReadBufferFromString in(stored_a);
+    function->deserialize(place_c, in, std::nullopt, &arena);
+    EXPECT_TRUE(in.eof());
+    EXPECT_EQ(bridgeState(*function, place_c), historyState(fork_c));
+}
+
+namespace
+{
+
+/// The set of the generic `groupArrayIntersect` of the fork (HashSet<std::string_view>: StringViewHash and the default grower, without saved
+/// hashes) and its state: the version, the number of elements, then every element as a string, in the order of the set.
+using ForkIntersectSet = HashSet<std::string_view>;
+
+String intersectState(UInt64 version, const ForkIntersectSet & set)
+{
+    WriteBufferFromOwnString out;
+    writeVarUInt(version, out);
+    writeVarUInt(set.size(), out);
+    for (const auto & elem : set)
+        writeStringBinary(elem.getValue(), out);
+    return out.str();
+}
+
+/// The version and the elements of a state, in the order they were written.
+std::pair<UInt64, std::vector<String>> stateElements(const String & state)
+{
+    ReadBufferFromString in(state);
+    UInt64 version = 0;
+    size_t size = 0;
+    readVarUInt(version, in);
+    readVarUInt(size, in);
+    std::vector<String> keys(size);
+    for (auto & key : keys)
+        readStringBinary(key, in);
+    return {version, std::move(keys)};
+}
+
+/// The state of `version` whose set is filled with `keys` in this order: what an add after the first one (the kept elements in the order of
+/// the row), an intersecting merge (the kept elements in the order of the state) or a read without a reservation leaves.
+String filledState(UInt64 version, const std::vector<String> & keys)
+{
+    ForkIntersectSet set;
+    for (const auto & key : keys)
+        set.insert(key);
+    return intersectState(version, set);
+}
+
+/// A state of the fork's model with the stored form of each element: `stored_keys[i]` is the stored form of `fork_keys[i]`.
+String storedForm(const String & fork_state, const std::vector<String> & fork_keys, const std::vector<String> & stored_keys)
+{
+    const auto [version, keys] = stateElements(fork_state);
+    WriteBufferFromOwnString out;
+    writeVarUInt(version, out);
+    writeVarUInt(keys.size(), out);
+    for (const auto & key : keys)
+    {
+        const auto it = std::find(fork_keys.begin(), fork_keys.end(), key);
+        if (it == fork_keys.end())
+        {
+            ADD_FAILURE() << "an element of the fork's state is not a fork key";
+            return {};
+        }
+        writeStringBinary(stored_keys[static_cast<size_t>(it - fork_keys.begin())], out);
+    }
+    return out.str();
+}
+
+/// The fork's add of a row to a set of `version` (before the add): the first row inserts its elements, a later row keeps the elements that
+/// the set has, in a new set filled in the order of the row.
+void forkIntersectAdd(ForkIntersectSet & set, UInt64 version, const std::vector<String> & row)
+{
+    if (version == 0)
+    {
+        for (const auto & key : row)
+            set.insert(key);
+        return;
+    }
+    if (set.empty())
+        return;
+    ForkIntersectSet kept;
+    for (const auto & key : row)
+        if (set.find(key) != nullptr)
+            kept.insert(key);
+    set = std::move(kept);
+}
+
+/// The fork's merge of `rhs` (of `rhs_version`) into `set` of `version` (before the merge): an empty state copies `rhs` in its order, a
+/// later one keeps, in its own order, the elements that `rhs` has.
+void forkIntersectMerge(ForkIntersectSet & set, UInt64 version, const ForkIntersectSet & rhs, UInt64 rhs_version)
+{
+    if (rhs_version == 0)
+        return;
+    if (version == 0)
+    {
+        for (const auto & elem : rhs)
+            set.insert(elem.getValue());
+        return;
+    }
+    if (set.empty())
+        return;
+    ForkIntersectSet kept;
+    for (const auto & elem : set)
+        if (rhs.find(elem.getValue()) != nullptr)
+            kept.insert(elem.getValue());
+    set = std::move(kept);
+}
+
+/// The bytes of the elements of a state: what a buffer that holds exactly the state has left after the version and the size.
+size_t elementBytes(const String & state)
+{
+    ReadBufferFromString in(state);
+    UInt64 version = 0;
+    size_t size = 0;
+    readVarUInt(version, in);
+    readVarUInt(size, in);
+    return in.available();
+}
+
+/// The fork's read of `state`, then its write, and the cells of its set. The two baselines of the fork differ before the codec (Root's
+/// reading of their Gitblobs): the build a394e92fb5d, in production on 2026-09-24, reserved the declared number of elements
+/// (`frozen79_bytes` is nullopt); 26.8 before the codec (frozen79) reserves min(size, bytes / 16), where `bytes` is what its buffer held
+/// after the version and the size (the bound of ClickHouse#117536, which the release branch of the fork also has since its backport
+/// 6b217cc8 of 2026-09-25). Both then insert the elements in the order they were written.
+struct ForkIntersectRead
+{
+    String state;
+    size_t cells = 0;
+};
+
+ForkIntersectRead forkIntersectRead(const String & state, std::optional<size_t> frozen79_bytes)
+{
+    const auto [version, keys] = stateElements(state);
+    ForkIntersectSet set;
+    set.reserve(frozen79_bytes ? std::min(keys.size(), *frozen79_bytes / sizeof(ForkIntersectSet::cell_type)) : keys.size());
+    for (const auto & key : keys)
+        set.insert(key);
+    return {intersectState(version, set), set.getBufferSizeInCells()};
+}
+
+/// A buffer that serves a string in chunks of at most `chunk_size` bytes, as a stream does.
+class ChunkedReadBuffer : public ReadBuffer
+{
+public:
+    ChunkedReadBuffer(const String & source_, size_t chunk_size_)
+        : ReadBuffer(nullptr, 0)
+        , source(source_)
+        , chunk_size(chunk_size_)
+    {
+    }
+
+private:
+    bool nextImpl() override
+    {
+        if (served == source.size())
+            return false;
+        const size_t size = std::min(chunk_size, source.size() - served);
+        BufferBase::set(const_cast<char *>(source.data()) + served, size, 0);
+        served += size;
+        return true;
+    }
+
+    const String & source;
+    const size_t chunk_size;
+    size_t served = 0;
+};
+
+}
+
+/// `groupArrayIntersect(Array(Dynamic))` with 512-bit values (the CRC witness UInt512 1 and 4 among them), Int64 values and an ordinary
+/// String whose bytes look like a SentioWide header. Every element takes at least 19 bytes in a state, so that the reads below reserve all
+/// their elements under both baselines of the fork. A adds a row of 157 elements (its set grows past 256 cells) and a row that it
+/// intersects with (the new set grows too); B adds a row; A merges B (an intersection); D, empty, merges A (a copy); C reads A after its
+/// second row. Both forms of their states (the fork's, which the bridge writes, and the stored one) are those of the fork's states after
+/// the same operations.
+TEST(HashApiLegacyProjection, IntersectStatesWithWideKeysHaveTheForkOrder)
+{
+    struct Row
+    {
+        std::vector<String> canonical;
+        std::vector<String> fork;
+
+        void add(String canonical_value, String fork_value)
+        {
+            canonical.push_back(std::move(canonical_value));
+            fork.push_back(std::move(fork_value));
+        }
+    };
+    Row first;
+    for (UInt64 value = 0; value < 150; ++value)
+        first.add(int64Value(value), int64Value(value));
+    for (UInt64 value = 1; value <= 4; ++value)
+        first.add(canonicalUInt512(value), legacyUInt512(value));
+    for (UInt64 raw = 1; raw <= 2; ++raw)
+        first.add(canonicalDecimal512(76, 10, raw), legacyDecimal512(76, 10, raw));
+    first.add(stringValue(HEADER_LIKE_CONTENT), stringValue(HEADER_LIKE_CONTENT));
+    /// The 512-bit values of A in another order, Int64 139 down to 0, the String, and two values that A does not have.
+    Row second;
+    for (UInt64 value : {4, 3, 2, 1})
+        second.add(canonicalUInt512(value), legacyUInt512(value));
+    second.add(canonicalDecimal512(76, 10, 2), legacyDecimal512(76, 10, 2));
+    for (UInt64 i = 0; i < 140; ++i)
+        second.add(int64Value(139 - i), int64Value(139 - i));
+    second.add(stringValue(HEADER_LIKE_CONTENT), stringValue(HEADER_LIKE_CONTENT));
+    second.add(int64Value(1000), int64Value(1000));
+    second.add(canonicalUInt512(9), legacyUInt512(9));
+    /// B: UInt512 1, 4 and 9, the Decimal512 2 and the even Int64 0 to 198.
+    Row third;
+    for (UInt64 value : {1, 4, 9})
+        third.add(canonicalUInt512(value), legacyUInt512(value));
+    third.add(canonicalDecimal512(76, 10, 2), legacyDecimal512(76, 10, 2));
+    for (UInt64 value = 0; value < 200; value += 2)
+        third.add(int64Value(value), int64Value(value));
+
+    const auto first_keys = arenaForms(first.fork);
+    const auto first_canonical_keys = arenaForms(first.canonical);
+    const auto second_keys = arenaForms(second.fork);
+    const auto third_keys = arenaForms(third.fork);
+    /// Every fork key and its stored form, to compare the stored form of the states.
+    std::vector<String> all_fork_keys = first_keys;
+    std::vector<String> all_stored_keys = first_canonical_keys;
+    for (const auto * row : {&second, &third})
+    {
+        for (auto & key : arenaForms(row->fork))
+            all_fork_keys.push_back(std::move(key));
+        for (auto & key : arenaForms(row->canonical))
+            all_stored_keys.push_back(std::move(key));
+    }
+
+    ForkIntersectSet fork_a;
+    forkIntersectAdd(fork_a, 0, first_keys);
+    const String fork_a1 = intersectState(1, fork_a);
+    ASSERT_EQ(fork_a.getBufferSizeInCells(), 1024u);
+    /// A with the canonical keys placed by their own hashes, which the fixture must tell from the fork's A.
+    ForkIntersectSet canonical_a;
+    forkIntersectAdd(canonical_a, 0, first_canonical_keys);
+    ASSERT_NE(keyOrder(canonical_a, first_canonical_keys), keyOrder(fork_a, first_keys));
+    forkIntersectAdd(fork_a, 1, second_keys);
+    const String fork_a2 = intersectState(2, fork_a);
+    ASSERT_EQ(fork_a.size(), 146u);
+    ForkIntersectSet fork_b;
+    forkIntersectAdd(fork_b, 0, third_keys);
+    const String fork_b1 = intersectState(1, fork_b);
+    forkIntersectMerge(fork_a, 2, fork_b, 1);
+    const String fork_a3 = intersectState(3, fork_a);
+    ASSERT_EQ(fork_a.size(), 73u);
+    ForkIntersectSet fork_d;
+    forkIntersectMerge(fork_d, 0, fork_a, 3);
+    const String fork_d1 = intersectState(1, fork_d);
+    const auto fork_c = forkIntersectRead(fork_a2, elementBytes(fork_a2));
+    ASSERT_EQ(fork_c.state, forkIntersectRead(fork_a2, std::nullopt).state);
+
+    const auto function = getFunction("groupArrayIntersect", {std::make_shared<DataTypeArray>(std::make_shared<DataTypeDynamic>())});
+    auto column = ColumnAggregateFunction::create(function);
+    auto & states = assert_cast<ColumnAggregateFunction &>(*column);
+    Arena & arena = states.createOrGetArena();
+    auto rows = dynamicArrayRows({first.canonical, second.canonical, third.canonical});
+    const IColumn * arguments[] = {rows.get()};
+    auto expect_state = [&](AggregateDataPtr place, const String & fork_state, const String & where)
+    {
+        EXPECT_EQ(bridgeState(*function, place), fork_state) << where;
+        EXPECT_EQ(storedState(*function, place), storedForm(fork_state, all_fork_keys, all_stored_keys)) << where;
+    };
+
+    states.insertDefault();
+    const auto place_a = states.getData().back();
+    function->add(place_a, arguments, 0, &arena);
+    expect_state(place_a, fork_a1, "A after its first row");
+    function->add(place_a, arguments, 1, &arena);
+    expect_state(place_a, fork_a2, "A after its second row");
+    const String stored_a2 = storedState(*function, place_a);
+
+    states.insertDefault();
+    const auto place_b = states.getData().back();
+    function->add(place_b, arguments, 2, &arena);
+    expect_state(place_b, fork_b1, "B");
+
+    function->merge(place_a, place_b, &arena);
+    expect_state(place_a, fork_a3, "A after merging B");
+
+    states.insertDefault();
+    const auto place_d = states.getData().back();
+    function->merge(place_d, place_a, &arena);
+    expect_state(place_d, fork_d1, "D");
+
+    states.insertDefault();
+    const auto place_c = states.getData().back();
+    ReadBufferFromString in(stored_a2);
+    function->deserialize(place_c, in, std::nullopt, &arena);
+    EXPECT_TRUE(in.eof());
+    expect_state(place_c, fork_c.state, "C");
+}
+
+/// Controls: `groupArrayIntersect(Array(String))`, whose keys are the arena forms of the strings (the size with the terminating zero byte, the
+/// characters and the zero byte), also of strings whose bytes look like a SentioWide header, and `groupArrayIntersect(Array(Int64))`, whose
+/// set holds the numbers, keep their sets: their states are those of the fork's sets of the same keys.
+TEST(HashApiLegacyProjection, IntersectControlsKeepTheirSets)
+{
+    std::vector<String> strings;
+    std::vector<String> string_keys;
+    for (size_t i = 0; i != 140; ++i)
+    {
+        strings.push_back(i % 7 == 0 ? HEADER_LIKE_CONTENT + std::to_string(i) : "s" + std::to_string(i));
+        string_keys.push_back(littleEndian(strings.back().size() + 1, 8) + strings.back() + String(1, '\0'));
+    }
+    const auto string_function = getFunction("groupArrayIntersect", {std::make_shared<DataTypeArray>(std::make_shared<DataTypeString>())});
+    auto string_states = ColumnAggregateFunction::create(string_function);
+    auto & string_column = assert_cast<ColumnAggregateFunction &>(*string_states);
+    string_column.insertDefault();
+    auto string_values = ColumnString::create();
+    for (const auto & value : strings)
+        string_values->insertData(value.data(), value.size());
+    auto string_offsets = ColumnArray::ColumnOffsets::create();
+    string_offsets->getData().push_back(strings.size());
+    auto string_rows = ColumnArray::create(std::move(string_values), std::move(string_offsets));
+    const IColumn * string_arguments[] = {string_rows.get()};
+    string_function->add(string_column.getData().back(), string_arguments, 0, &string_column.createOrGetArena());
+    ForkIntersectSet fork_strings;
+    forkIntersectAdd(fork_strings, 0, string_keys);
+    EXPECT_EQ(storedState(*string_function, string_column.getData().back()), intersectState(1, fork_strings));
+    EXPECT_EQ(bridgeState(*string_function, string_column.getData().back()), intersectState(1, fork_strings));
+
+    const auto int_function = getFunction("groupArrayIntersect", {std::make_shared<DataTypeArray>(std::make_shared<DataTypeInt64>())});
+    auto int_states = ColumnAggregateFunction::create(int_function);
+    auto & int_column = assert_cast<ColumnAggregateFunction &>(*int_states);
+    int_column.insertDefault();
+    auto int_values = ColumnInt64::create();
+    HashSet<Int64> fork_ints;
+    for (Int64 value = 0; value != 300; ++value)
+    {
+        int_values->getData().push_back(value * 7919);
+        fork_ints.insert(value * 7919);
+    }
+    auto int_offsets = ColumnArray::ColumnOffsets::create();
+    int_offsets->getData().push_back(int_values->size());
+    auto int_rows = ColumnArray::create(std::move(int_values), std::move(int_offsets));
+    const IColumn * int_arguments[] = {int_rows.get()};
+    int_function->add(int_column.getData().back(), int_arguments, 0, &int_column.createOrGetArena());
+    WriteBufferFromOwnString fork_int_state;
+    writeVarUInt(1, fork_int_state);
+    writeVarUInt(fork_ints.size(), fork_int_state);
+    for (const auto & elem : fork_ints)
+        writeIntBinary(elem.getValue(), fork_int_state);
+    EXPECT_EQ(storedState(*int_function, int_column.getData().back()), fork_int_state.str());
+}
+
+namespace
+{
+
+/// Root's reserve witness (e6b-intersect-reserve-witness-review.root.md): `groupArrayIntersect(Array(Dynamic))` with the UInt8 values 0 to
+/// 164 and one more value, added as one row: UInt512 1, or an ordinary String whose bytes look like a SentioWide header. A UInt8 element
+/// takes 12 bytes in a state. The UInt512 element takes 75 bytes in the fork's form and 97 in the stored one, so the elements take 2055 and
+/// 2077 bytes; the String element takes 44 bytes in both, so they take 2024 bytes.
+struct IntersectWitness
+{
+    AggregateFunctionPtr function;
+    /// Holds the states and their arena.
+    MutableColumnPtr column;
+    std::vector<String> stored_values;
+    std::vector<String> fork_keys;
+    std::vector<String> stored_keys;
+    String stored;
+    String bridge;
+    /// The fork's state after the same add.
+    String fork;
+};
+
+IntersectWitness makeIntersectWitness(bool with_uint512)
+{
+    std::vector<String> fork_values;
+    IntersectWitness witness;
+    for (UInt64 value = 0; value <= 164; ++value)
+    {
+        witness.stored_values.push_back(uint8Value(static_cast<UInt8>(value)));
+        fork_values.push_back(uint8Value(static_cast<UInt8>(value)));
+    }
+    witness.stored_values.push_back(with_uint512 ? canonicalUInt512(1) : stringValue(HEADER_LIKE_CONTENT));
+    fork_values.push_back(with_uint512 ? legacyUInt512(1) : stringValue(HEADER_LIKE_CONTENT));
+    witness.fork_keys = arenaForms(fork_values);
+    witness.stored_keys = arenaForms(witness.stored_values);
+
+    witness.function = getFunction("groupArrayIntersect", {std::make_shared<DataTypeArray>(std::make_shared<DataTypeDynamic>())});
+    witness.column = ColumnAggregateFunction::create(witness.function);
+    auto & states = assert_cast<ColumnAggregateFunction &>(*witness.column);
+    states.insertDefault();
+    const auto place = states.getData().back();
+    auto rows = dynamicArrayRows({witness.stored_values});
+    const IColumn * arguments[] = {rows.get()};
+    witness.function->add(place, arguments, 0, &states.createOrGetArena());
+    witness.stored = storedState(*witness.function, place);
+    witness.bridge = bridgeState(*witness.function, place);
+
+    ForkIntersectSet fork_set;
+    forkIntersectAdd(fork_set, 0, witness.fork_keys);
+    witness.fork = intersectState(1, fork_set);
+    return witness;
+}
+
+/// A new state of the witness's column read from `in` with `decoding`.
+AggregateDataPtr readIntoNewState(IntersectWitness & witness, ReadBuffer & in, const BinaryTypeDecoding & decoding)
+{
+    auto & states = assert_cast<ColumnAggregateFunction &>(*witness.column);
+    states.insertDefault();
+    const auto place = states.getData().back();
+    witness.function->deserializeWithBinaryTypeDecoding(place, in, std::nullopt, &states.createOrGetArena(), decoding);
+    return place;
+}
+
+/// A new state of the witness's column that got one row with `values` (stored forms of `Dynamic` values).
+AggregateDataPtr newState(IntersectWitness & witness, const std::vector<String> & values)
+{
+    auto & states = assert_cast<ColumnAggregateFunction &>(*witness.column);
+    states.insertDefault();
+    const auto place = states.getData().back();
+    auto rows = dynamicArrayRows({values});
+    const IColumn * arguments[] = {rows.get()};
+    witness.function->add(place, arguments, 0, &states.createOrGetArena());
+    return place;
+}
+
+/// The stored forms of the values of the witness in the order of the elements of a fork's state.
+std::vector<String> valuesInOrder(const IntersectWitness & witness, const String & fork_state)
+{
+    std::vector<String> values;
+    for (const auto & key : stateElements(fork_state).second)
+    {
+        const auto it = std::find(witness.fork_keys.begin(), witness.fork_keys.end(), key);
+        if (it == witness.fork_keys.end())
+        {
+            ADD_FAILURE() << "an element of the fork's state is not a key of the witness";
+            return {};
+        }
+        values.push_back(witness.stored_values[static_cast<size_t>(it - witness.fork_keys.begin())]);
+    }
+    return values;
+}
+
+/// Both forms of a state and its result values are those of the fork's state.
+void expectWitnessState(IntersectWitness & witness, AggregateDataPtr place, const String & fork_state, const String & where)
+{
+    EXPECT_EQ(bridgeState(*witness.function, place), fork_state) << where;
+    EXPECT_EQ(storedState(*witness.function, place), storedForm(fork_state, witness.fork_keys, witness.stored_keys)) << where;
+    auto result = witness.function->getResultType()->createColumn();
+    witness.function->insertResultInto(place, *result, &assert_cast<ColumnAggregateFunction &>(*witness.column).createOrGetArena());
+    EXPECT_EQ(firstRowValues(*result), valuesInOrder(witness, fork_state)) << where;
+}
+
+}
+
+/// The witness with UInt512 1. The baselines of the fork differ on it before the codec: a394e92fb5d reserves the 166 declared elements (512
+/// cells); frozen79 reserves 2055 / 16 = 128 elements from a buffer that holds exactly the fork's form (256 cells, which grow to 1024 at the
+/// 129th element), another order, and its formula on the 2077 bytes of the stored form would reserve 129 elements (512 cells). A state with
+/// an element that holds a 512-bit type reserves all its elements once they are read and valid, so the reads of both forms, from a buffer
+/// that holds exactly the state, from one with more bytes after it and from chunks of a stream, all give a394e92fb5d's set, and the same
+/// values with the same types and bytes. Then the read state continues (it merges a state with all the values, which keeps its elements in
+/// its order in a new set that grows to 1024 cells), and both forms are read again, again as a394e92fb5d did.
+TEST(HashApiLegacyProjection, IntersectReadsOfStatesWith512BitElementsReserveAllElements)
+{
+    auto witness = makeIntersectWitness(true);
+    ASSERT_EQ(elementBytes(witness.bridge), 2055u);
+    ASSERT_EQ(elementBytes(witness.stored), 2077u);
+    ASSERT_EQ(witness.bridge, witness.fork);
+
+    const auto a394e92 = forkIntersectRead(witness.fork, std::nullopt);
+    const auto frozen79 = forkIntersectRead(witness.fork, 2055);
+    EXPECT_EQ(a394e92.cells, 512u);
+    EXPECT_EQ(frozen79.cells, 1024u);
+    /// The witness tells the two baselines apart.
+    ASSERT_NE(frozen79.state, a394e92.state);
+    EXPECT_EQ(forkIntersectRead(witness.fork, 2077).cells, 512u);
+
+    const BinaryTypeDecoding legacy{.origin = BinaryTypeOrigin::SentioLegacyV0};
+    const String next(9, '\x01');
+    auto expect_reads = [&](const String & bytes, const BinaryTypeDecoding & decoding, const String & where)
+    {
+        ReadBufferFromString exact(bytes);
+        expectWitnessState(witness, readIntoNewState(witness, exact, decoding), a394e92.state, where + ", exact buffer");
+        EXPECT_TRUE(exact.eof()) << where;
+        const String bytes_then_next = bytes + next;
+        ReadBufferFromString with_next(bytes_then_next);
+        expectWitnessState(witness, readIntoNewState(witness, with_next, decoding), a394e92.state, where + ", more bytes after it");
+        EXPECT_EQ(with_next.available(), next.size()) << where;
+        ChunkedReadBuffer chunks(bytes, 100);
+        expectWitnessState(witness, readIntoNewState(witness, chunks, decoding), a394e92.state, where + ", chunks");
+        EXPECT_TRUE(chunks.eof()) << where;
+    };
+    expect_reads(witness.bridge, legacy, "the fork's form");
+    expect_reads(witness.stored, BinaryTypeDecoding{}, "the stored form");
+
+    /// Continue, then read both forms again.
+    ReadBufferFromString stored_in(witness.stored);
+    const auto place = readIntoNewState(witness, stored_in, BinaryTypeDecoding{});
+    auto & arena = assert_cast<ColumnAggregateFunction &>(*witness.column).createOrGetArena();
+    witness.function->merge(place, newState(witness, witness.stored_values), &arena);
+    const String continued = filledState(2, stateElements(a394e92.state).second);
+    expectWitnessState(witness, place, continued, "continued");
+    const auto continued_read = forkIntersectRead(continued, std::nullopt);
+    const String continued_bridge = bridgeState(*witness.function, place);
+    const String continued_stored = storedState(*witness.function, place);
+    ReadBufferFromString bridge_again(continued_bridge);
+    expectWitnessState(witness, readIntoNewState(witness, bridge_again, legacy), continued_read.state, "the fork's form read again");
+    ReadBufferFromString stored_again(continued_stored);
+    expectWitnessState(witness, readIntoNewState(witness, stored_again, BinaryTypeDecoding{}), continued_read.state, "the stored form read again");
+}
+
+/// The witness with the String instead of UInt512: no element holds a 512-bit type (the String's bytes of the namespace are content), so the
+/// reads reserve as frozen79 does, from the bytes that the buffer held after the version and the size, and keep its dependence on the
+/// buffer: 2024 / 16 = 126 elements from a buffer that holds exactly the state (256 cells, which grow to 1024), 129 with 40 more bytes after
+/// it (512 cells), 97 / 16 = 6 from chunks of 100 bytes (256 cells, which grow to 1024). a394e92fb5d's 166 elements (512 cells) give another
+/// order than the read of exactly the state, so the fixture tells the policies apart.
+TEST(HashApiLegacyProjection, IntersectReadsOfStatesWithout512BitElementsReserveAsBefore)
+{
+    auto witness = makeIntersectWitness(false);
+    ASSERT_EQ(witness.stored, witness.bridge);
+    ASSERT_EQ(witness.bridge, witness.fork);
+    ASSERT_EQ(elementBytes(witness.stored), 2024u);
+    const size_t header = witness.stored.size() - 2024;
+    const String next(40, '\x01');
+    const auto frozen79_exact = forkIntersectRead(witness.fork, 2024);
+    const auto frozen79_with_next = forkIntersectRead(witness.fork, 2024 + next.size());
+    const auto frozen79_chunks = forkIntersectRead(witness.fork, 100 - header);
+    const auto a394e92 = forkIntersectRead(witness.fork, std::nullopt);
+    EXPECT_EQ(frozen79_exact.cells, 1024u);
+    EXPECT_EQ(frozen79_with_next.cells, 512u);
+    EXPECT_EQ(frozen79_chunks.cells, 1024u);
+    EXPECT_EQ(a394e92.cells, 512u);
+    ASSERT_NE(frozen79_exact.state, a394e92.state);
+
+    auto expect_reads = [&](const BinaryTypeDecoding & decoding, const String & where)
+    {
+        ReadBufferFromString exact(witness.stored);
+        expectWitnessState(witness, readIntoNewState(witness, exact, decoding), frozen79_exact.state, where + ", exact buffer");
+        const String stored_then_next = witness.stored + next;
+        ReadBufferFromString with_next(stored_then_next);
+        expectWitnessState(witness, readIntoNewState(witness, with_next, decoding), frozen79_with_next.state, where + ", more bytes after it");
+        EXPECT_EQ(with_next.available(), next.size()) << where;
+        ChunkedReadBuffer chunks(witness.stored, 100);
+        expectWitnessState(witness, readIntoNewState(witness, chunks, decoding), frozen79_chunks.state, where + ", chunks");
+    };
+    expect_reads(BinaryTypeDecoding{}, "unknown origin");
+    expect_reads(BinaryTypeDecoding{.origin = BinaryTypeOrigin::SentioLegacyV0}, "the fork's origin");
+}
+
+/// Histories of states read with different policies, recorded step by step against both baselines of the fork. Each read follows the
+/// policy of the elements that the state has at that read. So a state that held a 512-bit element does not have a394e92fb5d's sets in all of
+/// its history, and no history matches one baseline at every step. An add or a merge after the first one only keeps the elements that the
+/// state has (an intersection, in a new set), so a state without a 512-bit element never gets one; only the first add or merge of an empty
+/// state can bring one.
+/// - The witness with the String (no 512-bit element) is read from exactly its bytes: frozen79's set (a394e92fb5d's has other cells). A row
+///   with UInt512 1 and all of its values in the reverse order is added: the UInt512, which the state does not have, is not kept, and the new
+///   set is filled in the order of the row, the same after both baselines. Written and read again, the state still has no 512-bit element:
+///   frozen79's set again.
+/// - The same state, read, merges a state with UInt512 1 and all of its values: it keeps its own elements in its own order, so it follows
+///   frozen79's read. Whether the two baselines still differ after this merge depends only on the collisions of the new set, which is
+///   recorded as a property, not asserted.
+/// - The witness with UInt512 1 is read with a394e92fb5d's set. An added row of its UInt8 values does not keep the UInt512. Written and read
+///   again without a 512-bit element, the state has frozen79's set.
+/// - An empty state's first merge copies the witness with UInt512 1, which it then holds: read again, it has a394e92fb5d's set.
+TEST(HashApiLegacyProjection, IntersectHistoriesFollowThePolicyOfEachRead)
+{
+    auto plain = makeIntersectWitness(false);
+    auto & plain_arena = assert_cast<ColumnAggregateFunction &>(*plain.column).createOrGetArena();
+    const auto read1_frozen79 = forkIntersectRead(plain.fork, elementBytes(plain.fork));
+    const auto read1_a394e92 = forkIntersectRead(plain.fork, std::nullopt);
+    EXPECT_NE(read1_frozen79.state, read1_a394e92.state);
+
+    /// An add with a 512-bit value after the read.
+    ReadBufferFromString in1(plain.stored);
+    const auto place = readIntoNewState(plain, in1, BinaryTypeDecoding{});
+    expectWitnessState(plain, place, read1_frozen79.state, "read");
+    std::vector<String> row{canonicalUInt512(1)};
+    row.insert(row.end(), plain.stored_values.rbegin(), plain.stored_values.rend());
+    auto rows = dynamicArrayRows({row});
+    const IColumn * arguments[] = {rows.get()};
+    plain.function->add(place, arguments, 0, &plain_arena);
+    const String added = filledState(2, std::vector<String>(plain.fork_keys.rbegin(), plain.fork_keys.rend()));
+    expectWitnessState(plain, place, added, "after the add");
+    const String added_stored = storedState(*plain.function, place);
+    const auto read2_frozen79 = forkIntersectRead(added, elementBytes(added));
+    const auto read2_a394e92 = forkIntersectRead(added, std::nullopt);
+    EXPECT_NE(read2_frozen79.state, read2_a394e92.state);
+    ReadBufferFromString in2(added_stored);
+    expectWitnessState(plain, readIntoNewState(plain, in2, BinaryTypeDecoding{}), read2_frozen79.state, "read after the add");
+
+    /// A merge with a state that has a 512-bit value after the read.
+    ReadBufferFromString in3(plain.stored);
+    const auto merged_place = readIntoNewState(plain, in3, BinaryTypeDecoding{});
+    std::vector<String> all_values{canonicalUInt512(1)};
+    all_values.insert(all_values.end(), plain.stored_values.begin(), plain.stored_values.end());
+    plain.function->merge(merged_place, newState(plain, all_values), &plain_arena);
+    const String merged_frozen79 = filledState(2, stateElements(read1_frozen79.state).second);
+    const String merged_a394e92 = filledState(2, stateElements(read1_a394e92.state).second);
+    RecordProperty("baselines_differ_after_the_merge", merged_frozen79 == merged_a394e92 ? "no" : "yes");
+    expectWitnessState(plain, merged_place, merged_frozen79, "after the merge");
+
+    /// A state with a 512-bit element that loses it.
+    auto wide = makeIntersectWitness(true);
+    auto & wide_arena = assert_cast<ColumnAggregateFunction &>(*wide.column).createOrGetArena();
+    ReadBufferFromString in4(wide.stored);
+    const auto wide_place = readIntoNewState(wide, in4, BinaryTypeDecoding{});
+    expectWitnessState(wide, wide_place, forkIntersectRead(wide.fork, std::nullopt).state, "read with the UInt512");
+    std::vector<String> uint8_row(wide.stored_values.rbegin() + 1, wide.stored_values.rend());
+    auto uint8_rows = dynamicArrayRows({uint8_row});
+    const IColumn * uint8_arguments[] = {uint8_rows.get()};
+    wide.function->add(wide_place, uint8_arguments, 0, &wide_arena);
+    const String dropped = filledState(2, std::vector<String>(wide.fork_keys.rbegin() + 1, wide.fork_keys.rend()));
+    expectWitnessState(wide, wide_place, dropped, "after the add that drops the UInt512");
+    const auto read3_frozen79 = forkIntersectRead(dropped, elementBytes(dropped));
+    const auto read3_a394e92 = forkIntersectRead(dropped, std::nullopt);
+    EXPECT_NE(read3_frozen79.state, read3_a394e92.state);
+    const String dropped_stored = storedState(*wide.function, wide_place);
+    ReadBufferFromString in5(dropped_stored);
+    expectWitnessState(wide, readIntoNewState(wide, in5, BinaryTypeDecoding{}), read3_frozen79.state, "read without the UInt512");
+
+    /// An empty state's first merge.
+    ReadBufferFromString in6(wide.stored);
+    const auto wide_read = readIntoNewState(wide, in6, BinaryTypeDecoding{});
+    auto & wide_states = assert_cast<ColumnAggregateFunction &>(*wide.column);
+    wide_states.insertDefault();
+    const auto empty_place = wide_states.getData().back();
+    wide.function->merge(empty_place, wide_read, &wide_arena);
+    const String copied = filledState(1, stateElements(forkIntersectRead(wide.fork, std::nullopt).state).second);
+    expectWitnessState(wide, empty_place, copied, "after an empty state's first merge");
+    const String copied_stored = storedState(*wide.function, empty_place);
+    ReadBufferFromString in7(copied_stored);
+    expectWitnessState(
+        wide, readIntoNewState(wide, in7, BinaryTypeDecoding{}), forkIntersectRead(copied, std::nullopt).state, "read after the first merge");
+}
+
+/// Malformed states of the witness with UInt512 are refused before the set reserves anything: a truncated element, more declared elements
+/// than the state has (up to the maximum, 100000000, whose reservation alone would take gigabytes), more than the maximum, and the fork's
+/// form read without a declared origin. Nothing of a refused state is added to the column.
+TEST(HashApiLegacyProjection, IntersectReadsRefuseMalformedStatesBeforeReserving)
+{
+    auto witness = makeIntersectWitness(true);
+    const String elements = witness.stored.substr(witness.stored.size() - elementBytes(witness.stored));
+    const auto type = std::make_shared<DataTypeAggregateFunction>(
+        witness.function, DataTypes{std::make_shared<DataTypeArray>(std::make_shared<DataTypeDynamic>())}, Array{});
+    auto code_of_read = [&](const String & bytes, const FormatSettings & settings)
+    {
+        auto column = type->createColumn();
+        int code = 0;
+        try
+        {
+            ReadBufferFromString in(bytes);
+            type->getDefaultSerialization()->deserializeBinary(*column, in, settings);
+        }
+        catch (const Exception & e)
+        {
+            code = e.code();
+        }
+        EXPECT_EQ(column->size(), code ? 0u : 1u);
+        return code;
+    };
+    EXPECT_EQ(code_of_read(witness.stored, FormatSettings{}), 0);
+    EXPECT_EQ(code_of_read(witness.stored.substr(0, witness.stored.size() - 1), FormatSettings{}), ErrorCodes::CANNOT_READ_ALL_DATA);
+    EXPECT_EQ(code_of_read(varUInt(1) + varUInt(100'000'000) + elements, FormatSettings{}), ErrorCodes::ATTEMPT_TO_READ_AFTER_EOF);
+    EXPECT_EQ(code_of_read(varUInt(1) + varUInt(100'000'001) + elements, FormatSettings{}), ErrorCodes::TOO_LARGE_ARRAY_SIZE);
+    EXPECT_EQ(code_of_read(witness.bridge, FormatSettings{}), ErrorCodes::INCORRECT_DATA);
+}
+
+/// Elements that have arrived do not bound the reservation: a state of 524288 copies of one UInt8 element and UInt512 1 has 2 distinct
+/// elements in about 6 MiB, but its read reserves 524289 elements, 2097152 cells with saved hashes, 48 MiB. The memory limit applies to
+/// that reservation: with a limit below the peak of an unlimited read by half the reservation, the read fails with MEMORY_LIMIT_EXCEEDED
+/// and adds nothing to the column. The unlimited read gives the fork's set of the two elements. Both reads run on a thread of their own,
+/// with its own ThreadStatus, under a new tracker for each read: everything that a read allocates is freed on that thread under the same
+/// tracker, and nothing of the trackers of the test's thread is reset or changed.
+TEST(HashApiLegacyProjection, IntersectReadReservationIsUnderTheMemoryLimit)
+{
+    constexpr size_t copies = 524288;
+    const auto function = getFunction("groupArrayIntersect", {std::make_shared<DataTypeArray>(std::make_shared<DataTypeDynamic>())});
+    const auto type = std::make_shared<DataTypeAggregateFunction>(
+        function, DataTypes{std::make_shared<DataTypeArray>(std::make_shared<DataTypeDynamic>())}, Array{});
+    const String uint8_key = arenaForm(uint8Value(0));
+    WriteBufferFromOwnString stored_out;
+    WriteBufferFromOwnString fork_out;
+    for (auto * out : {&stored_out, &fork_out})
+    {
+        writeVarUInt(1, *out);
+        writeVarUInt(copies + 1, *out);
+        for (size_t i = 0; i != copies; ++i)
+            writeStringBinary(uint8_key, *out);
+    }
+    writeStringBinary(arenaForm(canonicalUInt512(1)), stored_out);
+    writeStringBinary(arenaForm(legacyUInt512(1)), fork_out);
+    const String stored = stored_out.str();
+    const String fork = fork_out.str();
+    const auto expected = forkIntersectRead(fork, std::nullopt);
+
+    HashTableGrowerWithPrecalculation<> grower;
+    grower.set(copies + 1);
+    const size_t reservation = grower.bufSize() * sizeof(HashSetWithSavedHash<std::string_view>::cell_type);
+    EXPECT_EQ(reservation, 48u << 20);
+    EXPECT_GT(reservation, 6 * elementBytes(stored));
+
+    /// Only plain values leave the thread, so that nothing that it allocated is freed on another one.
+    struct Outcome
+    {
+        bool unexpected_exception = false;
+        Int64 unlimited_peak = 0;
+        size_t unlimited_rows = 0;
+        bool unlimited_state_is_the_forks = false;
+        bool limited_read_ran = false;
+        int limited_code = 0;
+        size_t limited_rows = 0;
+    };
+    Outcome outcome;
+    std::thread reads([&]
+    {
+        ThreadStatus thread_status;
+        auto & thread_tracker = CurrentThread::get().memory_tracker;
+        MemoryTracker * const parent = thread_tracker.getParent();
+        CurrentThread::get().untracked_memory_limit = 0;
+        CurrentThread::flushUntrackedMemory();
+        try
+        {
+            const auto serialization = type->getDefaultSerialization();
+            {
+                MemoryTracker read_tracker(&total_memory_tracker, VariableContext::Process, /*log_peak_memory_usage_in_destructor=*/false);
+                thread_tracker.setParent(&read_tracker);
+                SCOPE_EXIT_SAFE({
+                    CurrentThread::flushUntrackedMemory();
+                    thread_tracker.setParent(parent);
+                });
+                auto column = type->createColumn();
+                ReadBufferFromString in(stored);
+                serialization->deserializeBinary(*column, in, FormatSettings{});
+                outcome.unlimited_peak = read_tracker.getPeak();
+                outcome.unlimited_rows = column->size();
+                if (column->size() == 1)
+                    outcome.unlimited_state_is_the_forks
+                        = bridgeState(*function, assert_cast<const ColumnAggregateFunction &>(*column).getData()[0]) == expected.state;
+                column.reset();
+            }
+            if (outcome.unlimited_peak > static_cast<Int64>(reservation))
+            {
+                MemoryTracker read_tracker(&total_memory_tracker, VariableContext::Process, /*log_peak_memory_usage_in_destructor=*/false);
+                read_tracker.setHardLimit(outcome.unlimited_peak - static_cast<Int64>(reservation / 2));
+                thread_tracker.setParent(&read_tracker);
+                SCOPE_EXIT_SAFE({
+                    CurrentThread::flushUntrackedMemory();
+                    thread_tracker.setParent(parent);
+                });
+                auto column = type->createColumn();
+                outcome.limited_read_ran = true;
+                try
+                {
+                    ReadBufferFromString in(stored);
+                    serialization->deserializeBinary(*column, in, FormatSettings{});
+                }
+                catch (const Exception & e)
+                {
+                    outcome.limited_code = e.code();
+                }
+                outcome.limited_rows = column->size();
+                column.reset();
+            }
+        }
+        catch (...)
+        {
+            outcome.unexpected_exception = true;
+        }
+    });
+    reads.join();
+
+    ASSERT_FALSE(outcome.unexpected_exception);
+    EXPECT_EQ(outcome.unlimited_rows, 1u);
+    EXPECT_TRUE(outcome.unlimited_state_is_the_forks);
+    ASSERT_GT(outcome.unlimited_peak, static_cast<Int64>(reservation));
+    ASSERT_TRUE(outcome.limited_read_ran);
+    EXPECT_EQ(outcome.limited_code, ErrorCodes::MEMORY_LIMIT_EXCEEDED);
+    EXPECT_EQ(outcome.limited_rows, 0u);
 }

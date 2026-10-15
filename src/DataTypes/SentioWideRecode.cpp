@@ -456,8 +456,13 @@ std::vector<String> recodeAggregationStateElementsForWrite(
 
 size_t hashArenaKeyInLegacyDomain(std::string_view key, const DataTypes & types)
 {
+    return hashArenaKeyInLegacyDomainWithChange(key, types).hash;
+}
+
+ArenaKeyLegacyDomainHash hashArenaKeyInLegacyDomainWithChange(std::string_view key, const DataTypes & types)
+{
     if (!binaryDynamicValueMayHaveSentioWideType(key))
-        return StringViewHash{}(key);
+        return {.hash = StringViewHash{}(key), .changed = false};
 
     MutableColumns columns;
     columns.reserve(types.size());
@@ -489,8 +494,8 @@ size_t hashArenaKeyInLegacyDomain(std::string_view key, const DataTypes & types)
     };
     const String legacy = write(BinaryTypeWriterMode::SentioLegacyBridge);
     if (legacy == write(BinaryTypeWriterMode::SentioWideV1))
-        return StringViewHash{}(key);
-    return StringViewHash{}(legacy);
+        return {.hash = StringViewHash{}(key), .changed = false};
+    return {.hash = StringViewHash{}(legacy), .changed = true};
 }
 
 std::vector<String> recodeAggregationStateElements(

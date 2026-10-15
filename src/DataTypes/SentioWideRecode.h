@@ -138,4 +138,15 @@ std::vector<String> recodeAggregationStateElements(
 /// the namespace are ordinary content, and the key is hashed as it is.
 size_t hashArenaKeyInLegacyDomain(std::string_view key, const DataTypes & types);
 
+/// The hash of hashArenaKeyInLegacyDomain, and whether the key actually holds a 512-bit type: whether its two writer forms differ, so that the
+/// hash is that of its legacy form. A key without a SentioWide descriptor, or whose bytes of the namespace are ordinary content (a `String`
+/// that looks like a descriptor), has `changed` false. The key is only read; it is decoded once for both results.
+struct ArenaKeyLegacyDomainHash
+{
+    size_t hash = 0;
+    bool changed = false;
+};
+
+ArenaKeyLegacyDomainHash hashArenaKeyInLegacyDomainWithChange(std::string_view key, const DataTypes & types);
+
 }

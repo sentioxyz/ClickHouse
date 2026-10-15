@@ -9,6 +9,8 @@
 #include <Common/HashTable/HashSet.h>
 #include <Common/assert_cast.h>
 
+#include <algorithm>
+
 
 namespace DB
 {
@@ -113,32 +115,53 @@ struct AggregateFunctionDistinctGenericData
         for (size_t i = 0; i < size; ++i)
             values.push_back(readStringBinaryInto(*arena, buf));
         acceptAggregationStateElements(types, values, decoding, *arena);
+        /// Values with binary type headers are placed with the hashes of the fork's keys (hashArenaKeyInLegacyDomain), in the order they
+        /// were written, as the fork placed them.
+        const bool fork_key_hashes = std::ranges::any_of(types, [](const DataTypePtr & type) { return valuesMayHaveBinaryTypeHeaders(*type); });
         for (const auto value : values)
-            history.insert(value);
+        {
+            if (fork_key_hashes)
+            {
+                Set::LookupResult it = nullptr;
+                bool inserted = false;
+                history.emplace(value, it, inserted, hashArenaKeyInLegacyDomain(value, types));
+            }
+            else
+                history.insert(value);
+        }
     }
 };
 
+/// `header_key_types`: the argument types when the history keeps arena forms of values with binary type headers, whose keys are placed with
+/// the hashes of the fork's keys (hashArenaKeyInLegacyDomain; the saved hashes of the other history in merges); nullptr otherwise.
 template <bool is_plain_column>
 struct AggregateFunctionDistinctSingleGenericData : public AggregateFunctionDistinctGenericData
 {
-    bool add(const IColumn ** columns, size_t /* columns_num */, size_t row_num, Arena * arena)
+    bool add(const IColumn ** columns, size_t /* columns_num */, size_t row_num, Arena * arena, const DataTypes * header_key_types = nullptr)
     {
         auto key_holder = getKeyHolder<is_plain_column>(*columns[0], row_num, *arena);
         Set::LookupResult it = nullptr;
         bool inserted = false;
-        history.emplace(key_holder, it, inserted);
+        if (header_key_types)
+            history.emplace(key_holder, it, inserted, hashArenaKeyInLegacyDomain(keyHolderGetKey(key_holder), *header_key_types));
+        else
+            history.emplace(key_holder, it, inserted);
 
         return inserted;
     }
 
-    void merge(const Self & rhs, MutableColumns & argument_columns, Arena * arena)
+    void merge(const Self & rhs, MutableColumns & argument_columns, Arena * arena, const DataTypes * header_key_types = nullptr)
     {
         for (const auto & elem : rhs.history)
         {
             const auto & value = elem.getValue();
             Set::LookupResult it = nullptr;
             bool inserted = false;
-            history.emplace(ArenaKeyHolder{value, *arena}, it, inserted);
+            /// A cell with a saved hash returns it whatever hash function it is given.
+            if (header_key_types)
+                history.emplace(ArenaKeyHolder{value, *arena}, it, inserted, elem.getHash(StringViewHash{}));
+            else
+                history.emplace(ArenaKeyHolder{value, *arena}, it, inserted);
 
             if (inserted)
                 deserializeAndInsert<is_plain_column>(it->getValue(), *argument_columns[0]);
@@ -146,9 +169,10 @@ struct AggregateFunctionDistinctSingleGenericData : public AggregateFunctionDist
     }
 };
 
+/// `header_key_types`: as for AggregateFunctionDistinctSingleGenericData; the key is the arena forms of all the arguments, one after another.
 struct AggregateFunctionDistinctMultipleGenericData : public AggregateFunctionDistinctGenericData
 {
-    bool add(const IColumn ** columns, size_t columns_num, size_t row_num, Arena * arena)
+    bool add(const IColumn ** columns, size_t columns_num, size_t row_num, Arena * arena, const DataTypes * header_key_types = nullptr)
     {
         const char * begin = nullptr;
         std::string_view value;
@@ -161,21 +185,29 @@ struct AggregateFunctionDistinctMultipleGenericData : public AggregateFunctionDi
 
         Set::LookupResult it = nullptr;
         bool inserted = false;
-        history.emplace(SerializedKeyHolder{value, *arena}, it, inserted);
+        if (header_key_types)
+            history.emplace(SerializedKeyHolder{value, *arena}, it, inserted, hashArenaKeyInLegacyDomain(value, *header_key_types));
+        else
+            history.emplace(SerializedKeyHolder{value, *arena}, it, inserted);
 
         return inserted;
     }
 
-    void merge(const Self & rhs, MutableColumns & argument_columns, Arena * arena)
+    void merge(const Self & rhs, MutableColumns & argument_columns, Arena * arena, const DataTypes * header_key_types = nullptr)
     {
         for (const auto & elem : rhs.history)
         {
             const auto & value = elem.getValue();
-            if (!history.contains(value))
+            /// A cell with a saved hash returns it whatever hash function it is given.
+            const bool known = header_key_types ? history.find(value, elem.getHash(StringViewHash{})) != nullptr : history.contains(value);
+            if (!known)
             {
                 Set::LookupResult it = nullptr;
                 bool inserted = false;
-                history.emplace(ArenaKeyHolder{value, *arena}, it, inserted);
+                if (header_key_types)
+                    history.emplace(ArenaKeyHolder{value, *arena}, it, inserted, elem.getHash(StringViewHash{}));
+                else
+                    history.emplace(ArenaKeyHolder{value, *arena}, it, inserted);
                 ReadBufferFromString in(it->getValue());
                 /// Multiple columns are serialized one by one
                 auto settings = IColumn::SerializationSettings::createForAggregationState();
@@ -196,6 +228,12 @@ private:
     AggregateFunctionPtr nested_func;
     size_t prefix_size;
     size_t arguments_num;
+    /// Whether the history keeps arena forms of values with binary type headers, which are placed with the hashes of the fork's keys (see
+    /// AggregateFunctionDistinctSingleGenericData).
+    bool history_has_header_keys = false;
+
+    /// The types of the keys of the history if it places them with the hashes of the fork's keys, nullptr otherwise.
+    const DataTypes * headerKeyTypes() const { return history_has_header_keys ? &this->argument_types : nullptr; }
 
     AggregateDataPtr getNestedPlace(AggregateDataPtr __restrict place) const noexcept
     {
@@ -240,11 +278,23 @@ public:
     {
         size_t nested_size = nested_func->alignOfData();
         prefix_size = (sizeof(Data) + nested_size - 1) / nested_size * nested_size;
+        if constexpr (history_keeps_arena_forms)
+            history_has_header_keys
+                = std::ranges::any_of(this->argument_types, [](const DataTypePtr & type) { return valuesMayHaveBinaryTypeHeaders(*type); });
+    }
+
+    /// Adds the arguments of the row to the history; only the histories of arena forms take the types of their keys.
+    bool addToHistory(Data & data, const IColumn ** columns, size_t row_num, Arena * arena) const
+    {
+        if constexpr (history_keeps_arena_forms)
+            return data.add(columns, arguments_num, row_num, arena, headerKeyTypes());
+        else
+            return data.add(columns, arguments_num, row_num, arena);
     }
 
     void add(AggregateDataPtr __restrict place, const IColumn ** columns, size_t row_num, Arena * arena) const override
     {
-        bool added = this->data(place).add(columns, arguments_num, row_num, arena);
+        bool added = addToHistory(this->data(place), columns, row_num, arena);
         if (added)
             addToNested(row_num, row_num + 1, place, columns, arena);
     }
@@ -277,7 +327,7 @@ public:
             else
             {
                 for (size_t row = row_begin; row < row_end; ++row)
-                    if (flags[row] && data.add(columns, arguments_num, row, arena))
+                    if (flags[row] && addToHistory(data, columns, row, arena))
                         addToNested(row, row + 1, place, columns, arena);
             }
         }
@@ -293,7 +343,7 @@ public:
             else
             {
                 for (size_t row = row_begin; row < row_end; ++row)
-                    if (data.add(columns, arguments_num, row, arena))
+                    if (addToHistory(data, columns, row, arena))
                         addToNested(row, row + 1, place, columns, arena);
             }
         }
@@ -302,7 +352,10 @@ public:
     void mergeImpl(AggregateDataPtr __restrict place, ConstAggregateDataPtr rhs, Arena * arena) const override
     {
         auto argument_columns = prepareArgumentColumns();
-        this->data(place).merge(this->data(rhs), argument_columns, arena);
+        if constexpr (history_keeps_arena_forms)
+            this->data(place).merge(this->data(rhs), argument_columns, arena, headerKeyTypes());
+        else
+            this->data(place).merge(this->data(rhs), argument_columns, arena);
         addToNested(place, argument_columns, arena);
     }
 
