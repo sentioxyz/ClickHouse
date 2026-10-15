@@ -84,7 +84,8 @@ TEST(BinaryRowInputHeaderTypes, ReusedReaderTakesTheTypesOfEachHeader)
     settings.binary.decode_types_in_binary_format = true;
     settings.skip_unknown_fields = true;
 
-    ReadBufferFromString no_input("");
+    const String empty_input;
+    ReadBufferFromString no_input(empty_input);
     auto format = FormatFactory::instance().getInput("RowBinaryWithNamesAndTypes", no_input, sample, context, 8192, settings);
     StreamingFormatExecutor executor(sample, format);
 
