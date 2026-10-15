@@ -558,7 +558,7 @@ void StorageSetOrJoinBase::restoreFromFile(const String & file_path, BinaryTypeO
     ProfileInfo info;
     readBackupFile(file_path, origin, [&](const Block & block)
     {
-        info.update(block);
+        info.update(block.rows(), block.bytes());
         insertBlock(block, ctx);
     });
 
