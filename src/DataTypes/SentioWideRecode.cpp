@@ -71,7 +71,7 @@ FormatSettings makeNestedSettings(const FormatSettings & settings, BinaryTypeWri
     return result;
 }
 
-/// Whether the binary header of the type depends on the writer mode: it has a 512-bit type somewhere (also as an aggregate function
+/// Whether the binary header of the type depends on the writer mode: it has a 512-bit type or strided `QBit` somewhere (also as an aggregate function
 /// argument or a `JSON` typed path), which only the encoder knows completely.
 bool headerDependsOnWriterMode(const DataTypePtr & type)
 {
@@ -132,7 +132,7 @@ void readValue(std::string_view value, const FormatSettings & settings, BinaryTy
     if (!out)
         return;
 
-    /// Written again only if the writer modes write it differently, that is, if it holds a 512-bit type. Otherwise its payload is written
+    /// Written again only if the writer modes write it differently, that is, if it holds a 512-bit type or strided `QBit`. Otherwise its payload is written
     /// byte for byte as it was read: writing it again may change more than its headers (an aggregation state that keeps its elements in a
     /// hash set writes them in the order of the set it was read into), and a value with only bytes that look like a SentioWide descriptor
     /// in ordinary content has no header to change.
@@ -261,7 +261,10 @@ void recodeBinaryDynamicValue(std::string_view value, const FormatSettings & set
 
 bool binaryDynamicValueMayHaveSentioWideType(std::string_view value)
 {
-    return value.find(SENTIO_WIDE_PREFIX) != std::string_view::npos;
+    /// A conservative byte gate, not a type interpretation: ordinary content containing either marker may cause a no-op recoding.
+    /// `readValue` parses the header with the official origin and leaves opaque scalar payloads byte-identical.
+    return value.find(SENTIO_WIDE_PREFIX) != std::string_view::npos
+        || value.find(static_cast<char>(BinaryTypeIndex::QBitWithStride)) != std::string_view::npos;
 }
 
 std::string_view acceptBinaryDynamicValue(std::string_view value, const FormatSettings & settings, String & storage)
@@ -340,7 +343,7 @@ void acceptObjectSharedDataRows(IColumn & shared_data, size_t from, const Format
 namespace
 {
 
-/// One search over the bytes of the values [from, from + count): a value that holds the namespace of the descriptors holds it within its own
+/// One search over the bytes of the values [from, from + count): a value that holds a descriptor namespace or strided `QBit` marker holds it within its own
 /// bytes, and a match across two values only costs a recoding that changes nothing.
 bool anyBinaryDynamicValueMayHaveSentioWideType(const ColumnString & values, size_t from, size_t count)
 {

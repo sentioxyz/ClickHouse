@@ -1,4 +1,5 @@
 #include <Functions/FunctionsConversion.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <DataTypes/TypeNameIdentity.h>
 #include <Common/UnorderedMapWithMemoryTracking.h>
 #include <Common/VectorWithMemoryTracking.h>
@@ -158,7 +159,7 @@ ColumnPtr ConvertImplFromDynamicToColumn::execute(
     {
         shared_variant_indexes.reserve(input_rows_count);
         shared_variant_offsets.reserve(input_rows_count);
-        FormatSettings format_settings;
+        const auto & format_settings = getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
         const auto shared_variant_local_discr = variant_column.localDiscriminatorByGlobal(shared_variant_discr);
         for (size_t i = 0; i != input_rows_count; ++i)
         {
@@ -166,7 +167,7 @@ ColumnPtr ConvertImplFromDynamicToColumn::execute(
             {
                 auto value = shared_variant.getDataAt(offsets[i]);
                 ReadBufferFromMemory buf(value);
-                auto type = decodeDataType(buf);
+                auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
                 /// Types with the same name but different native classes (a native decimal named like another class) stay apart.
                 auto type_key = getTypeIdentityKey(type);
                 auto it = shared_variant_to_index.find(type_key);

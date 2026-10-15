@@ -657,7 +657,7 @@ void SerializationDynamic::serializeBinaryBulkWithMultipleStreamsAndCountTotalSi
                 {
                     auto value = shared_variant.getDataAt(offsets[i]);
                     ReadBufferFromMemory buf(value);
-                    auto type = decodeDataType(buf);
+                    auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
                     /// A type is recorded by name only if its name identifies it (see ColumnDynamic::getOrCalculateStatistics).
                     if (!isTypeIdentifiedByName(*type))
                         continue;
@@ -873,12 +873,12 @@ void SerializationDynamic::serializeForHashCalculation(const IColumn & column, s
     {
         auto value = dynamic_column.getSharedVariant().getDataAt(variant_column.offsetAt(row_num));
         ReadBufferFromMemory value_buf(value);
-        auto type = decodeDataType(value_buf);
+        auto type = decodeDataType(value_buf, BinaryTypeOrigin::OfficialCanonical);
         auto type_name = type->getName();
         /// A type that its name does not identify must not get the serialization cached for its name.
         auto serialization = isTypeIdentifiedByName(*type) ? getDataTypesCache().getSerialization(type_name) : type->getDefaultSerialization();
         auto tmp_column = type->createColumn();
-        serialization->deserializeBinary(*tmp_column, value_buf, {});
+        serialization->deserializeBinary(*tmp_column, value_buf, getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical));
         serializeVariantForHashCalculation(*tmp_column, serialization, type, 0, ostr);
         return;
     }
@@ -1073,14 +1073,14 @@ static void serializeTextImpl(
     {
         auto value = dynamic_column.getSharedVariant().getDataAt(variant_column.offsetAt(row_num));
         ReadBufferFromMemory buf(value);
-        auto variant_type = decodeDataType(buf);
+        auto variant_type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
         auto tmp_variant_column = variant_type->createColumn();
         /// Pass the decoded type so a cache miss doesn't parse the name through DataTypeFactory again. A type that its name does not
         /// identify must not get the serialization cached for its name.
         auto variant_serialization = isTypeIdentifiedByName(*variant_type)
             ? getDataTypesCache().getSerialization(variant_type->getName(), variant_type)
             : variant_type->getDefaultSerialization();
-        variant_serialization->deserializeBinary(*tmp_variant_column, buf, FormatSettings{});
+        variant_serialization->deserializeBinary(*tmp_variant_column, buf, getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical));
         nested_serialize(*variant_serialization, *tmp_variant_column, 0, ostr);
         return;
     }

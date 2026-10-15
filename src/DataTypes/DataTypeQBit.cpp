@@ -19,7 +19,6 @@ namespace ErrorCodes
 extern const int BAD_ARGUMENTS;
 extern const int ILLEGAL_TYPE_OF_ARGUMENT;
 extern const int NUMBER_OF_ARGUMENTS_DOESNT_MATCH;
-extern const int SUPPORT_IS_DISABLED;
 extern const int UNEXPECTED_AST_STRUCTURE;
 }
 
@@ -40,17 +39,6 @@ DataTypeQBit::DataTypeQBit(const DataTypePtr & element_type_, const size_t dimen
             ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
             "QBit data type only supports Int8, BFloat16, Float32, or Float64 as element type. Got: {}",
             element_type_->getName());
-
-    /// The first release of this fork disables QBit with an explicit stride (stride != dimension); see also the QBitWithStride
-    /// (0x3A) entry in DataTypesBinaryEncoding.cpp. Reject it here, before any hidden Tuple/FixedString nested type is
-    /// materialized. The canonical non-strided QBit (stride == dimension) and the element and dimension checks are unchanged.
-    if (stride != dimension)
-        throw Exception(
-            ErrorCodes::SUPPORT_IS_DISABLED,
-            "QBit with an explicit stride (dimension {}, stride {}) is disabled in the first release of this fork: strided QBit "
-            "is not supported. Use QBit(element_type, dimension) without a stride",
-            dimension,
-            stride);
 
     if (stride == 0 || stride > dimension || dimension % stride != 0)
         throw Exception(
@@ -209,7 +197,7 @@ column_name QBit(element_type, dimension[, stride])
 
 * `element_type` – the type of each vector element. The allowed types are `Int8`, `BFloat16`, `Float32` and `Float64`
 * `dimension` – the number of elements in each vector
-* `stride` – optional. Disabled in the first release of this fork: a `stride` different from `dimension` is rejected with `SUPPORT_IS_DISABLED`, only `stride == dimension` (the same as omitting it) is accepted. The number of dimensions stored together in one group of streams. When omitted it defaults to `dimension` (a single group). When provided, `dimension` must be a multiple of `stride`, and, when `stride` is smaller than `dimension`, `stride` must be a multiple of 8. The `dimension` dimensions are split into `dimension / stride` contiguous groups, and each group's bit planes are stored in separate streams. This lets a search over the first `D` dimensions (with `D` a multiple of `stride`) read only the streams of the groups that cover those dimensions, which is useful for Matryoshka embeddings.
+* `stride` – optional. The number of dimensions stored together in one group of streams. When omitted it defaults to `dimension` (a single group). When provided, `dimension` must be a multiple of `stride`, and, when `stride` is smaller than `dimension`, `stride` must be a multiple of 8. The `dimension` dimensions are split into `dimension / stride` contiguous groups, and each group's bit planes are stored in separate streams. This lets a search over the first `D` dimensions (with `D` a multiple of `stride`) read only the streams of the groups that cover those dimensions, which is useful for Matryoshka embeddings.
 
 ## Creating QBit {#creating-qbit}
 
@@ -330,7 +318,7 @@ The subcolumns follow a group-major order: in general `vec.N` reads bit plane `(
 ## Strides {#strides}
 
 :::note
-In the first release of this fork, `QBit` with a `stride` different from `dimension` is disabled. Creating such a type, casting to it, attaching it and restoring it fail with `SUPPORT_IS_DISABLED`. So does decoding its binary type header, also in values of `Dynamic` and `JSON`: upstream's index `0x37` with the origin `official_canonical`, and the index `0x3A` of the Decimal512 fork of 26.3 LTS with the origin `sentio_legacy_v0`. With the other origins these indexes mean other types or are refused, see [binary encoding of the 512-bit types](/sql-reference/data-types/data-types-binary-encoding#binary-encoding-of-512-bit-types). The rest of this section describes the feature as it exists upstream.
+Strided `QBit` uses binary type index `0x37` with the `official_canonical` origin and `0x3A` with `sentio_legacy_v0`. The `unknown` origin refuses ambiguous `0x37`; it never guesses from the payload. Legacy bridge output uses `0x3A`, including within `Dynamic`, `JSON` and aggregation states. The stride must divide the dimension, be byte-aligned when smaller, and form at most 1024 groups. See [binary encoding of the 512-bit types](/sql-reference/data-types/data-types-binary-encoding#binary-encoding-of-512-bit-types).
 :::
 
 By default a `QBit` stores each bit plane as a single stream spanning all `dimension` dimensions, so a search always reads whole bit planes across the full vector. The optional `stride` parameter partitions the `dimension` dimensions into `dimension / stride` contiguous groups and stores each group's bit planes in separate streams. This lets a search over only the first `D` dimensions (with `D` a multiple of `stride`) read just the streams of the groups that cover those dimensions — useful for [Matryoshka embeddings](https://arxiv.org/abs/2205.13147), where the leading dimensions form a usable lower-dimensional embedding.

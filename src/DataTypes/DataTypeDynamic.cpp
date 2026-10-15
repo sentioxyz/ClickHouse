@@ -1,4 +1,5 @@
 #include <DataTypes/DataTypeDynamic.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <DataTypes/Serializations/SerializationDynamic.h>
 #include <DataTypes/Serializations/SerializationDynamicElement.h>
 #include <DataTypes/Serializations/SerializationVariantElement.h>
@@ -931,14 +932,14 @@ std::unique_ptr<IDataType::SubstreamData> DataTypeDynamic::getDynamicSubcolumnDa
             auto shared_variant_local_discr = variant_column.localDiscriminatorByGlobal(dynamic_column.getSharedVariantDiscriminator());
             const auto & local_discriminators = variant_column.getLocalDiscriminators();
             const auto & offsets = variant_column.getOffsets();
-            const FormatSettings format_settings;
+            const auto & format_settings = getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
             for (size_t i = 0; i != local_discriminators.size(); ++i)
             {
                 if (local_discriminators[i] == shared_variant_local_discr)
                 {
                     auto value = shared_variant.getDataAt(offsets[i]);
                     ReadBufferFromMemory buf(value);
-                    auto type = decodeDataType(buf);
+                    auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
                     if (type->getName() == subcolumn_type_name)
                     {
                         subcolumn_serialization->deserializeBinary(*subcolumn, buf, format_settings);

@@ -32,7 +32,7 @@ using namespace DB;
 namespace DB::ErrorCodes
 {
 extern const int INCORRECT_DATA;
-extern const int SUPPORT_IS_DISABLED;
+extern const int ATTEMPT_TO_READ_AFTER_EOF;
 }
 
 namespace
@@ -168,8 +168,8 @@ TEST(BinaryIndexCollisionLocks, UnassignedTypeIndexesStayUnknown)
         EXPECT_NE(message.find("Unknown type code"), std::string::npos) << static_cast<int>(index) << ": " << message;
     }
 
-    /// 0x37 is upstream's strided QBit, which the fork disables.
-    EXPECT_EQ(codeOfDecoding(String(1, '\x37'), BinaryTypeOrigin::OfficialCanonical), ErrorCodes::SUPPORT_IS_DISABLED);
+    /// `0x37` is the official strided `QBit` header; an absent payload is truncated input, not a legacy integer.
+    EXPECT_EQ(codeOfDecoding(String(1, '\x37'), BinaryTypeOrigin::OfficialCanonical), ErrorCodes::ATTEMPT_TO_READ_AFTER_EOF);
 }
 
 /// A Custom name with the prefix `SentioWide_` is always read as a descriptor, so a registered type with such a name could not be encoded.

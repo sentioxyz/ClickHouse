@@ -91,7 +91,7 @@ namespace SentioLegacyBinaryTypeIndex
     inline constexpr uint8_t Int512 = 0x38;
     /// Followed by <uint8_precision><uint8_scale>.
     inline constexpr uint8_t Decimal512 = 0x39;
-    /// The fork's strided `QBit` index; strided `QBit` is disabled in this fork, so it is refused.
+    /// The old fork's strided `QBit` index, read only with the legacy origin and written only in legacy bridge mode.
     inline constexpr uint8_t QBitWithStride = 0x3A;
 }
 
@@ -159,7 +159,7 @@ Binary encoding for ClickHouse data types:
 |---------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 
 For type QBit the 0x37 encoding is used only when stride differs from the dimension N. When stride == N (including when the third argument is written explicitly, as in QBit(Float32, 4, 4)) the type is canonicalized to the two-argument QBit(T, N) form and encoded as 0x36 above, so its binary encoding stays byte-identical to a non-strided QBit.
-This fork refuses strided QBit (see DataTypeQBit): decoding 0x37 for the OfficialCanonical origin throws SUPPORT_IS_DISABLED.
+OfficialCanonical decodes strided QBit at 0x37; SentioLegacyV0 decodes it at 0x3A. Unknown refuses ambiguous 0x37.
 
 The 512-bit types UInt512, Int512 and Decimal512(P, S) of this fork are written as Custom (0x2C) with a private, versioned descriptor
 (SentioWide_v1_UInt512, SentioWide_v1_Int512, SentioWide_v1_Decimal512(P,S), see SentioWideTypeEncoding.h), which every origin decodes.

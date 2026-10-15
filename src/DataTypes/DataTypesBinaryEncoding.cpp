@@ -67,6 +67,17 @@ namespace
 /// It prevents from allocating too large arrays if the data is corrupted.
 constexpr size_t MAX_ARRAY_SIZE = 1000000;
 
+DataTypePtr decodeQBitWithStride(ReadBuffer & buf, size_t & complexity, size_t max_complexity, BinaryTypeOrigin origin)
+{
+    auto element_type = decodeDataTypeImpl(buf, complexity, max_complexity, origin);
+    size_t dimension = 0;
+    size_t stride = 0;
+    readVarUInt(dimension, buf);
+    readVarUInt(stride, buf);
+    /// The constructor checks the element, shape and group bounds before materializing the nested streams.
+    return std::make_shared<DataTypeQBit>(element_type, dimension, stride);
+}
+
 /// MAX_ARRAY_SIZE prevents wide types (single Tuple with 10M elements) before allocation. The max_complexity
 /// argument threaded into decodeDataTypeImpl prevents large width × depth (e.g. Tuple(Tuple(...) x 999999) x 10000)
 /// that does not trigger stack overflow or the MAX_ARRAY_SIZE check. max_complexity == 0 means unlimited.
@@ -363,7 +374,10 @@ void encodeDataTypeImpl(const DataTypePtr & type, WriteBuffer & buf, BinaryTypeW
 
     /// First, write the BinaryTypeIndex byte.
     auto binary_type_index = getBinaryTypeIndex(type);
-    buf.write(UInt8(binary_type_index));
+    /// A legacy reader must never mistake an official strided `QBit` for its `UInt512` index.
+    const UInt8 written_index = binary_type_index == BinaryTypeIndex::QBitWithStride && mode == BinaryTypeWriterMode::SentioLegacyBridge
+        ? SentioLegacyBinaryTypeIndex::QBitWithStride : UInt8(binary_type_index);
+    buf.write(written_index);
     /// Then, write additional information depending on the data type.
     switch (binary_type_index)
     {
@@ -651,12 +665,9 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
                 "Binary type index {0:#04x} is ambiguous without a declared origin: the Decimal512 fork wrote it for a 512-bit type, "
                 "upstream does not", UInt64(type));
     }
-    /// The fork's own strided QBit index: strided QBit is disabled, as for the upstream index below. The message is the one of the fork's
-    /// first release, for this index.
+    /// The old fork index has meaning only in its declared legacy origin, never as an upstream assignment.
     if (type == SentioLegacyBinaryTypeIndex::QBitWithStride && origin == BinaryTypeOrigin::SentioLegacyV0)
-        throw Exception(
-            ErrorCodes::SUPPORT_IS_DISABLED,
-            "Binary type index QBitWithStride (0x3A) is not supported: strided QBit is disabled in the first release of this fork");
+        return decodeQBitWithStride(buf, complexity, max_complexity, origin);
 
     auto binary_type_index = static_cast<BinaryTypeIndex>(type);
 
@@ -778,14 +789,8 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             return std::make_shared<DataTypeQBit>(element_type, dimension, dimension);
         }
         case BinaryTypeIndex::QBitWithStride:
-            /// The first release of this fork disables QBit with an explicit stride (see DataTypeQBit). Reject the index itself,
-            /// before the element type, dimension or stride is read or any type is constructed, so an empty, truncated or crafted
-            /// payload and even a canonical stride == dimension payload are refused the same way. 0x36 (non-strided QBit) is unchanged.
-            /// Only the OfficialCanonical origin reaches this case: SentioLegacyV0 reads 0x37 as UInt512 and Unknown refuses it as
-            /// ambiguous above.
-            throw Exception(
-                ErrorCodes::SUPPORT_IS_DISABLED,
-                "Binary type index QBitWithStride (0x37) is not supported: strided QBit is disabled in the first release of this fork");
+            /// Only the explicit official origin reaches this case: legacy reads `0x37` as `UInt512`, unknown refuses it above.
+            return decodeQBitWithStride(buf, complexity, max_complexity, origin);
         case BinaryTypeIndex::Set:
             return std::make_shared<DataTypeSet>();
         case BinaryTypeIndex::Interval:

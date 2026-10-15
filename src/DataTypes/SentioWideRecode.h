@@ -29,8 +29,8 @@ struct FormatSettings;
 ///  - accepting values read with the SentioLegacyV0 origin validates them in the same way and writes the 512-bit types again with the
 ///    SentioWide v1 descriptors;
 ///  - values written with the SentioLegacyBridge writer mode get the legacy indexes back (an explicit offline export).
-/// So memory only holds the canonical encoding, which never uses the indexes 0x37, 0x38, 0x39 (strided `QBit` is disabled), and decodes
-/// the same with the Unknown and the OfficialCanonical origin. A header without a 512-bit type keeps its bytes. The payload of a type
+/// So memory only holds the canonical encoding, which uses `0x37` only for official strided `QBit` and the Custom descriptors for the 512-bit types. Readers of canonical memory
+/// therefore declare OfficialCanonical; readers of untrusted input must still declare an origin or refuse ambiguous indexes. A header without a 512-bit type keeps its bytes. The payload of a type
 /// without nested headers is never parsed: ordinary `String` content is not type metadata. `Nothing` (NULL) has no payload.
 /// Every value is decoded in a nesting scope of its own (BinaryTypeDecodingContext): its header and every header nested in its payload are
 /// bounded each on its own by the type complexity limit, the depth of nested values by the same limit and by checkStackSize, and the
@@ -76,8 +76,8 @@ void validateBinaryDynamicValue(std::string_view value, const FormatSettings & s
 /// Writes one value read with `settings` in the encoding of `mode` (validating it as validateBinaryDynamicValue does).
 void recodeBinaryDynamicValue(std::string_view value, const FormatSettings & settings, BinaryTypeWriterMode mode, WriteBuffer & out);
 
-/// Whether a value in the canonical encoding can differ from its legacy encoding: only if it holds a SentioWide descriptor, also in a
-/// nested header (a byte search for the descriptor namespace, only to skip values that cannot change).
+/// Whether a value in the canonical encoding can differ from its legacy encoding: if it holds a SentioWide descriptor or official strided `QBit`, also in a
+/// nested header (a conservative byte search for either marker, only to skip values that cannot change).
 bool binaryDynamicValueMayHaveSentioWideType(std::string_view value);
 
 /// Accepts one value read with `settings`: the value itself after validation, or for SentioLegacyV0 its canonical encoding (written into
@@ -103,10 +103,10 @@ ColumnPtr recodeObjectSharedDataForWrite(const ColumnPtr & shared_data, BinaryTy
 /// The hash APIs that hash the bytes of binary `Dynamic` values (the range, weak and fast hashes of the columns of `Dynamic` and `JSON`)
 /// hash them as the Decimal512 fork had them in memory, with the legacy indexes of its 512-bit types (SentioLegacyBridge): the same data
 /// keeps the hash that the fork computed, which insert deduplication persisted in the IDs of the blocks. Only values that hold a SentioWide
-/// descriptor are written differently; everything else that these APIs hash (the layout, the order, the sizes) stays as it is.
+/// descriptor or strided `QBit` are written differently; everything else that these APIs hash (the layout, the order, the sizes) stays as it is.
 
 /// A column of canonical binary `Dynamic` values for a hash that reads only its rows [from, from + count): the column itself if none of them
-/// holds a SentioWide descriptor, otherwise a column of the same size whose rows [from, from + count) are written with SentioLegacyBridge
+/// holds a SentioWide descriptor or strided `QBit`, otherwise a column of the same size whose rows [from, from + count) are written with SentioLegacyBridge
 /// and whose other rows, which that hash does not read, are empty. So the cost follows the rows that are hashed, not the whole column.
 ColumnPtr getBinaryDynamicValuesForHashing(const ColumnPtr & values, size_t from, size_t count);
 
@@ -133,8 +133,8 @@ std::vector<String> recodeAggregationStateElements(
 /// The hash that the Decimal512 fork placed a key of a hash table of an aggregation state with (`groupUniqArray` and the like keep the arena
 /// forms of values, one of each of `types`, as keys): StringViewHash of the key as the fork had it, with the legacy indexes of its 512-bit
 /// types. Such a table keeps the canonical key and places it with this hash, so that its layout, and so the order of its elements, is that
-/// of the fork. A key without a SentioWide descriptor is that key itself. Any other key is read once (it is canonical) and written for both
-/// writer modes: only if they differ, the key holds a 512-bit type and its SentioLegacyBridge form is the fork's key; otherwise the bytes of
+/// of the fork. A key without either marker is that key itself. Any other key is read once (it is canonical) and written for both
+/// writer modes: only if they differ, the key holds a 512-bit type or strided `QBit` and its SentioLegacyBridge form is the fork's key; otherwise the bytes of
 /// the namespace are ordinary content, and the key is hashed as it is.
 size_t hashArenaKeyInLegacyDomain(std::string_view key, const DataTypes & types);
 

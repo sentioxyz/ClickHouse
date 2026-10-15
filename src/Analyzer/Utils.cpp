@@ -1,4 +1,5 @@
 #include <Analyzer/Utils.h>
+#include <DataTypes/SentioWideRecode.h>
 
 #include <Core/Settings.h>
 
@@ -1465,10 +1466,10 @@ Field getFieldFromColumnForASTLiteralImpl(const ColumnPtr & column, size_t row, 
             const auto & shared_variant = dynamic_column.getSharedVariant();
             auto value_data = shared_variant.getDataAt(variant_column.offsetAt(row));
             ReadBufferFromMemory buf(value_data);
-            auto type = decodeDataType(buf);
+            auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
             auto tmp_column = type->createColumn();
             tmp_column->reserve(1);
-            type->getDefaultSerialization()->deserializeBinary(*tmp_column, buf, {});
+            type->getDefaultSerialization()->deserializeBinary(*tmp_column, buf, getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical));
             return getFieldFromColumnForASTLiteralImpl(std::move(tmp_column), 0, type, is_inside_object);
         }
         case TypeIndex::Object:
@@ -1489,7 +1490,7 @@ Field getFieldFromColumnForASTLiteralImpl(const ColumnPtr & column, size_t row, 
             auto dynamic_type = std::make_shared<DataTypeDynamic>();
             auto dynamic_serialization = dynamic_type->getDefaultSerialization();
 
-            FormatSettings format_settings;
+            const auto & format_settings = getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
             for (size_t i = start; i != end; ++i)
             {
                 String path{shared_paths->getDataAt(i)};

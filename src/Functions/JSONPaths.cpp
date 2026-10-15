@@ -359,7 +359,7 @@ private:
         {
             auto value = dynamic_column->getSharedVariant().getDataAt(variant_column.offsetAt(i));
             ReadBufferFromMemory buf(value);
-            auto type = decodeDataType(buf);
+            auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
             return type->getName();
         }
 
@@ -369,7 +369,7 @@ private:
     std::optional<String> getDynamicValueTypeFromSharedData(std::string_view value) const
     {
         ReadBufferFromMemory buf(value);
-        auto type = decodeDataType(buf);
+        auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
         if (isNothing(type))
             return std::nullopt;
         return type->getName();

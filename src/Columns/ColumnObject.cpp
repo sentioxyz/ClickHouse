@@ -31,8 +31,8 @@ namespace
 
 const FormatSettings & getFormatSettings()
 {
-    static thread_local const FormatSettings settings;
-    return settings;
+    /// Shared values have already been normalized at their external ingress boundary.
+    return getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
 }
 
 template <typename Container, typename Compare>
@@ -373,7 +373,7 @@ void ColumnObject::getValueNameImpl(WriteBufferFromOwnString & name_buf, size_t 
 
             auto value_data = shared_values->getDataAt(i);
             ReadBufferFromMemory buf(value_data);
-            auto decoded_type = decodeDataType(buf);
+            auto decoded_type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
 
             if (isNothing(decoded_type))
             {
@@ -1313,7 +1313,7 @@ void ColumnObject::updateHashWithValue(size_t n, SipHash & hash) const
         /// Hash the value the same way ColumnDynamic hashes a value in its shared variant, so the hash is layout-independent.
         auto value = shared_data_values->getDataAt(i);
         ReadBufferFromMemory buf(value);
-        auto value_type = decodeDataType(buf);
+        auto value_type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
         hash.update(path);
 
         /// A shared_data entry can be encoded as Nothing (a serialized NULL). Nothing has no usable
@@ -2590,7 +2590,7 @@ void ColumnObject::repairDuplicatesInDynamicPathsAndSharedData(size_t offset)
             {
                 auto value = shared_data_values->getDataAt(j);
                 ReadBufferFromMemory buf(value);
-                auto type_from_shared_data = decodeDataType(buf);
+                auto type_from_shared_data = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
                 if (!isNothing(type_from_shared_data))
                 {
                     auto type_from_dynamic_path = dynamic_paths_ptrs.find(path)->second->getTypeAt(i);

@@ -61,8 +61,8 @@ void sortAndKeepTop(Container & container, size_t limit, Compare compare)
 /// Static default format settings to avoid creating it every time.
 const FormatSettings & getFormatSettings()
 {
-    static const FormatSettings settings;
-    return settings;
+    /// Shared values have already been normalized at their external ingress boundary.
+    return getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
 }
 
 }
@@ -377,7 +377,7 @@ void ColumnDynamic::get(size_t n, Field & res) const
     const auto & shared_variant = getSharedVariant();
     auto value_data = shared_variant.getDataAt(variant_col.offsetAt(n));
     ReadBufferFromMemory buf(value_data);
-    auto type = decodeDataType(buf);
+    auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
     type->getDefaultSerialization()->deserializeBinary(res, buf, getFormatSettings());
 }
 
@@ -407,7 +407,7 @@ void ColumnDynamic::getValueNameImpl(WriteBufferFromOwnString & name_buf, size_t
     const auto & shared_variant = getSharedVariant();
     auto value_data = shared_variant.getDataAt(variant_col.offsetAt(n));
     ReadBufferFromMemory buf(value_data);
-    auto type = decodeDataType(buf);
+    auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
     const auto col = type->createColumn();
     type->getDefaultSerialization()->deserializeBinary(*col, buf, getFormatSettings());
     col->getValueNameImpl(name_buf, 0, options);
@@ -443,7 +443,7 @@ void ColumnDynamic::doInsertFrom(const IColumn & src_, size_t n)
         auto value = src_shared_variant.getDataAt(src_offset);
         /// Decode data type of this value.
         ReadBufferFromMemory buf(value);
-        auto type = decodeDataType(buf);
+        auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
         auto type_name = type->getName();
         /// Check if we have this variant and deserialize value into variant from shared variant data.
         if (auto discr = findVariantDiscriminator(type, type_name))
@@ -549,7 +549,7 @@ void ColumnDynamic::doInsertRangeFrom(const IColumn & src_, size_t start, size_t
                 chassert(local_discriminators[prev_size + i] == shared_variant_local_discr);
                 auto value = src_shared_variant.getDataAt(src_offsets[start + i]);
                 ReadBufferFromMemory buf(value);
-                auto type = decodeDataType(buf);
+                auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
                 auto type_name = type->getName();
                 /// Check if we have variant with this type. In this case we should extract
                 /// the value from src shared variant and insert it into this variant.
@@ -676,7 +676,7 @@ void ColumnDynamic::doInsertRangeFrom(const IColumn & src_, size_t start, size_t
             {
                 auto value = src_shared_variant.getDataAt(src_offset);
                 ReadBufferFromMemory buf(value);
-                auto type = decodeDataType(buf);
+                auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
                 auto type_name = type->getName();
                 /// Check if we have variant with this type. In this case we should extract
                 /// the value from src shared variant and insert it into this variant.
@@ -754,7 +754,7 @@ void ColumnDynamic::doInsertManyFrom(const IColumn & src_, size_t position, size
         auto value = src_shared_variant.getDataAt(src_offset);
         /// Decode data type of this value.
         ReadBufferFromMemory buf(value);
-        auto type = decodeDataType(buf);
+        auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
         auto type_name = type->getName();
         /// Check if we have this variant and deserialize value into variant from shared variant data.
         if (auto discr = findVariantDiscriminator(type, type_name))
@@ -985,7 +985,7 @@ void ColumnDynamic::updateHashWithValue(size_t n, SipHash & hash) const
     {
         auto value = getSharedVariant().getDataAt(variant_col.offsetAt(n));
         ReadBufferFromMemory buf(value);
-        auto type = decodeDataType(buf);
+        auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
         hash.update(type->getName());
         auto tmp_column = type->createColumn();
         type->getDefaultSerialization()->deserializeBinary(*tmp_column, buf, getFormatSettings());
@@ -1086,9 +1086,9 @@ int ColumnDynamic::compareSerializedValues(std::string_view lhs, std::string_vie
         return 0;
 
     ReadBufferFromMemory buf_left(lhs);
-    auto left_data_type = decodeDataType(buf_left);
+    auto left_data_type = decodeDataType(buf_left, BinaryTypeOrigin::OfficialCanonical);
     ReadBufferFromMemory buf_right(rhs);
-    auto right_data_type = decodeDataType(buf_right);
+    auto right_data_type = decodeDataType(buf_right, BinaryTypeOrigin::OfficialCanonical);
 
     /// A Nothing type means the value is NULL (no value bytes follow). Order NULLs using
     /// nan_direction_hint, exactly like the NULL_DISCRIMINATOR handling in doCompareAt.
@@ -1153,7 +1153,7 @@ int ColumnDynamic::doCompareAt(size_t n, size_t m, const IColumn & rhs, int nan_
         /// Extract left type name from the value.
         auto left_value = getSharedVariant().getDataAt(left_variant.offsetAt(n));
         ReadBufferFromMemory buf_left(left_value);
-        auto left_data_type = decodeDataType(buf_left);
+        auto left_data_type = decodeDataType(buf_left, BinaryTypeOrigin::OfficialCanonical);
         auto left_data_type_name = left_data_type->getName();
 
         /// If rows have different types, we compare type names (and the types, which can differ under the same name).
@@ -1176,7 +1176,7 @@ int ColumnDynamic::doCompareAt(size_t n, size_t m, const IColumn & rhs, int nan_
         /// Extract right type name from the value.
         auto right_value = right_dynamic.getSharedVariant().getDataAt(right_variant.offsetAt(m));
         ReadBufferFromMemory buf_right(right_value);
-        auto right_data_type = decodeDataType(buf_right);
+        auto right_data_type = decodeDataType(buf_right, BinaryTypeOrigin::OfficialCanonical);
         auto right_data_type_name = right_data_type->getName();
 
         /// If rows have different types, we compare type names (and the types, which can differ under the same name).
@@ -1316,7 +1316,7 @@ String ColumnDynamic::getTypeNameAt(size_t row_num) const
     {
         const auto value = getSharedVariant().getDataAt(variant_col.offsetAt(row_num));
         ReadBufferFromMemory buf(value);
-        return decodeDataType(buf)->getName();
+        return decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical)->getName();
     }
 
     return variant_info.variant_names[discr];
@@ -1333,7 +1333,7 @@ DataTypePtr ColumnDynamic::getTypeAt(size_t row_num) const
     {
         const auto value = getSharedVariant().getDataAt(variant_col.offsetAt(row_num));
         ReadBufferFromMemory buf(value);
-        return decodeDataType(buf);
+        return decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
     }
 
     return assert_cast<const DataTypeVariant &>(*variant_info.variant_type).getVariants()[discr];
@@ -1353,7 +1353,7 @@ void ColumnDynamic::getAllTypeNamesInto(UnorderedSetWithMemoryTracking<String> &
     {
         const auto value = shared_variant.getDataAt(i);
         ReadBufferFromMemory buf(value);
-        names.insert(decodeDataType(buf)->getName());
+        names.insert(decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical)->getName());
     }
 }
 
@@ -1674,7 +1674,7 @@ ColumnDynamic::StatisticsPtr ColumnDynamic::getOrCalculateStatistics() const
     {
         auto value = shared_variant.getDataAt(i);
         ReadBufferFromMemory buf(value);
-        auto type = decodeDataType(buf);
+        auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
         /// The size of the shared variant above counts every value, but a type is recorded by name only if its name identifies it: the
         /// statistics are read by name, and a native decimal has the name of another type (see isTypeIdentifiedByName).
         if (!isTypeIdentifiedByName(*type))

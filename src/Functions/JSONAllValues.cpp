@@ -1,4 +1,5 @@
 #include <Functions/IFunction.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <Functions/FunctionHelpers.h>
 #include <Functions/FunctionFactory.h>
 #include <Common/UnorderedMapWithMemoryTracking.h>
@@ -88,7 +89,7 @@ private:
         auto & result_data = *result_data_column;
         auto & offsets = offsets_column->getData();
 
-        FormatSettings format_settings;
+        const auto & format_settings = getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
 
         /// Collect typed + dynamic paths, sorted for deterministic output order.
         const auto & typed_path_types = type_object.getTypedPaths();
@@ -219,7 +220,7 @@ private:
         }
         else
         {
-            auto type = decodeDataType(buf);
+            auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
             /// Types with the same name but different native classes (a native decimal named like another class) stay apart.
             auto type_key = getTypeIdentityKey(type);
             const auto & serialization = get_serialization_from_cache(type_key, *type);

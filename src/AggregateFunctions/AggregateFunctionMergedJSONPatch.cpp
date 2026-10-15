@@ -321,7 +321,7 @@ struct AggregateFunctionMergedJSONPatchData
                 ReadBufferFromString val_buf(entry.value_blob);
                 auto ser_it = typed_path_serializations.find(String(path));
                 if (ser_it != typed_path_serializations.end())
-                    ser_it->second->deserializeBinary(*typed_it->second, val_buf, {});
+                    ser_it->second->deserializeBinary(*typed_it->second, val_buf, getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical));
             }
             else
             {
@@ -329,15 +329,15 @@ struct AggregateFunctionMergedJSONPatchData
                 if (auto dynamic_it = result_column.getDynamicPathsPtrs().find(path);
                     dynamic_it != result_column.getDynamicPathsPtrs().end())
                 {
-                    DataTypeDynamic().getDefaultSerialization()->deserializeBinary(*dynamic_it->second, val_buf, {});
+                    DataTypeDynamic().getDefaultSerialization()->deserializeBinary(*dynamic_it->second, val_buf, getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical));
                 }
                 else if (auto * dynamic_path_column = result_column.tryToAddNewDynamicPath(path))
                 {
-                    DataTypeDynamic().getDefaultSerialization()->deserializeBinary(*dynamic_path_column, val_buf, {});
+                    DataTypeDynamic().getDefaultSerialization()->deserializeBinary(*dynamic_path_column, val_buf, getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical));
                 }
                 else
                 {
-                    auto type = decodeDataType(val_buf);
+                    auto type = decodeDataType(val_buf, BinaryTypeOrigin::OfficialCanonical);
                     if (!isNothing(type))
                     {
                         shared_data_paths->insertData(path.data(), path.size());

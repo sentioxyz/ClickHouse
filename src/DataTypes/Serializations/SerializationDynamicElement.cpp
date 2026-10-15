@@ -1,4 +1,5 @@
 #include <Common/SipHash.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <DataTypes/Serializations/SerializationDynamicElement.h>
 #include <DataTypes/Serializations/SerializationVariantElement.h>
 #include <DataTypes/Serializations/SerializationVariantElementNullMap.h>
@@ -225,7 +226,7 @@ void SerializationDynamicElement::deserializeBinaryBulkWithMultipleStreams(
         const auto & nullable_shared_variant = assert_cast<const ColumnNullable &>(*shared_variant_column);
         const auto & shared_null_map = nullable_shared_variant.getNullMapData();
         const auto & shared_variant = assert_cast<const ColumnString &>(nullable_shared_variant.getNestedColumn());
-        const FormatSettings format_settings;
+        const auto & format_settings = getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
         for (size_t i = 0; i != shared_variant.size(); ++i)
         {
             if (!shared_null_map[i])
@@ -233,7 +234,7 @@ void SerializationDynamicElement::deserializeBinaryBulkWithMultipleStreams(
                 auto value = shared_variant.getDataAt(i);
                 ReadBufferFromMemory buf(value);
                 /// Reading already-stored shared-variant data: not limited by the input complexity guard.
-                auto type = decodeDataType(buf);
+                auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
                 /// The subcolumn is the type created from its name. A type that has the same name but is not identified by it (a native
                 /// decimal named like another class) is a different type, whose values must not be read with this type's width.
                 if (type->getName() == dynamic_element_name && isTypeIdentifiedByName(*type))

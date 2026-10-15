@@ -373,8 +373,8 @@ TEST(SentioWideTypeEncoding, DescriptorSizeLimitBeforeAllocation)
 }
 
 /// 0x37/0x38/0x39 mean the 512-bit types only in the SentioLegacyV0 origin; Unknown refuses them as ambiguous before reading any payload;
-/// OfficialCanonical keeps the upstream meaning (0x37 strided QBit, rejected by the strided QBit guard; 0x38/0x39 unassigned). 0x3A is the
-/// fork's refusal only in the legacy origin.
+/// OfficialCanonical keeps the upstream meaning (0x37 strided QBit; 0x38/0x39 unassigned). 0x3A is the
+/// fork's strided QBit only in the legacy origin.
 TEST(SentioWideTypeEncoding, LegacyIndexesFollowTheOrigin)
 {
     for (const auto & c : WIDE_CASES)
@@ -392,8 +392,8 @@ TEST(SentioWideTypeEncoding, LegacyIndexesFollowTheOrigin)
         EXPECT_NE(message.find("Unknown type code"), String::npos) << hex << ": " << message;
     }
     /// Upstream strided QBit: 0x37, element Float32 (0x0D), dimension 8, stride 4.
-    EXPECT_EQ(errorOf([&] { decode(unhex("370d0804"), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::SUPPORT_IS_DISABLED);
-    EXPECT_EQ(errorOf([&] { decode(unhex("3a0d0804"), BinaryTypeOrigin::SentioLegacyV0); }).first, ErrorCodes::SUPPORT_IS_DISABLED);
+    EXPECT_EQ(errorOf([&] { decode(unhex("370d0804"), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::UNEXPECTED_AST_STRUCTURE);
+    EXPECT_EQ(errorOf([&] { decode(unhex("3a0d0804"), BinaryTypeOrigin::SentioLegacyV0); }).first, ErrorCodes::UNEXPECTED_AST_STRUCTURE);
     for (auto origin : {BinaryTypeOrigin::Unknown, BinaryTypeOrigin::OfficialCanonical})
     {
         auto [code, message] = errorOf([&] { decode(unhex("3a0d0804"), origin); });

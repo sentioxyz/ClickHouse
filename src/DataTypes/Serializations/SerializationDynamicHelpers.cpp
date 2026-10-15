@@ -1,4 +1,5 @@
 #include <DataTypes/Serializations/SerializationDynamicHelpers.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <DataTypes/DataTypeVariant.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
 #include <DataTypes/DataTypesNumber.h>
@@ -51,7 +52,7 @@ ColumnPtr createIndexes(
         {
             auto value = shared_variant_column.getDataAt(offsets[i]);
             ReadBufferFromMemory buf(value);
-            auto type = decodeDataType(buf);
+            auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
             data.push_back(static_cast<IndexesColumn::ValueType>(shared_variant_type_to_index.at(getTypeIdentityKey(type))));
         }
         else
@@ -88,12 +89,12 @@ FlattenedDynamicColumn flattenDynamicColumn(const ColumnDynamic & dynamic_column
     /// Collect all types from SharedVariant.
     std::unordered_map<String, std::pair<MutableColumnPtr, DataTypePtr>> shared_variant_columns;
     const auto & shared_variant_column = dynamic_column.getSharedVariant();
-    FormatSettings format_settings;
+    const auto & format_settings = getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
     for (size_t i = 0; i != shared_variant_column.size(); ++i)
     {
         auto value = shared_variant_column.getDataAt(i);
         ReadBufferFromMemory buf(value);
-        auto type = decodeDataType(buf);
+        auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
         /// Types with the same name but different native classes stay apart (getTypeIdentityKey).
         auto type_key = getTypeIdentityKey(type);
         auto it = shared_variant_columns.find(type_key);

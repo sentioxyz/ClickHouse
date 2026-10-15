@@ -1,4 +1,5 @@
 #include <Functions/FunctionDynamicAdaptor.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <Functions/TypeMismatchStrictness.h>
 #include <Common/UnorderedMapWithMemoryTracking.h>
 #include <Common/VectorWithMemoryTracking.h>
@@ -409,7 +410,7 @@ ColumnPtr ExecutableFunctionDynamicAdaptor::executeImpl(const ColumnsWithTypeAnd
     const auto & shared_variant = dynamic_column.getSharedVariant();
     /// Remember created serializations for variants in shared variant to avoid recreating it every time.
     UnorderedMapWithMemoryTracking<String, SerializationPtr> shared_variants_serializations;
-    FormatSettings format_settings;
+    const auto & format_settings = getFormatSettingsForBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical);
     for (size_t i = 0; i != local_discriminators.size(); ++i)
     {
         auto local_discr = local_discriminators[i];
@@ -423,7 +424,7 @@ ColumnPtr ExecutableFunctionDynamicAdaptor::executeImpl(const ColumnsWithTypeAnd
             /// Deserialize type and value from shared variant row.
             auto value = shared_variant.getDataAt(offsets[i]);
             ReadBufferFromMemory buf(value);
-            auto type = decodeDataType(buf);
+            auto type = decodeDataType(buf, BinaryTypeOrigin::OfficialCanonical);
             /// Types with the same name but different native classes (a native decimal named like another class) stay apart.
             auto type_key = getTypeIdentityKey(type);
 
