@@ -83,7 +83,7 @@ For type `QBit` the `0x37` encoding is used only when `stride` differs from the 
 - `SentioWide_v1_Int512`;
 - `SentioWide_v1_Decimal512(P,S)`, where `P` and `S` are decimal numbers without a sign, leading zeros or spaces, `1 <= P <= 154` and `0 <= S <= 154`.
 
-A descriptor always means the 64-byte type: `SentioWide_v1_Decimal512(76,10)` is a `Decimal512` with the precision 76, not the `Decimal256(76, 10)` that has the same SQL name. A descriptor is at most 256 bytes long. An unknown version or type, malformed parameters and trailing bytes are rejected.
+A descriptor always means the 64-byte type: `SentioWide_v1_Decimal512(76,10)` is a `Decimal512` with the precision 76, not the `Decimal256(76, 10)` that has the same SQL name. A descriptor is at most 256 bytes long. An unknown version or type, malformed parameters and trailing bytes are rejected. The prefix `SentioWide_` is reserved: a `Custom` name that starts with it is always read as a descriptor.
 
 The Decimal512 fork of 26.3 LTS wrote these types with other indexes: `0x37` (`UInt512`), `0x38` (`Int512`) and `0x39<uint8_precision><uint8_scale>` (`Decimal512(P, S)`), and strided `QBit` with `0x3A`. Upstream ClickHouse uses `0x37` for strided `QBit`. What these indexes mean therefore depends on who wrote the data, and it is never guessed from the data. It is declared with the setting [input_format_binary_type_origin](/reference/settings/formats/input-format#input_format_binary_type_origin):
 
@@ -94,6 +94,18 @@ The Decimal512 fork of 26.3 LTS wrote these types with other indexes: `0x37` (`U
 `0x3A` is refused with every origin. The origin applies to the column types of `Native` and `RowBinaryWithNamesAndTypes` input when they are encoded in binary format, and to every `Dynamic` value, `JSON` value and aggregation state of the input, which carry their binary type headers in any case.
 
 The setting [output_format_binary_type_writer_mode](/reference/settings/formats/output-format#output_format_binary_type_writer_mode) = `sentio_legacy_bridge` writes the indexes of the fork instead, for an explicit export to it. Such data is ambiguous to any reader that does not declare its origin.
+
+The stored data of tables is read with the origin that each table keeps, not with these settings. See [Stored binary type origin](/sql-reference/data-types/stored-binary-type-origin).
+
+### Index assignments of the fork {#index-assignments-of-the-fork}
+
+The fork relies on index assignments that upstream ClickHouse may change in a newer version:
+- the type indexes of the table above;
+- the type indexes that upstream does not assign: `0x33` and `0x35` (reserved), and `0x38` to `0x3A`, which the fork of 26.3 LTS used;
+- the prefix `SentioWide_` of `Custom` type names;
+- the indexes `0x16`, `0x17` and `0x18` of the [parameter encoding](#aggregate-function-parameter-binary-encoding).
+
+Tests of the fork lock these assignments, so that a newer upstream version that assigns any of these indexes or names fails them before it is merged. The collision is then reviewed. The locks cover only these encodings of ClickHouse. They do not make data that other programs wrote with these indexes unambiguous, and legacy data without a declared origin stays refused.
 
 ### Interval kind binary encoding {#interval-kind-binary-encoding}
 
@@ -142,5 +154,10 @@ The encoding of a parameter consists of 1 byte indicating the type of the parame
 | `Bool`                   | `0x13<bool_value>`                                                                                                             |
 | `Object`                 | `0x14<var_uint_size><var_uint_key_size_1><key_data_1><value_encoding_1>...<var_uint_key_size_N><key_data_N><value_encoding_N>` |
 | `AggregateFunctionState` | `0x15<var_uint_name_size><name_data><var_uint_data_size><data>`                                                                |
+| `Decimal512`             | `0x16<var_uint_scale><int512_little_endian_value>`                                                                             |
+| `UInt512`                | `0x17<uint512_little_endian_value>`                                                                                            |
+| `Int512`                 | `0x18<int512_little_endian_value>`                                                                                             |
 | `Negative infinity`      | `0xFE`                                                                                                                         |
 | `Positive infinity`      | `0xFF`                                                                                                                         |
+
+`0x16`, `0x17` and `0x18` are the indexes of the Decimal512 fork for its 512-bit values; upstream ClickHouse does not assign them (see [Index assignments of the fork](#index-assignments-of-the-fork)).
