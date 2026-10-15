@@ -305,7 +305,8 @@
         {
           "group": "Binary encoding",
           "pages": [
-            "reference/data-types/data-types-binary-encoding"
+            "reference/data-types/data-types-binary-encoding",
+            "reference/data-types/stored-binary-type-origin"
           ]
         }
       ]

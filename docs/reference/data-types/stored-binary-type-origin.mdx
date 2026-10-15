@@ -1,0 +1,99 @@
+---
+description: 'Documentation for the stored binary type origin of tables in the Decimal512 fork'
+sidebarTitle: 'Stored binary type origin'
+slug: /sql-reference/data-types/stored-binary-type-origin
+title: 'Stored binary type origin'
+doc_type: 'reference'
+---
+
+The binary type headers inside stored `Dynamic` values, `JSON` values and aggregation states can use the indexes `0x37`, `0x38` and `0x39`. These indexes mean the 512-bit types of the Decimal512 fork of 26.3 LTS, but upstream ClickHouse uses `0x37` for strided `QBit` (see [512-bit types](/sql-reference/data-types/data-types-binary-encoding#binary-encoding-of-512-bit-types)). What stored data means is therefore never guessed from the data. Each table keeps the *stored binary type origin* of its data, and its data is read with it.
+
+## Origins {#origins}
+
+- `official_canonical`: the data was written by this version. It uses the self-describing encoding of the 512-bit types and never the indexes above.
+- `sentio_legacy_v0`: the data was written by the Decimal512 fork of 26.3 LTS. Its indexes `0x37`, `0x38` and `0x39` are the 512-bit types of the fork, which are converted to the self-describing encoding as the data is read.
+- `unknown`: nothing proves who wrote the data. It is read as the self-describing encoding, and the ambiguous indexes are refused with the error `INCORRECT_DATA` instead of being guessed.
+
+A table is *unset* when it has no origin at all: no record, and no origin in its replicated metadata. It is read as `unknown`. An unset table can be registered (see [Registering the origin of old data](#registration)). A table with a *stated* `unknown` origin, for example a table created by `CREATE ... AS` from a table with a stated `unknown` origin, is not unset: it cannot be registered, and it exchanges parts only with tables of the same stated origin (see [Moving parts between tables](#moving-parts)).
+
+## Where the origin is kept {#records}
+
+- **Table record.** A small versioned file `sentio_binary_type_origin.txt` in the data directory of a table with a UUID, which means a table in an `Atomic` or `Replicated` database. The record is bound to that UUID and never applies to another table. A record of another table, a record of another kind and an invalid record all leave the table `unknown`.
+- **Replicated metadata.** A `Replicated` table also keeps its origin in its metadata in ZooKeeper, so all replicas agree on it.
+- **Part record.** A data part that comes into a table as raw files carries a record of its own. This covers a part fetched from another table, attached from `detached`, or restored into a table of another origin. The record is bound to the checksum of the part. Such a part is read with its own record, or as `unknown` if it has none, never with the origin of the table, which is no proof of its data.
+
+A table without a UUID (an `Ordinary` database) has no record: its data is read as `unknown`, and its origin cannot be registered.
+
+## How a table gets its origin {#stamping}
+
+- An original `CREATE TABLE` on this version writes `official_canonical`.
+  - It does not take over data left in the data directory of the table, so leftover data never takes the new origin. It is refused if that
+    directory already holds a record, and for `Log`, `TinyLog`, `StripeLog`, `Set` and `Join` tables if it exists at all.
+  - `CREATE TABLE ... AS` another table and `CLONE AS` take the origin of the source table, or none if the source is unset.
+- `ATTACH TABLE`, a server restart and `RESTORE` never write an origin.
+  - A table that existed before this version therefore stays unset until it is registered.
+  - A `RESTORE` writes only the record that the backup carries for the table.
+
+## Registering the origin of old data {#registration}
+
+```sql
+ALTER TABLE t MODIFY SENTIO BINARY TYPE ORIGIN 'sentio_legacy_v0'
+```
+
+- It requires the `SENTIO_REGISTER_BINARY_TYPE_ORIGIN` privilege on the table. That privilege is not part of `ALTER`.
+- It must be the only command of its `ALTER` statement.
+- Only `sentio_legacy_v0` can be registered, and only on an unset table with a UUID. The registration happens once: a table with any record, a stated `unknown` included, refuses it.
+- For a `Replicated` table, the registration is a versioned change of its replicated metadata, which every replica applies.
+
+Register a table only if all of its data was written by the Decimal512 fork of 26.3 LTS. Data that this version writes into an unset table is canonical, and canonical data never uses the ambiguous indexes. It is therefore read the same after the registration.
+
+## Engines {#engines}
+
+| Engine | Origin |
+|---|---|
+| `MergeTree` family | Table record, replicated metadata, and part records (see above). |
+| `Log`, `TinyLog`, `StripeLog` | Table record. A read takes one origin for its whole duration, and the registration waits for the reads and writes of the table. |
+| `Set`, `Join` | Table record. See [Set and Join](#set-and-join). |
+| `Memory` | None. Its data lives in memory and is always canonical, and so are its backups. |
+| `EmbeddedRocksDB`, `KeeperMap` | None. Their values are read as `unknown`. |
+| `Distributed` | None. The files of its asynchronous insert queues are read as `unknown`. |
+
+For data read by input formats and table functions, the origin is declared with the setting [input_format_binary_type_origin](/reference/settings/formats/input-format#input_format_binary_type_origin), not by a table.
+
+### Set and Join {#set-and-join}
+
+- **Loading.** A `Set` or `Join` table reads its files again when it loads, with or without the `persistent` setting.
+- **A blocked table.** If a file holds an ambiguous index and the table has no origin that reads it, the table loads without its data and is blocked.
+  - It refuses every use of its values with the error of the load: inserts, `SELECT`, `IN`, `JOIN`, `joinGet`, mutations and `OPTIMIZE`.
+  - Its `total_rows` and `total_bytes` in `system.tables` are `NULL`.
+  - Its structure stays readable.
+- **Registration.** It reads all the files again, in order, with `sentio_legacy_v0`, and then replaces the state of the table and unblocks it. If a file cannot be read, nothing changes: not the files, the state, the blocked table, its record or the numbering of its files.
+- **Without the `persistent` setting.** A table that is not blocked keeps the rows that were inserted into it, which are in no file.
+- **`TRUNCATE`.** It removes the data of the table and unblocks it.
+- Any other error while the files are read fails the load, as before.
+
+## Moving parts between tables {#moving-parts}
+
+`ATTACH PARTITION ... FROM`, `REPLACE PARTITION` and `MOVE PARTITION ... TO TABLE` require both tables to have the same determined origin. That can be the same stated origin, a stated `unknown` included, or both unset. An unset table and a table with a stated `unknown` origin do not exchange parts. Neither does a table whose origin is undetermined: one with a record of another table, or one whose record conflicts with its replicated metadata.
+
+## Backups {#backups}
+
+- **`MergeTree` backups** carry the record of the table and the records of its parts, and `RESTORE` writes them back.
+- **`Log`, `TinyLog` and `StripeLog` backups** hold the files of the table and no origin.
+  - Their columns whose values can carry binary type headers are restored only into a table without an origin, such as the one that `RESTORE` creates. That table can then be registered.
+  - A restore into a table with an origin is refused before anything is written.
+  - Nothing infers the origin of such a backup automatically.
+- **`Memory` backups** of this version are canonical. A backup of the Decimal512 fork whose data holds ambiguous indexes is refused with `INCORRECT_DATA`, and nothing of it is restored.
+
+## Upgrading from the Decimal512 fork of 26.3 LTS {#upgrading}
+
+- **`Distributed` queues.** Flush them on 26.3 LTS before the upgrade (`SYSTEM FLUSH DISTRIBUTED`).
+  - A queue file that the fork wrote with an ambiguous index is refused after the upgrade.
+  - The file stays in the queue and is retried; it is not moved to `broken`. The sends of that queue stop at it.
+- **Tables of the fork** stay unset and are read as `unknown`. Ambiguous data is refused until the table is registered.
+  - A blocked `Set` or `Join` table is unblocked by its registration.
+- **Tables in `Ordinary` databases** cannot be registered. Re-create their data through an explicit export and import, as below.
+- **`EmbeddedRocksDB` and `KeeperMap` tables, and `Memory` backups,** whose data holds ambiguous indexes have no origin to register. Their data goes through an explicit export and import:
+  1. Export the data with 26.3 LTS to a format that keeps the binary type headers, such as `Native`.
+  2. Import it with `input_format_binary_type_origin = 'sentio_legacy_v0'`, which converts it to the canonical encoding.
+- **The other way, back to the fork:** export with [output_format_binary_type_writer_mode](/reference/settings/formats/output-format#output_format_binary_type_writer_mode) = `sentio_legacy_bridge`. 26.3 LTS cannot read data that this version wrote canonically.
