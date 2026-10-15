@@ -651,12 +651,12 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
                 "Binary type index {0:#04x} is ambiguous without a declared origin: the Decimal512 fork wrote it for a 512-bit type, "
                 "upstream does not", UInt64(type));
     }
-    /// The fork's own strided QBit index: strided QBit is disabled, as for the upstream index below.
+    /// The fork's own strided QBit index: strided QBit is disabled, as for the upstream index below. The message is the one of the fork's
+    /// first release, for this index.
     if (type == SentioLegacyBinaryTypeIndex::QBitWithStride && origin == BinaryTypeOrigin::SentioLegacyV0)
         throw Exception(
             ErrorCodes::SUPPORT_IS_DISABLED,
-            "Binary type index {0:#04x} (strided QBit of the Decimal512 fork) is not supported: strided QBit is disabled in this fork",
-            UInt64(type));
+            "Binary type index QBitWithStride (0x3A) is not supported: strided QBit is disabled in the first release of this fork");
 
     auto binary_type_index = static_cast<BinaryTypeIndex>(type);
 

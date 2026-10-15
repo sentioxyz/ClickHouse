@@ -329,6 +329,10 @@ The subcolumns follow a group-major order: in general `vec.N` reads bit plane `(
 
 ## Strides {#strides}
 
+:::note
+In the first release of this fork, `QBit` with a `stride` different from `dimension` is disabled. Creating such a type, casting to it, attaching it and restoring it fail with `SUPPORT_IS_DISABLED`. So does decoding its binary type header, also in values of `Dynamic` and `JSON`: upstream's index `0x37` with the origin `official_canonical`, and the index `0x3A` of the Decimal512 fork of 26.3 LTS with the origin `sentio_legacy_v0`. With the other origins these indexes mean other types or are refused, see [binary encoding of the 512-bit types](/sql-reference/data-types/data-types-binary-encoding#binary-encoding-of-512-bit-types). The rest of this section describes the feature as it exists upstream.
+:::
+
 By default a `QBit` stores each bit plane as a single stream spanning all `dimension` dimensions, so a search always reads whole bit planes across the full vector. The optional `stride` parameter partitions the `dimension` dimensions into `dimension / stride` contiguous groups and stores each group's bit planes in separate streams. This lets a search over only the first `D` dimensions (with `D` a multiple of `stride`) read just the streams of the groups that cover those dimensions — useful for [Matryoshka embeddings](https://arxiv.org/abs/2205.13147), where the leading dimensions form a usable lower-dimensional embedding.
 
 ```sql
