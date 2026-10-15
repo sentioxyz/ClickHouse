@@ -24,6 +24,7 @@
 #include <string_view>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 /// The `Custom` (0x2C) SentioWide v1 binary type descriptors of the fork's 512-bit types, the explicit binary type origin, and the parts
 /// that must not change (the hash fingerprint, the 64-byte value payloads, every other type). The expected bytes come from Root's fixture
@@ -35,6 +36,9 @@ using namespace DB;
 namespace DB::ErrorCodes
 {
 extern const int INCORRECT_DATA;
+extern const int BAD_ARGUMENTS;
+extern const int ILLEGAL_TYPE_OF_ARGUMENT;
+extern const int UNEXPECTED_AST_STRUCTURE;
 extern const int SUPPORT_IS_DISABLED;
 extern const int UNKNOWN_TYPE;
 extern const int ATTEMPT_TO_READ_AFTER_EOF;
@@ -588,4 +592,47 @@ TEST(SentioWideTypeEncoding, NamespaceProbeBoundary)
         std::tie(code, message) = errorOf([&] { decode(customHeader("sentioWide_v1_UInt512"), origin); });
         EXPECT_EQ(code, ErrorCodes::UNKNOWN_TYPE) << message;
     }
+}
+
+/// Stage D of the approved codec design: an explicit origin separates official `QBit` from old `UInt512`.
+TEST(SentioWideTypeEncoding, StridedQBitOfficialOriginRoundTrip)
+{
+    for (const auto & [header, name] : std::vector<std::pair<String, String>>{
+             {"37071008", "QBit(Int8, 16, 8)"}, {"37311008", "QBit(BFloat16, 16, 8)"},
+             {"370d1008", "QBit(Float32, 16, 8)"}, {"370e1008", "QBit(Float64, 16, 8)"}})
+    {
+        auto type = decode(unhex(header), BinaryTypeOrigin::OfficialCanonical);
+        EXPECT_EQ(type->getName(), name);
+        EXPECT_EQ(hexOf(encodeDataType(type)), header);
+        EXPECT_EQ(errorOf([&] { decode(unhex(header), BinaryTypeOrigin::Unknown); }).first, ErrorCodes::INCORRECT_DATA);
+    }
+    EXPECT_EQ(decode(unhex("37"), BinaryTypeOrigin::SentioLegacyV0)->getName(), "UInt512");
+}
+
+TEST(SentioWideTypeEncoding, StridedQBitBridgeStaysInLegacyScope)
+{
+    const auto type = decode(unhex("370d1008"), BinaryTypeOrigin::OfficialCanonical);
+    EXPECT_EQ(hexOf(encodeWith(type, BinaryTypeWriterMode::SentioLegacyBridge)), "3a0d1008");
+    EXPECT_EQ(hexOf(hashFingerprint(type)), "3a0d1008");
+    EXPECT_EQ(decode(unhex("3a0d1008"), BinaryTypeOrigin::SentioLegacyV0)->getName(), type->getName());
+    EXPECT_EQ(errorOf([&] { decode(unhex("3a0d1008"), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::INCORRECT_DATA);
+    EXPECT_EQ(errorOf([&] { decode(unhex("3a0d1008"), BinaryTypeOrigin::Unknown); }).first, ErrorCodes::INCORRECT_DATA);
+    const auto plain = decode(unhex("360d10"), BinaryTypeOrigin::OfficialCanonical);
+    EXPECT_EQ(hexOf(encodeDataType(plain)), "360d10");
+    EXPECT_EQ(hexOf(encodeWith(plain, BinaryTypeWriterMode::SentioLegacyBridge)), "360d10");
+    EXPECT_EQ(hexOf(hashFingerprint(plain)), "360d10");
+}
+
+TEST(SentioWideTypeEncoding, StridedQBitRespectsComplexityAndShapeLimits)
+{
+    EXPECT_NO_THROW(decode(unhex("370d1008"), BinaryTypeOrigin::OfficialCanonical, 2));
+    EXPECT_EQ(errorOf([&] { decode(unhex("370d1008"), BinaryTypeOrigin::OfficialCanonical, 1); }).first, ErrorCodes::INCORRECT_DATA);
+    EXPECT_NO_THROW(decode(unhex("1e370d1008"), BinaryTypeOrigin::OfficialCanonical, 3));
+    EXPECT_EQ(errorOf([&] { decode(unhex("1e370d1008"), BinaryTypeOrigin::OfficialCanonical, 2); }).first, ErrorCodes::INCORRECT_DATA);
+    for (const auto & header : {"370d1000", "370d1020", "370d1004", "370d100c"})
+        EXPECT_EQ(errorOf([&] { decode(unhex(header), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::UNEXPECTED_AST_STRUCTURE) << header;
+    EXPECT_EQ(errorOf([&] { decode(unhex("370a1008"), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT);
+    /// 8200 dimensions / stride 8 = 1025 groups, beyond the existing 1024-group limit.
+    EXPECT_EQ(errorOf([&] { decode(unhex("370d884008"), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::BAD_ARGUMENTS);
+    EXPECT_EQ(errorOf([&] { decode(unhex("3a0d884008"), BinaryTypeOrigin::SentioLegacyV0); }).first, ErrorCodes::BAD_ARGUMENTS);
 }

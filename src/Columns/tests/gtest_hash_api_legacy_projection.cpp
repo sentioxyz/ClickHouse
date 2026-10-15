@@ -16,6 +16,7 @@
 #include <DataTypes/DataTypeAggregateFunction.h>
 #include <DataTypes/DataTypeArray.h>
 #include <DataTypes/DataTypeDynamic.h>
+#include <DataTypes/DataTypeQBit.h>
 #include <DataTypes/DataTypeString.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
 #include <DataTypes/DataTypesDecimal.h>
@@ -1762,4 +1763,33 @@ TEST(HashApiLegacyProjection, IntersectReadReservationIsUnderTheMemoryLimit)
     ASSERT_TRUE(outcome.limited_read_ran);
     EXPECT_EQ(outcome.limited_code, ErrorCodes::MEMORY_LIMIT_EXCEEDED);
     EXPECT_EQ(outcome.limited_rows, 0u);
+}
+
+/// A shared `QBit` value must hash in the same legacy domain whether the range also contains a 512-bit value or not.
+TEST(HashApiLegacyProjection, StridedQBitSharedHashDoesNotDependOnOtherRows)
+{
+    const auto qbit_type = std::make_shared<DataTypeQBit>(std::make_shared<DataTypeFloat32>(), 16, 8);
+    auto qbit_value = qbit_type->createColumn();
+    qbit_value->insertDefault();
+    auto canonical_column = ColumnDynamic::create(0);
+    auto & canonical = assert_cast<ColumnDynamic &>(*canonical_column);
+    insertShared(canonical, qbit_type, *qbit_value);
+    const String canonical_bytes = String{"\x37\x0d\x10\x08", 4} + String(64, '\0');
+    const String legacy_bytes = String{"\x3a\x0d\x10\x08", 4} + String(64, '\0');
+    EXPECT_EQ(canonical.getSharedVariant().getDataAt(0).toString(), canonical_bytes);
+
+    auto legacy_column = canonical.cloneEmpty();
+    auto & legacy = assert_cast<ColumnDynamic &>(*legacy_column);
+    appendLegacyShared(legacy, legacy_bytes);
+    EXPECT_EQ(rangeHash(canonical, 0, 1), rangeHash(legacy.getVariantColumn(), 0, 1));
+    EXPECT_EQ(weakHash(canonical, 0, 1, true), weakHash(legacy.getVariantColumn(), 0, 1, true));
+    EXPECT_EQ(fastHash(canonical), fastHash(legacy.getVariantColumn()));
+
+    const auto uint512_type = std::make_shared<DataTypeUInt512>();
+    insertShared(canonical, uint512_type, *oneValue<ColumnUInt512>(uint512_type, UInt512(3)));
+    appendLegacyShared(legacy, legacyUInt512(3));
+    EXPECT_EQ(weakHash(canonical, 0, 1, true)[0], weakHash(canonical, 0, 2, true)[0]);
+    EXPECT_EQ(weakHash(canonical, 0, 2, true), weakHash(legacy.getVariantColumn(), 0, 2, true));
+    EXPECT_EQ(rangeHash(canonical, 0, 2), rangeHash(legacy.getVariantColumn(), 0, 2));
+    EXPECT_EQ(fastHash(canonical), fastHash(legacy.getVariantColumn()));
 }
