@@ -20,6 +20,7 @@
 #include <Analyzer/QueryTreeBuilder.h>
 #include <Analyzer/Utils.h>
 #include <Backups/BackupEntriesCollector.h>
+#include <Backups/BackupEntryFromMemory.h>
 #include <Backups/BackupEntryWrappedWith.h>
 #include <Backups/IBackup.h>
 #include <Backups/RestorerFromBackup.h>
@@ -8929,6 +8930,16 @@ MergeTreeData::PartsBackupEntries MergeTreeData::backupParts(
             backup_entries_from_part,
             &temp_dirs,
             false, false);
+
+        /// A part without a stored binary type origin record of its own is backed up with the proof of the origin it is read with here
+        /// (Storages/StoredBinaryTypeOrigin.h): the record of that origin bound to its checksums, Unknown included, made from the part in
+        /// memory without modifying its files. A restore reads the part with it, whatever table it is restored into and whatever the UUID
+        /// of that table. A part with a record has it among its files already.
+        if (!part->stored_binary_type_origin)
+            backup_entries_from_part.emplace_back(
+                fs::path(data_path_in_backup) / part->getDataPartStorage().getPartDirectory() / STORED_BINARY_TYPE_ORIGIN_FILE_NAME,
+                std::make_shared<BackupEntryFromMemory>(
+                    StoredBinaryTypeOriginRecord::forPart(part->getBinaryTypeOriginForReading(), part->checksums.getTotalChecksumHex()).toString()));
 
         auto backup_projection = [&](IDataPartStorage & storage, IMergeTreeDataPart & projection_part)
         {

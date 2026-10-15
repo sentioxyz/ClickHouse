@@ -5,6 +5,7 @@
 #include <IO/PackedFilesWriter.h>
 #include <IO/PackedFilesReader.h>
 #include <IO/ReadPipeline.h>
+#include <Storages/StoredBinaryTypeOrigin.h>
 
 namespace DB
 {
@@ -22,6 +23,9 @@ public:
         "delete-on-destroy.txt",
         "txn_version.txt",
         "invalidated_system_columns.txt",
+        /// The part record of the stored binary type origin is written after the part (a detach, a fetch, an attach, a restore) without
+        /// rewriting the archive, and a backup carries it next to the archive.
+        STORED_BINARY_TYPE_ORIGIN_FILE_NAME,
     };
 
     DataPartStorageOnDiskPacked(
