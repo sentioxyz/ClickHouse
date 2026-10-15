@@ -131,6 +131,13 @@ TEST(MemoryTracker, ParentLimitFailureRollsBackHierarchy)
 
 TEST(MemoryTracker, GlobalLimitFailureRollsBackAmountAndRSS)
 {
+    /// A prior test can leave deferred frees on this thread. Account for them before establishing the baseline: constructing a memory
+    /// limit exception can switch the blocker level and flush them independently of rolling back the rejected allocation.
+    if (DB::current_thread)
+    {
+        DB::current_thread->flushUntrackedMemory();
+    }
+
     const Int64 amount_before = total_memory_tracker.get();
     const Int64 rss_before = total_memory_tracker.getRSS();
     const Int64 hard_limit_before = total_memory_tracker.getHardLimit();
