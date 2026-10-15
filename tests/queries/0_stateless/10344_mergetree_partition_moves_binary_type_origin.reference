@@ -1,0 +1,31 @@
+--- different origins
+REPLACE PARTITION FROM a legacy table into an empty canonical one: refused
+REPLACE PARTITION FROM a legacy table into a canonical one with data: refused
+REPLACE PARTITION FROM a canonical table into a legacy one: refused
+MOVE PARTITION TO TABLE from a legacy table to a canonical one: refused
+MOVE PARTITION TO TABLE from a canonical table to a legacy one: refused
+--- unchanged
+canon	1	[1.50]
+canon	2	[2.50]
+legacy	1	[1.50]
+legacy	2	[2.50]
+legacy2	1	[1.50]
+legacy2	2	[2.50]
+--- the same origin
+canon	1	[1.50]
+canon_empty	1	[1.50]
+canon_empty	2	[2.50]
+legacy	1	[1.50]
+legacy2	1	[1.50]
+legacy2	2	[2.50]
+legacy2	2	[2.50]
+--- registered after a move
+unset_a	2	[2.50]
+unset_b	1	[1.50]
+unset_b	1	[1.50]
+unset_b	2	[2.50]
+a registered and an unset table: refused
+unset_a	2	[2.50]
+unset_b	1	[1.50]
+unset_b	1	[1.50]
+unset_b	2	[2.50]
