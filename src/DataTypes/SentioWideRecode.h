@@ -130,4 +130,12 @@ std::vector<String> recodeAggregationStateElementsForWrite(
 std::vector<String> recodeAggregationStateElements(
     const DataTypes & types, std::span<const std::string_view> elements, const BinaryTypeDecoding & decoding, BinaryTypeWriterMode mode);
 
+/// The hash that the Decimal512 fork placed a key of a hash table of an aggregation state with (`groupUniqArray` and the like keep the arena
+/// forms of values, one of each of `types`, as keys): StringViewHash of the key as the fork had it, with the legacy indexes of its 512-bit
+/// types. Such a table keeps the canonical key and places it with this hash, so that its layout, and so the order of its elements, is that
+/// of the fork. A key without a SentioWide descriptor is that key itself. Any other key is read once (it is canonical) and written for both
+/// writer modes: only if they differ, the key holds a 512-bit type and its SentioLegacyBridge form is the fork's key; otherwise the bytes of
+/// the namespace are ordinary content, and the key is hashed as it is.
+size_t hashArenaKeyInLegacyDomain(std::string_view key, const DataTypes & types);
+
 }

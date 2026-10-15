@@ -16,6 +16,7 @@
 #include <Common/assert_cast.h>
 #include <Common/checkStackSize.h>
 #include <Common/typeid_cast.h>
+#include <base/StringViewHash.h>
 
 #include <algorithm>
 
@@ -451,6 +452,45 @@ std::vector<String> recodeAggregationStateElementsForWrite(
 
     /// Elements in memory are canonical, so they are read with the official origin.
     return recodeAggregationStateElements(types, elements, BinaryTypeDecoding{.origin = BinaryTypeOrigin::OfficialCanonical}, mode);
+}
+
+size_t hashArenaKeyInLegacyDomain(std::string_view key, const DataTypes & types)
+{
+    if (!binaryDynamicValueMayHaveSentioWideType(key))
+        return StringViewHash{}(key);
+
+    MutableColumns columns;
+    columns.reserve(types.size());
+    for (const auto & type : types)
+        columns.push_back(type->createColumn());
+
+    /// Keys in memory are canonical, so they are read with the official origin.
+    auto read_settings = IColumn::SerializationSettings::createForAggregationState();
+    read_settings.binary_type_origin = BinaryTypeOrigin::OfficialCanonical;
+    ReadBufferFromMemory in(key.data(), key.size());
+    for (auto & column : columns)
+        column->deserializeAndInsertFromArena(in, &read_settings);
+    if (!in.eof())
+        throw Exception(ErrorCodes::INCORRECT_DATA, "Extra bytes ({}) found after deserializing aggregation state", in.available());
+
+    Arena arena;
+    auto write = [&](BinaryTypeWriterMode mode)
+    {
+        auto write_settings = IColumn::SerializationSettings::createForAggregationState();
+        write_settings.binary_type_writer_mode = mode;
+        const char * begin = nullptr;
+        std::string_view written;
+        for (const auto & column : columns)
+        {
+            auto part = column->serializeValueIntoArena(0, arena, begin, &write_settings);
+            written = std::string_view(part.data() - written.size(), written.size() + part.size());
+        }
+        return String(written);
+    };
+    const String legacy = write(BinaryTypeWriterMode::SentioLegacyBridge);
+    if (legacy == write(BinaryTypeWriterMode::SentioWideV1))
+        return StringViewHash{}(key);
+    return StringViewHash{}(legacy);
 }
 
 std::vector<String> recodeAggregationStateElements(

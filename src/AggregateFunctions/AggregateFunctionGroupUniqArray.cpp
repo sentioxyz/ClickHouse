@@ -243,13 +243,18 @@ public:
         }
 
         /// The binary type headers in the elements are validated with the origin before the state is used, and the legacy ones are
-        /// replaced by canonical elements, before any of them is inserted.
+        /// replaced by canonical elements, before any of them is inserted. They are placed with the hashes of the fork's keys
+        /// (hashArenaKeyInLegacyDomain), in the order they were written, as the fork placed them.
         std::vector<std::string_view> elements;
         for (size_t i = 0; i < size; ++i)
             elements.push_back(readStringBinaryInto(*arena, buf));
         acceptAggregationStateElements({input_data_type}, elements, decoding, *arena);
         for (const auto element : elements)
-            set.insert(element);
+        {
+            State::Set::LookupResult it = nullptr;
+            bool inserted = false;
+            set.emplace(element, it, inserted, hashArenaKeyInLegacyDomain(element, this->argument_types));
+        }
     }
 
     void add(AggregateDataPtr __restrict place, const IColumn ** columns, size_t row_num, Arena * arena) const override
@@ -261,7 +266,12 @@ public:
         bool inserted = false;
         State::Set::LookupResult it = nullptr;
         auto key_holder = getKeyHolder<is_plain_column>(*columns[0], row_num, *arena);
-        set.emplace(key_holder, it, inserted);
+        /// Elements with binary type headers are canonical keys placed with the hashes of the fork's keys (hashArenaKeyInLegacyDomain), so
+        /// that the set has the fork's layout and order; the saved hashes keep them through growth and merges.
+        if (elements_have_binary_type_headers)
+            set.emplace(key_holder, it, inserted, hashArenaKeyInLegacyDomain(keyHolderGetKey(key_holder), this->argument_types));
+        else
+            set.emplace(key_holder, it, inserted);
     }
 
     void mergeImpl(AggregateDataPtr __restrict place, ConstAggregateDataPtr rhs, Arena * arena) const override
@@ -278,7 +288,11 @@ public:
 
             // We have to copy the keys to our arena.
             chassert(arena != nullptr);
-            cur_set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted);
+            /// The saved hash of an element with binary type headers is the hash of the fork's key (see add).
+            if (elements_have_binary_type_headers)
+                cur_set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted, rhs_elem.getHash(rhs_set));
+            else
+                cur_set.emplace(ArenaKeyHolder{rhs_elem.getValue(), *arena}, it, inserted);
         }
     }
 

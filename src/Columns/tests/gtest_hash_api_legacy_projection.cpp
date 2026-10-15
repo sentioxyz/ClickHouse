@@ -628,3 +628,52 @@ TEST(HashApiLegacyProjection, UnorderedStatesWithWideKeysHaveTheForkOrder)
     auto [column, fork_a, fork_c] = runUniqStates(first_canonical, first_fork, second_canonical, second_fork);
     expectStatesHashTheForkBytes(*column, fork_a, fork_c, "512-bit keys");
 }
+
+namespace
+{
+
+String canonicalUInt512(UInt64 value)
+{
+    const String descriptor = "SentioWide_v1_UInt512";
+    return String(1, '\x2C') + varUInt(descriptor.size()) + descriptor + littleEndian(value, 64);
+}
+
+/// The values of the keys of a set, in its order: the index in `values` of the arena form of each key.
+std::vector<size_t> orderOf(const ForkUniqSet & set, const std::vector<String> & values)
+{
+    std::vector<size_t> order;
+    for (const auto & elem : set)
+        for (size_t i = 0; i != values.size(); ++i)
+            if (elem.getValue() == arenaForm(values[i]))
+                order.push_back(i);
+    return order;
+}
+
+}
+
+/// Root's source model of the CRC32C branch of StringViewHash (e6-multikey-crc-order-source-model.root.json): the UInt512 values 1 and 4
+/// have legacy arena keys (74 bytes) in the buckets 1 and 3 of 8, and canonical arena keys (96 bytes) in the buckets 3 and 0. Canonical
+/// keys placed by their own hashes would be written as 4, 1; the state places them with the hashes of the fork's keys and writes them as the
+/// fork does, 1, 4. The bucket expectations are those of the CRC32C branch, which the flags of the final build bind.
+TEST(HashApiLegacyProjection, UniqStateCrcWitnessKeepsTheForkOrder)
+{
+    const std::vector<String> canonical{canonicalUInt512(1), canonicalUInt512(4)};
+    const std::vector<String> legacy{legacyUInt512(1), legacyUInt512(4)};
+    ASSERT_EQ(arenaForm(legacy[0]).size(), 74u);
+    ASSERT_EQ(arenaForm(canonical[0]).size(), 96u);
+
+    std::vector<String> keys;
+    keys.reserve(4);
+    ForkUniqSet fork_set;
+    ForkUniqSet canonical_set;
+    for (size_t i = 0; i != 2; ++i)
+    {
+        fork_set.insert(keys.emplace_back(arenaForm(legacy[i])));
+        canonical_set.insert(keys.emplace_back(arenaForm(canonical[i])));
+    }
+    EXPECT_EQ(orderOf(fork_set, legacy), (std::vector<size_t>{0, 1}));
+    EXPECT_EQ(orderOf(canonical_set, canonical), (std::vector<size_t>{1, 0}));
+
+    auto [column, fork_a, fork_c] = runUniqStates(canonical, legacy, {}, {});
+    expectStatesHashTheForkBytes(*column, fork_a, fork_c, "UInt512 1 and 4");
+}
