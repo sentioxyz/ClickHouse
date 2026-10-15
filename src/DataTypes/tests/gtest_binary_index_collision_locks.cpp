@@ -32,7 +32,7 @@ using namespace DB;
 namespace DB::ErrorCodes
 {
 extern const int INCORRECT_DATA;
-extern const int ATTEMPT_TO_READ_AFTER_EOF;
+extern const int CANNOT_READ_ALL_DATA;
 }
 
 namespace
@@ -169,7 +169,7 @@ TEST(BinaryIndexCollisionLocks, UnassignedTypeIndexesStayUnknown)
     }
 
     /// `0x37` is the official strided `QBit` header; an absent payload is truncated input, not a legacy integer.
-    EXPECT_EQ(codeOfDecoding(String(1, '\x37'), BinaryTypeOrigin::OfficialCanonical), ErrorCodes::ATTEMPT_TO_READ_AFTER_EOF);
+    EXPECT_EQ(codeOfDecoding(String(1, '\x37'), BinaryTypeOrigin::OfficialCanonical), ErrorCodes::CANNOT_READ_ALL_DATA);
 }
 
 /// A Custom name with the prefix `SentioWide_` is always read as a descriptor, so a registered type with such a name could not be encoded.

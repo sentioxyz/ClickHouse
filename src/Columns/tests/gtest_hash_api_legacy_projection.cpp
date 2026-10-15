@@ -249,15 +249,16 @@ TEST(HashApiLegacyProjection, DynamicSharedVariant)
 /// builds in the final validation.)
 TEST(HashApiLegacyProjection, DynamicNested)
 {
-    /// Array(Dynamic) over the fixture without its String: the legacy column then holds no bytes of the SentioWide namespace, so that it
-    /// hashes its values as they are.
+    /// Array(Dynamic) over the fixture without its String. The legacy oracle uses the plain underlying `Variant` at every nested layer:
+    /// its raw legacy headers must be hashed as bytes, without asking a canonical `Dynamic` column to interpret them.
     auto fixture = makeDynamicFixture(/*with_header_like_string=*/ false);
     ASSERT_EQ(fixture.canonical->size(), 6u);
     auto offsets = ColumnArray::ColumnOffsets::create();
     offsets->getData().push_back(2);
     offsets->getData().push_back(6);
     auto canonical_array = ColumnArray::create(std::move(fixture.canonical), offsets->clone());
-    auto legacy_array = ColumnArray::create(std::move(fixture.legacy), std::move(offsets));
+    auto legacy_array = ColumnArray::create(
+        assert_cast<const ColumnDynamic &>(*fixture.legacy).getVariantColumn().clone(), std::move(offsets));
     EXPECT_EQ(rangeHash(*canonical_array, 0, 2), rangeHash(*legacy_array, 0, 2));
     EXPECT_EQ(rangeHash(*canonical_array, 1, 2), rangeHash(*legacy_array, 1, 2));
     EXPECT_EQ(weakHash(*canonical_array, 0, 2, true), weakHash(*legacy_array, 0, 2, true));
@@ -273,7 +274,7 @@ TEST(HashApiLegacyProjection, DynamicNested)
     canonical_tuple_columns.push_back(std::move(tuple_fixture.canonical));
     canonical_tuple_columns.push_back(numbers->clone());
     MutableColumns legacy_tuple_columns;
-    legacy_tuple_columns.push_back(std::move(tuple_fixture.legacy));
+    legacy_tuple_columns.push_back(assert_cast<const ColumnDynamic &>(*tuple_fixture.legacy).getVariantColumn().clone());
     legacy_tuple_columns.push_back(std::move(numbers));
     auto canonical_tuple = ColumnTuple::create(std::move(canonical_tuple_columns));
     auto legacy_tuple = ColumnTuple::create(std::move(legacy_tuple_columns));
@@ -1774,8 +1775,8 @@ TEST(HashApiLegacyProjection, StridedQBitSharedHashDoesNotDependOnOtherRows)
     auto canonical_column = ColumnDynamic::create(0);
     auto & canonical = assert_cast<ColumnDynamic &>(*canonical_column);
     insertShared(canonical, qbit_type, *qbit_value);
-    const String canonical_bytes = String{"\x37\x0d\x10\x08", 4} + String(64, '\0');
-    const String legacy_bytes = String{"\x3a\x0d\x10\x08", 4} + String(64, '\0');
+    const String canonical_bytes = String{"\x37\x0d\x10\x08\x10", 5} + String(64, '\0');
+    const String legacy_bytes = String{"\x3a\x0d\x10\x08\x10", 5} + String(64, '\0');
     EXPECT_EQ(canonical.getSharedVariant().getDataAt(0), std::string_view(canonical_bytes));
 
     auto legacy_column = canonical.cloneEmpty();
