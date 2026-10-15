@@ -54,7 +54,7 @@ Register a table only if all of its data was written by the Decimal512 fork of 2
 | `MergeTree` family | Table record, replicated metadata, and part records (see above). |
 | `Log`, `TinyLog`, `StripeLog` | Table record. A read takes one origin for its whole duration, and the registration waits for the reads and writes of the table. |
 | `Set`, `Join` | Table record. See [Set and Join](#set-and-join). |
-| `Memory` | None. Its data lives in memory and is always canonical, and so are its backups. |
+| `Memory` | None. The values that this version inserts live in memory in the canonical encoding, and the backups that it writes are canonical. A backup of the Decimal512 fork can be refused (see [Backups](#backups)). |
 | `EmbeddedRocksDB`, `KeeperMap` | None. Their values are read as `unknown`. |
 | `Distributed` | None. The files of its asynchronous insert queues are read as `unknown`. |
 
