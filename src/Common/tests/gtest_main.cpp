@@ -38,25 +38,25 @@ public:
                     if (value)
                         DB::writeJSONString(value, out, settings);
                     else
-                        DB::writeCString("null", out);
+                        writeCString("null", out);
                 };
-                DB::writeCString("{\"index\":", out);
+                writeCString("{\"index\":", out);
                 DB::writeIntText(index++, out);
-                DB::writeCString(",\"suite\":", out);
+                writeCString(",\"suite\":", out);
                 DB::writeJSONString(suite->name(), out, settings);
-                DB::writeCString(",\"test\":", out);
+                writeCString(",\"test\":", out);
                 DB::writeJSONString(test->name(), out, settings);
-                DB::writeCString(",\"file\":", out);
+                writeCString(",\"file\":", out);
                 nullable(test->file());
-                DB::writeCString(",\"line\":", out);
+                writeCString(",\"line\":", out);
                 DB::writeIntText(test->line(), out);
-                DB::writeCString(",\"type_param\":", out);
+                writeCString(",\"type_param\":", out);
                 nullable(test->type_param());
-                DB::writeCString(",\"value_param\":", out);
+                writeCString(",\"value_param\":", out);
                 nullable(test->value_param());
-                DB::writeCString(",\"selected\":", out);
+                writeCString(",\"selected\":", out);
                 DB::writeChar(test->should_run() ? '1' : '0', out);
-                DB::writeCString("}\n", out);
+                writeCString("}\n", out);
             }
         }
         out.finalize();
