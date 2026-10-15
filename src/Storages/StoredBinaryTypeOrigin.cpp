@@ -288,15 +288,22 @@ StoredBinaryTypeOriginRecordMatch matchPartRecord(const StoredBinaryTypeOriginRe
 }
 
 StoredBinaryTypeOriginReconciliation decideStoredBinaryTypeOriginReconciliation(
-    BinaryTypeOrigin local, bool local_record_ignored, BinaryTypeOrigin replicated)
+    std::optional<BinaryTypeOrigin> local, bool local_record_ignored, std::optional<BinaryTypeOrigin> replicated)
 {
     if (local_record_ignored)
         return StoredBinaryTypeOriginReconciliation::KeepIgnoredRecord;
     if (local == replicated)
         return StoredBinaryTypeOriginReconciliation::Keep;
-    if (local == BinaryTypeOrigin::Unknown && replicated == BinaryTypeOrigin::SentioLegacyV0)
+    if (!local && replicated == BinaryTypeOrigin::SentioLegacyV0)
         return StoredBinaryTypeOriginReconciliation::ApplyRegistration;
     return StoredBinaryTypeOriginReconciliation::Conflict;
+}
+
+std::string_view describeStatedBinaryTypeOrigin(std::optional<BinaryTypeOrigin> origin)
+{
+    if (!origin)
+        return "none";
+    return getBinaryTypeOriginName(*origin);
 }
 
 std::optional<StoredBinaryTypeOriginRecord> tryReadStoredBinaryTypeOriginRecord(const IDisk & disk, const String & path, const ReadSettings & settings)

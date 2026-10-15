@@ -433,6 +433,7 @@ StorageReplicatedMergeTree::StorageReplicatedMergeTree(
     std::unique_ptr<MergeTreeSettings> settings_,
     bool need_check_structure,
     const ZooKeeperRetriesInfo & create_query_zookeeper_retries_info_,
+    bool is_original_create,
     std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp)
     : MergeTreeData(table_id_,
                     metadata_,
@@ -649,7 +650,7 @@ StorageReplicatedMergeTree::StorageReplicatedMergeTree(
 
     /// The stamp of an original CREATE, now that the table is proven to have no part. It goes into the ZooKeeper metadata if this
     /// replica creates the table; otherwise the replica takes the origin of the existing table below (adoptStoredBinaryTypeOriginForNewReplica).
-    stampStoredBinaryTypeOriginOfNewTable(stored_binary_type_origin_to_stamp);
+    stampStoredBinaryTypeOriginOfNewTable(is_original_create, stored_binary_type_origin_to_stamp);
 
     try
     {
@@ -6751,20 +6752,20 @@ bool StorageReplicatedMergeTree::optimize(
     return assigned;
 }
 
-void StorageReplicatedMergeTree::adoptStoredBinaryTypeOriginForNewReplica(BinaryTypeOrigin origin)
+void StorageReplicatedMergeTree::adoptStoredBinaryTypeOriginForNewReplica(std::optional<BinaryTypeOrigin> origin)
 {
     if (getStorageID().uuid == UUIDHelpers::Nil)
     {
-        if (origin != BinaryTypeOrigin::Unknown)
+        if (origin && *origin != BinaryTypeOrigin::Unknown)
             LOG_WARNING(log, "Table {} has the stored binary type origin {} in ZooKeeper, but this replica has no UUID, so it stays Unknown",
-                        getStorageID().getNameForLogs(), getBinaryTypeOriginName(origin));
+                        getStorageID().getNameForLogs(), getBinaryTypeOriginName(*origin));
         return;
     }
 
     /// A record that was in the directory before this CREATE is existing content: it is kept, and the replica is created only if it agrees.
     if (stored_binary_type_origin_record_found)
     {
-        if (!stored_binary_type_origin_record_ignored && stored_binary_type_origin.load() == origin)
+        if (!stored_binary_type_origin_record_ignored && origin && stored_binary_type_origin.load() == *origin)
             return;
         throw Exception(ErrorCodes::INCORRECT_DATA,
                         "The data directory of the new replica of table {} already has a stored binary type origin record ({}) that differs "
@@ -6773,38 +6774,51 @@ void StorageReplicatedMergeTree::adoptStoredBinaryTypeOriginForNewReplica(Binary
                         getStorageID().getNameForLogs(),
                         stored_binary_type_origin_record_ignored ? String("one that does not apply to this table")
                                                                  : String(getBinaryTypeOriginName(stored_binary_type_origin.load())),
-                        getBinaryTypeOriginName(origin));
+                        describeStatedBinaryTypeOrigin(origin));
     }
 
-    if (origin == getStoredBinaryTypeOrigin())
+    if (getStatedStoredBinaryTypeOrigin() == origin)
         return;
 
+    /// The table has no origin in ZooKeeper: neither has its new replica, whatever this CREATE stamped.
+    if (!origin)
+    {
+        LOG_INFO(log, "The new replica of table {} has no stored binary type origin, as the table in ZooKeeper", getStorageID().getNameForLogs());
+        removeStoredBinaryTypeOriginRecordWrittenByCreate();
+        return;
+    }
+
     LOG_INFO(log, "The new replica of table {} takes its stored binary type origin {} from ZooKeeper",
-             getStorageID().getNameForLogs(), getBinaryTypeOriginName(origin));
+             getStorageID().getNameForLogs(), getBinaryTypeOriginName(*origin));
     /// Without a writable disk there is no local record: ZooKeeper alone keeps the origin.
-    if (persistStoredBinaryTypeOrigin(origin))
+    if (persistStoredBinaryTypeOrigin(*origin))
+    {
         stored_binary_type_origin_record_written_by_create = true;
+    }
     else
-        stored_binary_type_origin = origin;
+    {
+        stored_binary_type_origin = *origin;
+        stored_binary_type_origin_stated = true;
+    }
 }
 
-void StorageReplicatedMergeTree::reconcileStoredBinaryTypeOrigin(BinaryTypeOrigin origin, std::string_view source)
+void StorageReplicatedMergeTree::reconcileStoredBinaryTypeOrigin(std::optional<BinaryTypeOrigin> origin, std::string_view source)
 {
     if (getStorageID().uuid == UUIDHelpers::Nil)
     {
-        if (origin != BinaryTypeOrigin::Unknown)
+        if (origin && *origin != BinaryTypeOrigin::Unknown)
             LOG_WARNING(log, "The {} gives table {} the stored binary type origin {}, but the table has no UUID, so it stays Unknown",
-                        source, getStorageID().getNameForLogs(), getBinaryTypeOriginName(origin));
+                        source, getStorageID().getNameForLogs(), getBinaryTypeOriginName(*origin));
         return;
     }
 
-    const auto local = stored_binary_type_origin.load();
+    const auto local = getStatedStoredBinaryTypeOrigin();
     switch (decideStoredBinaryTypeOriginReconciliation(local, stored_binary_type_origin_record_ignored, origin))
     {
         case StoredBinaryTypeOriginReconciliation::Keep:
             if (stored_binary_type_origin_conflict)
             {
-                LOG_INFO(log, "The stored binary type origin {} of table {} agrees with the {} again", getBinaryTypeOriginName(local),
+                LOG_INFO(log, "The stored binary type origin {} of table {} agrees with the {} again", describeStatedBinaryTypeOrigin(local),
                          getStorageID().getNameForLogs(), source);
                 stored_binary_type_origin_conflict = false;
             }
@@ -6814,28 +6828,31 @@ void StorageReplicatedMergeTree::reconcileStoredBinaryTypeOrigin(BinaryTypeOrigi
             /// Raw parts admitted for the unset origin and not committed yet are refused at their commit (MergeTreeData::
             /// stored_binary_type_origin_admission_mutex).
             std::lock_guard admission_lock(stored_binary_type_origin_admission_mutex);
-            LOG_INFO(log, "Applying the registration of the stored binary type origin {} of table {} from the {}", getBinaryTypeOriginName(origin),
-                     getStorageID().getNameForLogs(), source);
+            LOG_INFO(log, "Applying the registration of the stored binary type origin {} of table {} from the {}",
+                     describeStatedBinaryTypeOrigin(origin), getStorageID().getNameForLogs(), source);
             /// Without a writable disk there is no local record: ZooKeeper alone keeps the origin.
-            if (!persistStoredBinaryTypeOrigin(origin))
-                stored_binary_type_origin = origin;
+            if (!persistStoredBinaryTypeOrigin(*origin))
+            {
+                stored_binary_type_origin = *origin;
+                stored_binary_type_origin_stated = true;
+            }
             return;
         }
         case StoredBinaryTypeOriginReconciliation::Conflict:
             LOG_ERROR(log, "The stored binary type origin {} of table {} conflicts with {} in the {}. Neither is applied implicitly: the local "
                       "record and the data are kept, and the table is read as Unknown until the conflict is resolved",
-                      getBinaryTypeOriginName(local), getStorageID().getNameForLogs(), getBinaryTypeOriginName(origin), source);
+                      describeStatedBinaryTypeOrigin(local), getStorageID().getNameForLogs(), describeStatedBinaryTypeOrigin(origin), source);
             stored_binary_type_origin_conflict = true;
             return;
         case StoredBinaryTypeOriginReconciliation::KeepIgnoredRecord:
             LOG_ERROR(log, "Table {} has a stored binary type origin record that does not apply to it (of another table or of the other kind). "
                       "The {} gives {}, but such a record is never replaced implicitly: the table stays Unknown",
-                      getStorageID().getNameForLogs(), source, getBinaryTypeOriginName(origin));
+                      getStorageID().getNameForLogs(), source, describeStatedBinaryTypeOrigin(origin));
             return;
     }
 }
 
-std::optional<std::pair<BinaryTypeOrigin, int32_t>> StorageReplicatedMergeTree::getReplicatedStoredBinaryTypeOrigin() const
+std::optional<std::pair<std::optional<BinaryTypeOrigin>, int32_t>> StorageReplicatedMergeTree::getReplicatedStoredBinaryTypeOrigin() const
 {
     Coordination::Stat stat;
     const String metadata = getZooKeeper()->get(fs::path(zookeeper_path) / "metadata", &stat);
@@ -6845,11 +6862,11 @@ std::optional<std::pair<BinaryTypeOrigin, int32_t>> StorageReplicatedMergeTree::
 void StorageReplicatedMergeTree::addUnsetStoredBinaryTypeOriginCheckOp(Coordination::Requests & ops) const
 {
     const auto replicated = getReplicatedStoredBinaryTypeOrigin();
-    if (!hasUnsetStoredBinaryTypeOrigin() || replicated->first != BinaryTypeOrigin::Unknown)
+    if (!hasUnsetStoredBinaryTypeOrigin() || replicated->first)
         throw Exception(ErrorCodes::BAD_ARGUMENTS,
                         "Table {} got a stored binary type origin while parts of another table were moved into it for its unset origin: "
                         "{} here, {} in its replicated metadata",
-                        getStorageID().getNameForLogs(), describeStoredBinaryTypeOrigin(), getBinaryTypeOriginName(replicated->first));
+                        getStorageID().getNameForLogs(), describeStoredBinaryTypeOrigin(), describeStatedBinaryTypeOrigin(replicated->first));
     ops.emplace_back(zkutil::makeCheckRequest(fs::path(zookeeper_path) / "metadata", replicated->second));
 }
 
@@ -7142,11 +7159,11 @@ void StorageReplicatedMergeTree::alter(
             /// The registration goes from the unset origin to the registered one with this ALTER_METADATA entry, and every replica applies
             /// it with the entry (reconcileStoredBinaryTypeOrigin). A concurrent registration or ALTER changes the metadata version first
             /// and makes the set request below fail.
-            if (future_metadata_in_zk.binary_type_origin != BinaryTypeOrigin::Unknown)
+            if (future_metadata_in_zk.binary_type_origin)
                 throw Exception(ErrorCodes::BAD_ARGUMENTS,
                                 "Table {} has the stored binary type origin {} in its replicated metadata: only the origin of a table that has "
                                 "none can be registered",
-                                getStorageID().getNameForLogs(), getBinaryTypeOriginName(future_metadata_in_zk.binary_type_origin));
+                                getStorageID().getNameForLogs(), getBinaryTypeOriginName(*future_metadata_in_zk.binary_type_origin));
             future_metadata_in_zk.binary_type_origin = commands.front().binary_type_origin;
         }
         if (ast_to_str(future_metadata.sorting_key.definition_ast) != ast_to_str(current_metadata->sorting_key.definition_ast))

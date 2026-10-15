@@ -92,16 +92,17 @@ StoredBinaryTypeOriginRecordMatch matchTableRecord(const StoredBinaryTypeOriginR
 /// Whether `record` is the part record of the part with the total checksum `part_checksum`.
 StoredBinaryTypeOriginRecordMatch matchPartRecord(const StoredBinaryTypeOriginRecord & record, const String & part_checksum);
 
-/// What an existing replicated table does when ZooKeeper holds `replicated` as its stored binary type origin, while its local state is
-/// `local` (the origin of its local table record; Unknown without one) and `local_record_ignored` (a record at the table path that does not
-/// apply to the table). Only the one versioned transition is applied implicitly, never a relabel, a reset or a rebind of another record.
-/// A new replica of an existing table, which has no data yet, takes the replicated origin directly instead.
+/// What an existing replicated table does when ZooKeeper holds `replicated` as its stored binary type origin (nothing while the table has
+/// none), while its local state is `local` (the origin the table states locally, Unknown included, or nothing while it is unset) and
+/// `local_record_ignored` (a record at the table path that does not apply to the table). Only the one versioned transition is applied
+/// implicitly, never a relabel, a reset or a rebind of another record; a stated Unknown is a statement like any other origin. A new replica
+/// of an existing table, which has no data yet, takes the replicated origin directly instead.
 enum class StoredBinaryTypeOriginReconciliation : uint8_t
 {
-    /// The same origin: nothing to do.
+    /// The same origin, or none on both sides: nothing to do.
     Keep = 0,
-    /// Unknown to SentioLegacyV0: the registration, applied by its ALTER_METADATA entry, or recovered when the replica stopped between
-    /// applying the entry in ZooKeeper and locally. It is the only transition there is.
+    /// From no origin to SentioLegacyV0: the registration, applied by its ALTER_METADATA entry, or recovered when the replica stopped
+    /// between applying the entry in ZooKeeper and locally. It is the only transition there is.
     ApplyRegistration = 1,
     /// Any other difference: the local record and the data stay as they are, and the table is read as Unknown until it is resolved.
     Conflict = 2,
@@ -110,7 +111,10 @@ enum class StoredBinaryTypeOriginReconciliation : uint8_t
 };
 
 StoredBinaryTypeOriginReconciliation decideStoredBinaryTypeOriginReconciliation(
-    BinaryTypeOrigin local, bool local_record_ignored, BinaryTypeOrigin replicated);
+    std::optional<BinaryTypeOrigin> local, bool local_record_ignored, std::optional<BinaryTypeOrigin> replicated);
+
+/// The name of a stored binary type origin that may be absent, for messages: `none` for a table that has none.
+std::string_view describeStatedBinaryTypeOrigin(std::optional<BinaryTypeOrigin> origin);
 
 /// The names of the origins in records, ZooKeeper metadata and statements, which are also the values of input_format_binary_type_origin:
 /// `unknown`, `sentio_legacy_v0` and `official_canonical`.

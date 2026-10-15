@@ -1370,13 +1370,22 @@ public:
     }
     std::optional<BinaryTypeOrigin> tryGetStoredBinaryTypeOrigin() const override { return getStoredBinaryTypeOrigin(); }
 
-    /// Whether the table has no stored binary type origin at all: Unknown, without a record at its path that does not apply to it, and
-    /// without a conflict with its replicated metadata. Its parts without a record of their own follow its origin, also the ones that came
-    /// in as raw files, and the registration (Unknown to SentioLegacyV0) states the origin of all of them.
+    /// Whether the table has no stored binary type origin at all: no record at its path (whether it applies to the table or not), no origin
+    /// taken from its replicated metadata, and no conflict with that metadata. It is read as Unknown. Its parts without a record of their
+    /// own follow its origin, also the ones that came in as raw files, and the registration (to SentioLegacyV0) states the origin of all of
+    /// them. A stated Unknown, a record of the Unknown origin, is not unset: nothing relabels it.
     bool hasUnsetStoredBinaryTypeOrigin() const
     {
-        return stored_binary_type_origin.load() == BinaryTypeOrigin::Unknown && !stored_binary_type_origin_record_ignored.load()
-            && !stored_binary_type_origin_conflict.load();
+        return !stored_binary_type_origin_stated.load() && !stored_binary_type_origin_conflict.load();
+    }
+
+    /// The stored binary type origin that the table states, a stated Unknown included, or nothing while it is unset: what the replicated
+    /// metadata of a new table holds.
+    std::optional<BinaryTypeOrigin> getStatedStoredBinaryTypeOrigin() const
+    {
+        if (!stored_binary_type_origin_stated.load())
+            return {};
+        return stored_binary_type_origin.load();
     }
 
     /// Whether the stored binary type origin of the table is determined: the origin of its record, or unset. A table with a record at its
@@ -1628,9 +1637,9 @@ protected:
     ///  - without one, in any other table: with Unknown, from a part record of the Unknown origin written into its directory.
     bool admitStoredBinaryTypeOriginOfRawPart(IMergeTreeDataPart & part) const;
 
-    /// For a replicated table: the stored binary type origin that its metadata in ZooKeeper holds, and the version of that metadata.
-    /// Nothing for a table that is not replicated.
-    virtual std::optional<std::pair<BinaryTypeOrigin, int32_t>> getReplicatedStoredBinaryTypeOrigin() const { return {}; }
+    /// For a replicated table: the stored binary type origin that its metadata in ZooKeeper holds (nothing while it holds none), and the
+    /// version of that metadata. Nothing for a table that is not replicated.
+    virtual std::optional<std::pair<std::optional<BinaryTypeOrigin>, int32_t>> getReplicatedStoredBinaryTypeOrigin() const { return {}; }
 
     /// Throws if `part` was admitted for the unset stored binary type origin of the table and the table has an origin now. Called before
     /// the parts are committed, with stored_binary_type_origin_admission_mutex held shared until they are.
@@ -1723,12 +1732,18 @@ protected:
     /// (Unknown); a malformed one, or records that differ between the disks, throw.
     void loadStoredBinaryTypeOrigin();
 
-    /// Stamps a new table with `origin_to_stamp` (an original CREATE, see InterpreterCreateQuery). The constructors call it only once the
-    /// CREATE is proven fresh: after loading the table and refusing a directory with parts, so nothing is loaded under the new stamp. A
-    /// table without a UUID, or with parts (a read-only table over existing data), is not stamped. A record that was in the directory
-    /// before is existing content that a CREATE never takes over: it is kept and the CREATE is refused, unless it is a record of this
-    /// table with the same origin (this CREATE, interrupted after its stamp).
-    void stampStoredBinaryTypeOriginOfNewTable(std::optional<BinaryTypeOrigin> origin_to_stamp);
+    /// For an original CREATE (`is_original_create`, see InterpreterCreateQuery::isOriginalCreate), stamps the new table with
+    /// `origin_to_stamp`, if there is one: a CREATE ... AS or CLONE AS of a source without an origin leaves the new table without one too.
+    /// The constructors call it only once the CREATE is proven fresh: after loading the table and refusing a directory with parts, so
+    /// nothing is loaded under the new stamp. A table with parts (a read-only table over existing data) keeps the origin it has. A record
+    /// that was in the directory before is existing content that a CREATE never takes over, with or without an origin to stamp or a UUID: it
+    /// is kept and the CREATE is refused, unless it is a record of this table with the origin to stamp (this CREATE, interrupted after its
+    /// stamp). A table without a UUID is not stamped.
+    void stampStoredBinaryTypeOriginOfNewTable(bool is_original_create, std::optional<BinaryTypeOrigin> origin_to_stamp);
+
+    /// Removes the record that this CREATE wrote (stored_binary_type_origin_record_written_by_create), and so the origin it stamped: a new
+    /// replica of a table without an origin has none either.
+    void removeStoredBinaryTypeOriginRecordWrittenByCreate();
 
     /// Writes the table record with `origin` for the UUID of this table, atomically on the first writable disk and on every other writable
     /// disk that has a record already, and makes it the origin of the table. Returns false and changes nothing if the table has no
@@ -1739,6 +1754,9 @@ protected:
     /// such a table is Unknown, and the registration refuses to replace that record.
     std::atomic<BinaryTypeOrigin> stored_binary_type_origin{BinaryTypeOrigin::Unknown};
     std::atomic<bool> stored_binary_type_origin_record_ignored{false};
+    /// The table states its origin: it has a record at its path (one that applies to it or not), or took its origin from its replicated
+    /// metadata without a writable disk for a record. A table that does not is unset (hasUnsetStoredBinaryTypeOrigin).
+    std::atomic<bool> stored_binary_type_origin_stated{false};
     /// A record was at the table path when the table was loaded (before anything this table wrote), and this table's CREATE wrote the
     /// record: a failed CREATE removes only a record it wrote itself (dropIfEmpty).
     std::atomic<bool> stored_binary_type_origin_record_found{false};

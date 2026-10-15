@@ -1,0 +1,10 @@
+--- made from a table without an origin
+1	[1.50]
+1	[1.50]
+registered twice: refused
+1	[1.50]
+1	[1.50]
+--- made from a canonical table
+canonical: refused
+parts of a table without an origin: refused
+1	[1.50]

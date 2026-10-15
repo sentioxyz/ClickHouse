@@ -2244,6 +2244,10 @@ std::optional<BinaryTypeOrigin> InterpreterCreateQuery::getStoredBinaryTypeOrigi
         const StorageID source_id(getContext()->resolveDatabase(source_database), source_table);
         if (auto source = DatabaseCatalog::instance().tryGetTable(source_id, getContext()))
         {
+            /// A source without an origin gives none: the new table has none either, and the registration can state the origin of both.
+            /// It does not become canonical, nor a stated Unknown that the registration would never state.
+            if (const auto * source_data = dynamic_cast<const MergeTreeData *>(source.get()); source_data && source_data->hasUnsetStoredBinaryTypeOrigin())
+                return {};
             if (auto origin = source->tryGetStoredBinaryTypeOrigin())
                 return origin;
         }

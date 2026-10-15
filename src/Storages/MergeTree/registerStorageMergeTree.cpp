@@ -1193,6 +1193,7 @@ static StoragePtr create(const StorageFactory::Arguments & args)
             std::move(storage_settings),
             need_check_table_structure,
             create_query_zk_retries_info,
+            args.is_original_create,
             args.stored_binary_type_origin_to_stamp);
     }
 
@@ -1205,6 +1206,7 @@ static StoragePtr create(const StorageFactory::Arguments & args)
         date_column_name,
         merging_params,
         std::move(storage_settings),
+        args.is_original_create,
         args.stored_binary_type_origin_to_stamp);
 }
 

@@ -7,10 +7,11 @@
 #include <string>
 #include <utility>
 
-/// The stored binary type origin in the ZooKeeper metadata of a replicated table: written last and only while it is not Unknown, so the
-/// metadata of every table that never had one is byte for byte as before; read when present, Unknown when absent. Its name starts with a
-/// letter no optional field before it starts with, so the checks of the optional fields never advance into it, also in the legacy layout
-/// without the merge parameters. The metadata texts are written out here, not produced by the code under test.
+/// The stored binary type origin in the ZooKeeper metadata of a replicated table: written last and only while the table has one, a stated
+/// Unknown included, so the metadata of every table that never had one is byte for byte as before; read when present, nothing (no origin)
+/// when absent. Its name starts with a letter no optional field before it starts with, so the checks of the optional fields never advance
+/// into it, also in the legacy layout without the merge parameters. The metadata texts are written out here, not produced by the code
+/// under test.
 
 using namespace DB;
 
@@ -50,23 +51,27 @@ std::pair<int, String> errorOf(F && f)
 
 }
 
-TEST(ReplicatedMetadataBinaryTypeOrigin, AbsentIsUnknownAndNotWritten)
+TEST(ReplicatedMetadataBinaryTypeOrigin, AbsentIsNoOriginAndNotWritten)
 {
     const auto metadata = ReplicatedMergeTreeTableMetadata::parseRaw(HEAD + MERGE_PARAMETERS);
-    EXPECT_EQ(metadata.binary_type_origin, BinaryTypeOrigin::Unknown);
+    EXPECT_FALSE(metadata.binary_type_origin.has_value());
     /// The metadata of a table without an origin is written exactly as before.
     EXPECT_EQ(metadata.toString(), HEAD + MERGE_PARAMETERS);
 }
 
 TEST(ReplicatedMetadataBinaryTypeOrigin, WrittenLastAndReadBack)
 {
-    for (auto [origin, name] : {std::pair{BinaryTypeOrigin::SentioLegacyV0, "sentio_legacy_v0"}, std::pair{BinaryTypeOrigin::OfficialCanonical, "official_canonical"}})
+    /// A stated Unknown is written too: it is not the absence of an origin.
+    for (auto [origin, name] : {std::pair{BinaryTypeOrigin::SentioLegacyV0, "sentio_legacy_v0"}, std::pair{BinaryTypeOrigin::OfficialCanonical, "official_canonical"},
+                                std::pair{BinaryTypeOrigin::Unknown, "unknown"}})
     {
         auto metadata = ReplicatedMergeTreeTableMetadata::parseRaw(HEAD + MERGE_PARAMETERS);
         metadata.binary_type_origin = origin;
         const String text = HEAD + MERGE_PARAMETERS + "binary type origin: " + name + "\n";
         EXPECT_EQ(metadata.toString(), text);
-        EXPECT_EQ(ReplicatedMergeTreeTableMetadata::parseRaw(text).binary_type_origin, origin);
+        const auto read_back = ReplicatedMergeTreeTableMetadata::parseRaw(text).binary_type_origin;
+        ASSERT_TRUE(read_back.has_value()) << name;
+        EXPECT_EQ(*read_back, origin) << name;
     }
 }
 
@@ -84,7 +89,8 @@ TEST(ReplicatedMetadataBinaryTypeOrigin, ReadAfterEveryOptionalField)
     for (const auto & text : cases)
     {
         const auto metadata = ReplicatedMergeTreeTableMetadata::parseRaw(text);
-        EXPECT_EQ(metadata.binary_type_origin, BinaryTypeOrigin::SentioLegacyV0) << text;
+        ASSERT_TRUE(metadata.binary_type_origin.has_value()) << text;
+        EXPECT_EQ(*metadata.binary_type_origin, BinaryTypeOrigin::SentioLegacyV0) << text;
         EXPECT_EQ(metadata.primary_key, "a") << text;
     }
     EXPECT_EQ(ReplicatedMergeTreeTableMetadata::parseRaw(HEAD + optional_fields + "binary type origin: sentio_legacy_v0\n").sorting_key, "a, b");

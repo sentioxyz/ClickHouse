@@ -623,6 +623,7 @@ void MergeTreeData::loadStoredBinaryTypeOrigin()
     }
 
     stored_binary_type_origin_record_found = found.has_value();
+    stored_binary_type_origin_stated = found.has_value();
     if (!found)
     {
         stored_binary_type_origin = BinaryTypeOrigin::Unknown;
@@ -642,10 +643,15 @@ void MergeTreeData::loadStoredBinaryTypeOrigin()
     stored_binary_type_origin = found->origin;
 }
 
-void MergeTreeData::stampStoredBinaryTypeOriginOfNewTable(std::optional<BinaryTypeOrigin> origin_to_stamp)
+void MergeTreeData::stampStoredBinaryTypeOriginOfNewTable(bool is_original_create, std::optional<BinaryTypeOrigin> origin_to_stamp)
 {
-    if (!origin_to_stamp || getStorageID().uuid == UUIDHelpers::Nil)
+    if (!is_original_create)
+    {
+        if (origin_to_stamp)
+            throw Exception(ErrorCodes::LOGICAL_ERROR, "Table {} gets a stored binary type origin to stamp without an original CREATE",
+                            getStorageID().getNameForLogs());
         return;
+    }
 
     /// A new table with parts is a read-only table over existing data: that data keeps whatever origin it has.
     if (!getDataPartsForInternalUsage().empty())
@@ -653,7 +659,7 @@ void MergeTreeData::stampStoredBinaryTypeOriginOfNewTable(std::optional<BinaryTy
 
     if (stored_binary_type_origin_record_found)
     {
-        if (!stored_binary_type_origin_record_ignored && stored_binary_type_origin.load() == *origin_to_stamp)
+        if (!stored_binary_type_origin_record_ignored && origin_to_stamp && stored_binary_type_origin.load() == *origin_to_stamp)
             return;
 
         throw Exception(ErrorCodes::INCORRECT_DATA,
@@ -665,12 +671,33 @@ void MergeTreeData::stampStoredBinaryTypeOriginOfNewTable(std::optional<BinaryTy
                                                                  : String(getBinaryTypeOriginName(stored_binary_type_origin.load())));
     }
 
+    if (!origin_to_stamp || getStorageID().uuid == UUIDHelpers::Nil)
+        return;
+
     if (!persistStoredBinaryTypeOrigin(*origin_to_stamp))
     {
         LOG_INFO(log, "Table {} has no writable disk for its stored binary type origin record; it stays Unknown", getStorageID().getNameForLogs());
         return;
     }
     stored_binary_type_origin_record_written_by_create = true;
+}
+
+void MergeTreeData::removeStoredBinaryTypeOriginRecordWrittenByCreate()
+{
+    if (!stored_binary_type_origin_record_written_by_create)
+        return;
+
+    const auto record_path = fs::path(relative_data_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME;
+    for (const auto & disk : getStoragePolicy()->getDisks())
+    {
+        if (disk->isBroken() || disk->isReadOnly() || disk->isWriteOnce())
+            continue;
+        disk->removeFileIfExists(record_path);
+    }
+
+    stored_binary_type_origin_record_written_by_create = false;
+    stored_binary_type_origin_stated = false;
+    stored_binary_type_origin = BinaryTypeOrigin::Unknown;
 }
 
 bool MergeTreeData::persistStoredBinaryTypeOrigin(BinaryTypeOrigin origin)
@@ -699,6 +726,7 @@ bool MergeTreeData::persistStoredBinaryTypeOrigin(BinaryTypeOrigin origin)
 
     stored_binary_type_origin = origin;
     stored_binary_type_origin_record_ignored = false;
+    stored_binary_type_origin_stated = true;
     return true;
 }
 
@@ -707,7 +735,9 @@ String MergeTreeData::describeStoredBinaryTypeOrigin() const
     if (stored_binary_type_origin_record_ignored.load())
         return "unknown (with a record that does not apply to the table)";
     if (stored_binary_type_origin_conflict.load())
-        return fmt::format("unknown ({} in conflict with the replicated metadata)", getBinaryTypeOriginName(stored_binary_type_origin.load()));
+        return fmt::format("unknown ({} in conflict with the replicated metadata)", describeStatedBinaryTypeOrigin(getStatedStoredBinaryTypeOrigin()));
+    if (!stored_binary_type_origin_stated.load())
+        return "unknown (without a record)";
     return String(getBinaryTypeOriginName(stored_binary_type_origin.load()));
 }
 
@@ -8140,18 +8170,22 @@ bool MergeTreeData::admitStoredBinaryTypeOriginOfRawPart(IMergeTreeDataPart & pa
         /// The origin the part would be read with: that of the table, or, while the table has none, that of its replicated metadata,
         /// which a registration that this replica has not applied yet sets first.
         auto origin = getStoredBinaryTypeOrigin();
-        const bool unset = hasUnsetStoredBinaryTypeOrigin();
+        bool unset = hasUnsetStoredBinaryTypeOrigin();
         std::optional<int32_t> replicated_metadata_version;
         if (unset)
         {
             if (const auto replicated = getReplicatedStoredBinaryTypeOrigin())
             {
-                origin = replicated->first;
                 replicated_metadata_version = replicated->second;
+                if (replicated->first)
+                {
+                    unset = false;
+                    origin = *replicated->first;
+                }
             }
         }
 
-        if (unset && origin == BinaryTypeOrigin::Unknown)
+        if (unset)
         {
             part.admitted_for_unset_stored_binary_type_origin = true;
             part.unset_stored_binary_type_origin_metadata_version = replicated_metadata_version;
@@ -11318,13 +11352,13 @@ MergeTreeData & MergeTreeData::checkStructureAndGetMergeTreeData(IStorage & sour
 
     /// A part without a record of its own is read with the stored binary type origin of its table (Storages/StoredBinaryTypeOrigin.h), and
     /// a clone gets no record: moved between tables, its stored data keeps its meaning only if both tables have the same determinate
-    /// origin, also the unset one, which the registration then states for both. A table that is read as Unknown only because of a record
-    /// that does not apply to it or of a replicated conflict takes part in no move, even with another such table: its origin is not
-    /// determined, and a conflict resolved later would give the moved parts the trust of the table they are in. The initiator of a
-    /// replicated REPLACE refuses here, before its log entry exists; a replica that later fails this check fetches the parts the
-    /// initiator cloned.
+    /// origin, also the unset one, which the registration then states for both. A stated Unknown is not the unset origin: the registration
+    /// never states it, so parts never move between such tables. A table that is read as Unknown only because of a record that does not
+    /// apply to it or of a replicated conflict takes part in no move, even with another such table: its origin is not determined, and a
+    /// conflict resolved later would give the moved parts the trust of the table they are in. The initiator of a replicated REPLACE refuses
+    /// here, before its log entry exists; a replica that later fails this check fetches the parts the initiator cloned.
     if (!hasDeterminateStoredBinaryTypeOrigin() || !src_data->hasDeterminateStoredBinaryTypeOrigin()
-        || stored_binary_type_origin.load() != src_data->stored_binary_type_origin.load())
+        || getStatedStoredBinaryTypeOrigin() != src_data->getStatedStoredBinaryTypeOrigin())
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Tables have different stored binary type origins: {} and {}",
                         describeStoredBinaryTypeOrigin(), src_data->describeStoredBinaryTypeOrigin());
 

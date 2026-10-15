@@ -123,8 +123,9 @@ private:
     bool doCreateTable(ASTCreateQuery & create, const TableProperties & properties, DDLGuardPtr & ddl_guard, LoadingStrictnessLevel mode,
                        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp);
     /// The stored binary type origin (Storages/StoredBinaryTypeOrigin.h) that an original CREATE gives the new table: OfficialCanonical,
-    /// or for `CREATE ... AS` and `CLONE AS` the origin of the source table. Nothing for any other way to make a table: ATTACH, startup,
-    /// restore, a secondary query of a Replicated database, or metadata replayed or recovered from stored metadata.
+    /// or for `CREATE ... AS` and `CLONE AS` the origin of the source table, and nothing for a source without one. Nothing for any other way
+    /// to make a table either: ATTACH, startup, restore, a secondary query of a Replicated database, or metadata replayed or recovered from
+    /// stored metadata (see isOriginalCreate, which a new table checks whether or not it has an origin to stamp).
     std::optional<BinaryTypeOrigin> getStoredBinaryTypeOriginToStamp(const ASTCreateQuery & create, LoadingStrictnessLevel mode) const;
     /// An original CREATE on this binary: not ATTACH, startup, restore, a secondary query of a Replicated database, or metadata replayed or
     /// recovered from stored metadata.

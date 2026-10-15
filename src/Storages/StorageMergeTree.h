@@ -51,6 +51,7 @@ public:
         const String & date_column_name,
         const MergingParams & merging_params_,
         std::unique_ptr<MergeTreeSettings> settings_,
+        bool is_original_create = false,
         std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {});
 
     void startup() override;

@@ -115,6 +115,7 @@ public:
         std::unique_ptr<MergeTreeSettings> settings_,
         bool need_check_structure,
         const ZooKeeperRetriesInfo & create_query_zookeeper_retries_info_,
+        bool is_original_create = false,
         std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {});
 
     void startup() override;
@@ -693,16 +694,17 @@ private:
     void waitForPreActivePartsInRange(const MergeTreePartInfo & drop_range) const;
 
     /// A new replica of an existing table, made by this CREATE and without any part yet, takes `origin`, the stored binary type origin
-    /// of the table in ZooKeeper, whatever its own CREATE stamped. A table without a UUID has no stored origin of its own and stays Unknown.
-    void adoptStoredBinaryTypeOriginForNewReplica(BinaryTypeOrigin origin);
+    /// of the table in ZooKeeper (nothing while the table has none), whatever its own CREATE stamped. A table without a UUID has no stored
+    /// origin of its own and stays Unknown.
+    void adoptStoredBinaryTypeOriginForNewReplica(std::optional<BinaryTypeOrigin> origin);
 
-    /// An existing replica reconciles its stored binary type origin with `origin`, the one ZooKeeper holds for it (`source` names where):
-    /// see decideStoredBinaryTypeOriginReconciliation. Only the registration from Unknown to SentioLegacyV0 is applied; any other
-    /// difference keeps the local record and the data as they are and reads the table as Unknown; a record that does not apply to the
-    /// table is never replaced.
-    void reconcileStoredBinaryTypeOrigin(BinaryTypeOrigin origin, std::string_view source);
+    /// An existing replica reconciles its stored binary type origin with `origin`, the one ZooKeeper holds for it (nothing while it holds
+    /// none; `source` names where): see decideStoredBinaryTypeOriginReconciliation. Only the registration of a table without an origin to
+    /// SentioLegacyV0 is applied; any other difference keeps the local record and the data as they are and reads the table as Unknown; a
+    /// record that does not apply to the table is never replaced.
+    void reconcileStoredBinaryTypeOrigin(std::optional<BinaryTypeOrigin> origin, std::string_view source);
 
-    std::optional<std::pair<BinaryTypeOrigin, int32_t>> getReplicatedStoredBinaryTypeOrigin() const override;
+    std::optional<std::pair<std::optional<BinaryTypeOrigin>, int32_t>> getReplicatedStoredBinaryTypeOrigin() const override;
 
     /// For parts of another table moved into this table for its unset stored binary type origin (REPLACE/ATTACH PARTITION FROM, MOVE
     /// PARTITION TO TABLE): adds a check of the version of its replicated metadata to the ops that commit them, so that a registration

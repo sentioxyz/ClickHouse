@@ -6,6 +6,8 @@
 #include <Storages/StorageInMemoryMetadata.h>
 #include <IO/ReadBufferFromString.h>
 
+#include <optional>
+
 namespace DB
 {
 
@@ -41,11 +43,12 @@ struct ReplicatedMergeTreeTableMetadata
     String constraints;
     String ttl_table;
     UInt64 index_granularity_bytes{};
-    /// The stored binary type origin of the table (Storages/StoredBinaryTypeOrigin.h). It is written last and only while it is not Unknown,
-    /// so the metadata of a table that never had one stays as it was, and readers without the field ignore it. It is not compared by
-    /// checkEquals: a new replica takes it from ZooKeeper, an existing one reconciles with it (StorageReplicatedMergeTree::
-    /// reconcileStoredBinaryTypeOrigin), and it changes only through a versioned ALTER_METADATA entry (the one-time registration).
-    BinaryTypeOrigin binary_type_origin = BinaryTypeOrigin::Unknown;
+    /// The stored binary type origin of the table (Storages/StoredBinaryTypeOrigin.h), nothing while the table has none. It is written last
+    /// and only while the table has one, a stated Unknown included, so the metadata of a table that never had one stays as it was, and
+    /// readers without the field ignore it. It is not compared by checkEquals: a new replica takes it from ZooKeeper, an existing one
+    /// reconciles with it (StorageReplicatedMergeTree::reconcileStoredBinaryTypeOrigin), and it changes only through a versioned
+    /// ALTER_METADATA entry (the one-time registration).
+    std::optional<BinaryTypeOrigin> binary_type_origin;
 
     ReplicatedMergeTreeTableMetadata() = default;
     explicit ReplicatedMergeTreeTableMetadata(const MergeTreeData & data, const StorageMetadataPtr & metadata_snapshot);

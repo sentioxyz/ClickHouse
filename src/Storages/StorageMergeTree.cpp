@@ -207,6 +207,7 @@ StorageMergeTree::StorageMergeTree(
     const String & date_column_name,
     const MergingParams & merging_params_,
     std::unique_ptr<MergeTreeSettings> storage_settings_,
+    bool is_original_create,
     std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp)
     : MergeTreeData(
           table_id_,
@@ -235,8 +236,7 @@ StorageMergeTree::StorageMergeTree(
                         "of CREATE TABLE if you need to use those parts");
 
     /// An original CREATE stamps the table only now that it is proven to have no part (a read-only table over existing parts is not).
-    if (mode < LoadingStrictnessLevel::ATTACH)
-        stampStoredBinaryTypeOriginOfNewTable(stored_binary_type_origin_to_stamp);
+    stampStoredBinaryTypeOriginOfNewTable(is_original_create, stored_binary_type_origin_to_stamp);
 
     increment.set(getMaxBlockNumber());
 

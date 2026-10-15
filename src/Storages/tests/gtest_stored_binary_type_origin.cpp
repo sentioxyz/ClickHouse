@@ -243,32 +243,43 @@ TEST(StoredBinaryTypeOrigin, PartRecordAppliesOnlyToItsOwnPart)
 TEST(StoredBinaryTypeOrigin, ReplicatedReconciliationAppliesOnlyTheRegistration)
 {
     using enum StoredBinaryTypeOriginReconciliation;
-    constexpr auto U = BinaryTypeOrigin::Unknown;
-    constexpr auto L = BinaryTypeOrigin::SentioLegacyV0;
-    constexpr auto C = BinaryTypeOrigin::OfficialCanonical;
+    using Origin = std::optional<BinaryTypeOrigin>;
+    const Origin N = std::nullopt;
+    const Origin U = BinaryTypeOrigin::Unknown;
+    const Origin L = BinaryTypeOrigin::SentioLegacyV0;
+    const Origin C = BinaryTypeOrigin::OfficialCanonical;
 
-    /// {local, local record ignored, replicated} -> decision, every combination written out.
-    const std::tuple<BinaryTypeOrigin, bool, BinaryTypeOrigin, StoredBinaryTypeOriginReconciliation> cases[] = {
+    /// {local, local record ignored, replicated} -> decision, every combination written out. N is no origin (unset), U a stated Unknown.
+    const std::tuple<Origin, bool, Origin, StoredBinaryTypeOriginReconciliation> cases[] = {
         /// no record and fieldless metadata of an old table: nothing changes
-        {U, false, U, Keep},
+        {N, false, N, Keep},
         /// the registration, also recovered after a restart between its ZooKeeper part and its local part
-        {U, false, L, ApplyRegistration},
-        /// an existing Unknown replica never becomes canonical implicitly
+        {N, false, L, ApplyRegistration},
+        /// an existing replica without an origin never becomes canonical or a stated Unknown implicitly
+        {N, false, C, Conflict},
+        {N, false, U, Conflict},
+        /// a stated Unknown is never relabelled by the registration, nor reset by fieldless metadata
+        {U, false, N, Conflict},
+        {U, false, U, Keep},
+        {U, false, L, Conflict},
         {U, false, C, Conflict},
         /// an existing Legacy record is never reset by fieldless metadata, nor relabelled
+        {L, false, N, Conflict},
         {L, false, U, Conflict},
         {L, false, L, Keep},
         {L, false, C, Conflict},
         /// an existing canonical record is never reset, nor relabelled Legacy
+        {C, false, N, Conflict},
         {C, false, U, Conflict},
         {C, false, L, Conflict},
         {C, false, C, Keep},
         /// a record of another table or of the other kind is never replaced implicitly, whatever ZooKeeper holds
+        {U, true, N, KeepIgnoredRecord},
         {U, true, U, KeepIgnoredRecord},
         {U, true, L, KeepIgnoredRecord},
         {U, true, C, KeepIgnoredRecord},
     };
     for (const auto & [local, ignored, replicated, expected] : cases)
         EXPECT_EQ(decideStoredBinaryTypeOriginReconciliation(local, ignored, replicated), expected)
-            << getBinaryTypeOriginName(local) << " " << ignored << " " << getBinaryTypeOriginName(replicated);
+            << describeStatedBinaryTypeOrigin(local) << " " << ignored << " " << describeStatedBinaryTypeOrigin(replicated);
 }

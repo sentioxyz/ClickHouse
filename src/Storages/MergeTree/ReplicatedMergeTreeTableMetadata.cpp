@@ -116,7 +116,7 @@ ReplicatedMergeTreeTableMetadata::ReplicatedMergeTreeTableMetadata(const MergeTr
 
     constraints = metadata_snapshot->getConstraints().toString();
 
-    binary_type_origin = data.getStoredBinaryTypeOrigin();
+    binary_type_origin = data.getStatedStoredBinaryTypeOrigin();
 }
 
 void ReplicatedMergeTreeTableMetadata::write(WriteBuffer & out) const
@@ -184,8 +184,8 @@ void ReplicatedMergeTreeTableMetadata::write(WriteBuffer & out) const
 
     /// After every other field, under a name whose first letter no optional field before it has (see above), so that a reader without
     /// it, which does not check for the end of the metadata, ignores it, and the checks of the optional fields never advance into it.
-    if (binary_type_origin != BinaryTypeOrigin::Unknown)
-        out << "binary type origin: " << String(getBinaryTypeOriginName(binary_type_origin)) << "\n";
+    if (binary_type_origin)
+        out << "binary type origin: " << String(getBinaryTypeOriginName(*binary_type_origin)) << "\n";
 }
 
 String ReplicatedMergeTreeTableMetadata::toString() const
