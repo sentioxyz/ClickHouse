@@ -207,7 +207,7 @@ Pipe readJoinKeys(const StoragePtr & table, const ContextPtr & context)
     const auto metadata_snapshot = table->getInMemoryMetadataPtr(context, false);
     auto snapshot = table->getStorageSnapshot(metadata_snapshot, context);
     SelectQueryInfo query_info;
-    return table->read(Names{"k"}, snapshot, query_info, context, QueryProcessingStage::FetchColumns, 8192, 1);
+    return assert_cast<StorageJoin &>(*table).read(Names{"k"}, snapshot, query_info, context, QueryProcessingStage::FetchColumns, 8192, 1);
 }
 
 std::vector<UInt64> joinKeys(const StoragePtr & table, const ContextPtr & context)
