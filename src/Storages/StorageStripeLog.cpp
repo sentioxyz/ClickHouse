@@ -749,7 +749,8 @@ void StorageStripeLog::checkRestoreOfBinaryTypeHeaders() const
     if (stored_binary_type_origin.isUnset())
         return;
 
-    for (const auto & column : getInMemoryMetadataPtr(getContext(), false)->getColumns().getAllPhysical())
+    const auto metadata_snapshot = getInMemoryMetadataPtr(getContext(), false);
+    for (const auto & column : metadata_snapshot->getColumns().getAllPhysical())
     {
         if (valuesMayHaveBinaryTypeHeaders(*column.type))
             throw Exception(

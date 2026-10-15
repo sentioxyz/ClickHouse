@@ -132,12 +132,19 @@ Block setBlock(UInt64 key)
     return Block({ColumnWithTypeAndName(std::move(keys), std::make_shared<DataTypeUInt64>(), "k")});
 }
 
+/// The sink of an insert into the table, from a named metadata handle (StorageMetadataHandle refuses a temporary).
+SinkToStoragePtr writeSink(const StoragePtr & table, const ContextPtr & context)
+{
+    const auto metadata_snapshot = table->getInMemoryMetadataPtr(context, false);
+    return table->write({}, metadata_snapshot, context, /*async_insert=*/ false);
+}
+
 /// An insert into a table that has consumed one block and holds its sink until it finishes or is cancelled.
 class Insert
 {
 public:
     Insert(const StoragePtr & table, const ContextPtr & context, const Block & block)
-        : pipeline(table->write({}, table->getInMemoryMetadataPtr(context, false), context, /*async_insert=*/ false))
+        : pipeline(writeSink(table, context))
         , executor(std::make_unique<PushingPipelineExecutor>(pipeline))
     {
         executor->start();
@@ -197,7 +204,8 @@ void registerOrigin(const StoragePtr & table, const ContextPtr & context)
 /// A read of the keys of a Join table: the pipe holds the lock of the state for read until it is destroyed.
 Pipe readJoinKeys(const StoragePtr & table, const ContextPtr & context)
 {
-    auto snapshot = table->getStorageSnapshot(table->getInMemoryMetadataPtr(context, false), context);
+    const auto metadata_snapshot = table->getInMemoryMetadataPtr(context, false);
+    auto snapshot = table->getStorageSnapshot(metadata_snapshot, context);
     SelectQueryInfo query_info;
     return table->read(Names{"k"}, snapshot, query_info, context, QueryProcessingStage::FetchColumns, 8192, 1);
 }
