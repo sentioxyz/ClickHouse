@@ -158,6 +158,9 @@ public:
         DB::ServerUUID::setRandomForUnitTests();
         DB::getIOThreadPool().initializeWithDefaultSettingsIfNotInitialized();
 
+        /// This suite temporarily changes the shared Context configuration.
+        previous_config = getContext().context->tryGetConfig();
+
         setUpConfig(config_path);
         DB::ConfigProcessor config_processor(config_path, true, true);
         auto config = config_processor.loadConfig(false);
@@ -178,6 +181,8 @@ public:
     static void TearDownTestSuite()
     {
         DB::clearDiskRegistry();
+        getContext().context->setConfig(previous_config);
+        previous_config = nullptr;
     }
 
     void SetUp() override
@@ -247,10 +252,12 @@ public:
 
 private:
     static DB::DisksMap initialized_disks;
+    static Poco::AutoPtr<Poco::Util::AbstractConfiguration> previous_config;
 };
 
 const std::string DiskObjectStorageTest::config_path = "./config_file_for_test.xml";
 DB::DisksMap DiskObjectStorageTest::initialized_disks = {};
+Poco::AutoPtr<Poco::Util::AbstractConfiguration> DiskObjectStorageTest::previous_config;
 
 TEST_F(DiskObjectStorageTest, CreateDisk)
 {
