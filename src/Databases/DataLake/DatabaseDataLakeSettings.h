@@ -23,6 +23,8 @@ class SettingsChanges;
 /// Merged and deduplicated type list for DatabaseDataLake + StorageObjectStorage settings.
 #define LIST_OF_DATABASE_ICEBERG_SETTINGS_SUPPORTED_TYPES(CLASS_NAME, M) \
     M(CLASS_NAME, ArrowCompression) \
+    M(CLASS_NAME, BinaryTypeOrigin) \
+    M(CLASS_NAME, BinaryTypeWriterMode) \
     M(CLASS_NAME, Bool) \
     M(CLASS_NAME, CapnProtoEnumComparingMode) \
     M(CLASS_NAME, Char) \
