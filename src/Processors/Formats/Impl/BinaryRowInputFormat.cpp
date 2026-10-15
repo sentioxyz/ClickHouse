@@ -101,6 +101,8 @@ std::vector<String> BinaryFormatReader<with_defaults>::readNames()
 template <bool with_defaults>
 std::vector<String> BinaryFormatReader<with_defaults>::readTypes()
 {
+    /// Only the types of this row: a reader that is reset reads the header of its next input again.
+    read_data_types.clear();
     read_data_types.reserve(read_columns);
     Names type_names;
     if (format_settings.binary.decode_types_in_binary_format)

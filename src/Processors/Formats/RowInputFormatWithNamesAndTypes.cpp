@@ -4,6 +4,7 @@
 #include <DataTypes/DataTypeLowCardinality.h>
 #include <DataTypes/DataTypeNothing.h>
 #include <DataTypes/DataTypeNullable.h>
+#include <DataTypes/TypeNameIdentity.h>
 #include <Formats/EscapingRuleUtils.h>
 #include <IO/Operators.h>
 #include <IO/PeekableReadBuffer.h>
@@ -139,6 +140,28 @@ void RowInputFormatWithNamesAndTypes<FormatReaderImpl>::readPrefix()
                     data_types[*column_mapping->column_indexes_for_input_fields[i]]->getName(), type_names[i]);
             }
         }
+    }
+
+    /// A row of types that holds the types themselves (see FormatWithNamesAndTypesReader::getHeaderTypes) can name a type like the type of
+    /// its column and still be another type, whose values the type of the column would read with another width: refused before any value is
+    /// read. Also when the types of the header are not checked otherwise (input_format_with_types_use_header = 0), which lets a header have
+    /// types with other names, not another type with the same name.
+    const DataTypes header_types = format_reader->getHeaderTypes();
+    const size_t mapped_header_types = std::min(header_types.size(), column_mapping->column_indexes_for_input_fields.size());
+    for (size_t i = 0; i < mapped_header_types; ++i)
+    {
+        const auto & column_index = column_mapping->column_indexes_for_input_fields[i];
+        if (!column_index)
+            continue;
+        const auto & column_type = data_types[*column_index];
+        if (header_types[i]->getName() == column_type->getName() && getTypeIdentityKey(header_types[i]) != getTypeIdentityKey(column_type))
+            throw Exception(
+                ErrorCodes::INCORRECT_DATA,
+                "The type of column '{}' in the header of the input data is named {}, as the type of the column, but it is another type: its "
+                "values cannot be read with the type of the column. A decimal constructed with the precision of another decimal class has "
+                "the name of that class (a native Decimal512 with a precision of at most 76 has 64-byte values and the name of a 32-byte "
+                "Decimal256); read the column with the structure inferred from the data",
+                getPort().getHeader().getByPosition(*column_index).name, column_type->getName());
     }
 
     if (format_settings.force_null_for_omitted_fields)
@@ -475,9 +498,17 @@ NamesAndTypesList FormatWithNamesAndTypesSchemaReader::readSchema()
                 ErrorCodes::INCORRECT_DATA,
                 "The number of column names {} differs with the number of types {}", column_names.size(), data_type_names.size());
 
+        /// The types themselves where the row of types holds them (see FormatWithNamesAndTypesReader::getHeaderTypes): their names do not
+        /// tell every type apart.
+        const DataTypes header_types = format_reader->getHeaderTypes();
+        if (!header_types.empty() && header_types.size() != data_type_names.size())
+            throw Exception(
+                ErrorCodes::LOGICAL_ERROR, "The format reader has {} types of the header for {} type names", header_types.size(),
+                data_type_names.size());
+
         NamesAndTypesList result;
         for (size_t i = 0; i != data_type_names.size(); ++i)
-            result.emplace_back(column_names[i], DataTypeFactory::instance().get(data_type_names[i]));
+            result.emplace_back(column_names[i], header_types.empty() ? DataTypeFactory::instance().get(data_type_names[i]) : header_types[i]);
         return result;
     }
 

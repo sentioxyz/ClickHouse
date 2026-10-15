@@ -1,0 +1,31 @@
+--- the inferred structure keeps the decoded types
+Decimal(50, 2)	64	123.45
+Array(Decimal(50, 2))	64	123.45
+64	123.45
+0
+DESCRIBE of a scale greater than the precision: refused
+Decimal(50, 2)	64	123.45
+--- the same name for another type is refused
+explicit structure: refused
+Array: refused
+aggregation state: refused
+types of the header not checked: refused
+columns mapped by position: refused
+INSERT: refused
+0
+--- several files: each header is checked against the structure
+1.bin	64	123.45
+3.bin	64	2.50
+a file with the same name for another type: refused
+--- types with other names, skipped columns
+7
+another name, checked: refused
+7
+--- types created from their names
+Decimal(50, 2)	32	123.45
+32	123.45
+Decimal(50, 2)	32	123.45
+32	123.45
+Decimal(80, 2)	64	123.45
+64	123.45
+123.45

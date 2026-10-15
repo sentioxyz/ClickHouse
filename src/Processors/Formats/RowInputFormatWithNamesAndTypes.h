@@ -104,6 +104,12 @@ public:
     /// Read row with types and return the list of them.
     virtual std::vector<String> readTypes() = 0;
 
+    /// The types of the row of types that readTypes read last, as the reader built them, for a format whose row of types can hold the types
+    /// themselves (RowBinaryWithNamesAndTypes with the types in binary format): their names do not tell every type apart, since a decimal
+    /// constructed with the precision of another decimal class has the name of that class (see isTypeIdentifiedByName). Empty for a format
+    /// whose row of types holds only names.
+    virtual DataTypes getHeaderTypes() const { return {}; }
+
     /// Read row with raw values.
     virtual std::vector<String> readRowForHeaderDetection()
     {

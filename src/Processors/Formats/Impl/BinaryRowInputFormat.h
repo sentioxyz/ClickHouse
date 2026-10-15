@@ -34,8 +34,11 @@ public:
     std::vector<String> readTypes() override;
     std::vector<String> readHeaderRow();
 
+    /// The types of the last row of types: decoded from the binary type encoding, or created from their names.
+    DataTypes getHeaderTypes() const override { return read_data_types; }
+
 private:
-    /// Data types read from input data.
+    /// Data types read from input data, of the last row of types.
     DataTypes read_data_types;
     UInt64 read_columns{};
 };
