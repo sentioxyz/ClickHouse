@@ -25,6 +25,7 @@
 #include <DataTypes/DataTypeFactory.h>
 #include <DataTypes/DataTypesCache.h>
 #include <DataTypes/SentioWideTypeEncoding.h>
+#include <DataTypes/BinaryTypeOriginRequiredException.h>
 #include <Columns/ColumnDynamic.h>
 #include <AggregateFunctions/IAggregateFunction.h>
 #include <AggregateFunctions/AggregateFunctionFactory.h>
@@ -645,7 +646,7 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             return decodeDecimal<Decimal512>(buf);
         }
         if (origin == BinaryTypeOrigin::Unknown)
-            throw Exception(
+            throw BinaryTypeOriginRequiredException(
                 ErrorCodes::INCORRECT_DATA,
                 "Binary type index {0:#04x} is ambiguous without a declared origin: the Decimal512 fork wrote it for a 512-bit type, "
                 "upstream does not", UInt64(type));

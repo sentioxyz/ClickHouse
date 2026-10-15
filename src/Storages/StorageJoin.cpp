@@ -17,6 +17,7 @@
 #include <Common/CurrentThread.h>
 #include <Common/quoteString.h>
 #include <Common/Exception.h>
+#include <Common/assert_cast.h>
 #include <Core/ColumnsWithTypeAndName.h>
 #include <Core/BaseSettings.h>
 #include <Core/Settings.h>
@@ -74,8 +75,11 @@ StorageJoin::StorageJoin(
     const ConstraintsDescription & constraints_,
     const String & comment,
     bool overwrite_,
-    bool persistent_)
-    : StorageSetOrJoinBase{disk_, relative_path_, table_id_, columns_, constraints_, comment, persistent_}
+    bool persistent_,
+    bool is_original_create,
+    std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp)
+    : StorageSetOrJoinBase{disk_, relative_path_, table_id_, columns_, constraints_, comment, persistent_, is_original_create,
+                           stored_binary_type_origin_to_stamp}
     , key_names(key_names_)
     , use_nulls(use_nulls_)
     , limits(limits_)
@@ -89,9 +93,64 @@ StorageJoin::StorageJoin(
             throw Exception(ErrorCodes::NO_SUCH_COLUMN_IN_TABLE, "Key column ({}) does not exist in table declaration.", key);
 
     table_join = std::make_shared<TableJoin>(limits, use_nulls, kind, strictness, key_names);
-    join = std::make_shared<HashJoin>(table_join, std::make_shared<const Block>(getRightSampleBlock()), overwrite);
+    join = createEmptyJoin();
     restore();
     optimizeUnlocked();
+}
+
+HashJoinPtr StorageJoin::createEmptyJoin() const
+{
+    return std::make_shared<HashJoin>(table_join, std::make_shared<const Block>(getRightSampleBlock()), overwrite);
+}
+
+namespace
+{
+
+class JoinReplacementState final : public StorageSetOrJoinBase::ReplacementState
+{
+public:
+    JoinReplacementState(HashJoinPtr join_, std::function<void(Block &)> convert_right_block_)
+        : join(std::move(join_)), convert_right_block(std::move(convert_right_block_))
+    {
+    }
+
+    void insertBlock(const Block & block) override
+    {
+        Block block_to_insert = block;
+        convert_right_block(block_to_insert);
+        join->addBlockToJoin(block_to_insert, true);
+    }
+
+    void finishFile() override {}
+
+    HashJoinPtr join;
+
+private:
+    std::function<void(Block &)> convert_right_block;
+};
+
+}
+
+std::unique_ptr<StorageSetOrJoinBase::ReplacementState> StorageJoin::createReplacementState() const
+{
+    return std::make_unique<JoinReplacementState>(createEmptyJoin(), [this](Block & block) { convertRightBlock(block); });
+}
+
+void StorageJoin::persistAndPublish(ReplacementState & state, const std::function<void()> & persist, ContextPtr context)
+{
+    auto & replacement = assert_cast<JoinReplacementState &>(state);
+    /// As after the load (optimizeUnlocked), before anything is published.
+    size_t bytes = replacement.join->getTotalByteCount();
+    replacement.join->shrinkStoredBlocksToFit(bytes, true);
+
+    TableLockHolder holder = tryLockTimedWithContext(rwlock, RWLockImpl::Write, context);
+    persist();
+    join = std::move(replacement.join);
+}
+
+void StorageJoin::resetState()
+{
+    join = createEmptyJoin();
 }
 
 RWLockImpl::LockHolder StorageJoin::tryLockTimedWithContext(const RWLock & lock, RWLockImpl::Type type, ContextPtr context) const
@@ -110,10 +169,12 @@ RWLockImpl::LockHolder StorageJoin::tryLockForCurrentQueryTimedWithContext(const
     return lock->getLock(type, query_id, acquire_timeout, false);
 }
 
-SinkToStoragePtr StorageJoin::write(const ASTPtr & query, const StorageMetadataPtr & metadata_snapshot, ContextPtr context, bool /*async_insert*/)
+SinkToStoragePtr StorageJoin::write(const ASTPtr & /*query*/, const StorageMetadataPtr & metadata_snapshot, ContextPtr context, bool /*async_insert*/)
 {
+    /// The token first: a writer that waits for the registration of the stored binary type origin holds no lock that it takes.
+    auto token = enterAsWriter(context);
     std::lock_guard mutate_lock(mutate_mutex);
-    return StorageSetOrJoinBase::write(query, metadata_snapshot, context, /*async_insert=*/false);
+    return makeSink(std::move(token), metadata_snapshot, context);
 }
 
 bool StorageJoin::optimize(
@@ -139,6 +200,7 @@ bool StorageJoin::optimize(
     if (cleanup)
         throw Exception(ErrorCodes::NOT_IMPLEMENTED, "CLEANUP cannot be specified when optimizing table of type Join");
 
+    checkOriginNotRequired();
     std::lock_guard mutate_lock(mutate_mutex);
     TableLockHolder lock_holder = tryLockTimedWithContext(rwlock, RWLockImpl::Write, context);
 
@@ -169,9 +231,12 @@ void StorageJoin::truncate(const ASTPtr &, const StorageMetadataPtr &, ContextPt
 
     disk->createDirectories(path);
     disk->createDirectories(fs::path(path) / "tmp/");
+    restoreStoredBinaryTypeOriginAfterTruncate(context);
 
     increment = 0;
-    join = std::make_shared<HashJoin>(table_join, std::make_shared<const Block>(getRightSampleBlock()), overwrite);
+    join = createEmptyJoin();
+    /// The data that needed a declared origin is removed.
+    clearOriginRequired();
 }
 
 void StorageJoin::checkMutationIsPossible(const MutationCommands & commands, const Settings & /* settings */) const
@@ -187,6 +252,7 @@ void StorageJoin::mutate(const MutationCommands & commands, ContextPtr context)
     /// We cannot acquire rwlock here, because read lock is needed
     /// for execution of mutation interpreter.
     std::lock_guard mutate_lock(mutate_mutex);
+    checkOriginNotRequired();
 
     constexpr auto tmp_backup_file_name = "tmp/mut.bin";
     auto metadata_snapshot = getInMemoryMetadataPtr(context, false);
@@ -245,6 +311,7 @@ void StorageJoin::mutate(const MutationCommands & commands, ContextPtr context)
 
 HashJoinPtr StorageJoin::getJoinLocked(std::shared_ptr<TableJoin> analyzed_join, String query_id, std::chrono::milliseconds acquire_timeout, const Names & required_columns_names) const
 {
+    checkOriginNotRequired();
     auto metadata_snapshot = getInMemoryMetadataPtr(CurrentThread::tryGetQueryContext(), false);
     if (!analyzed_join->sameStrictnessAndKind(strictness, kind))
         throw Exception(ErrorCodes::INCOMPATIBLE_TYPE_OF_JOIN, "Table '{}' has incompatible type of JOIN", getStorageID().getNameForLogs());
@@ -352,6 +419,7 @@ size_t StorageJoin::getSize(ContextPtr context) const
 
 std::optional<UInt64> StorageJoin::totalRows(ContextPtr query_context) const
 {
+    checkOriginNotRequired();
     const auto & settings = query_context->getSettingsRef();
     TableLockHolder holder = tryLockTimed(rwlock, RWLockImpl::Read, RWLockImpl::NO_QUERY, settings[Setting::lock_acquire_timeout]);
     return join->getTotalRowCount();
@@ -359,18 +427,21 @@ std::optional<UInt64> StorageJoin::totalRows(ContextPtr query_context) const
 
 std::optional<UInt64> StorageJoin::totalBytes(ContextPtr query_context) const
 {
+    checkOriginNotRequired();
     const auto & settings = query_context->getSettingsRef();
     TableLockHolder holder = tryLockTimed(rwlock, RWLockImpl::Read, RWLockImpl::NO_QUERY, settings[Setting::lock_acquire_timeout]);
     return join->getTotalByteCount();
 }
 
-DataTypePtr StorageJoin::joinGetCheckAndGetReturnType(const DataTypes & data_types, const String & column_name, bool or_null) const
+DataTypePtr StorageJoin::joinGetCheckAndGetReturnType(const DataTypes & data_types, const String & column_name, bool or_null, ContextPtr context) const
 {
+    TableLockHolder holder = tryLockTimedWithContext(rwlock, RWLockImpl::Read, context);
     return join->joinGetCheckAndGetReturnType(data_types, column_name, or_null);
 }
 
 ColumnWithTypeAndName StorageJoin::joinGet(const Block & block, const Block & block_with_columns_to_add, ContextPtr context) const
 {
+    checkOriginNotRequired();
     TableLockHolder holder = tryLockTimedWithContext(rwlock, RWLockImpl::Read, context);
     return join->joinGet(block, block_with_columns_to_add);
 }
@@ -534,7 +605,9 @@ void registerStorageJoin(StorageFactory & factory)
             args.constraints,
             args.comment,
             join_any_take_last_row,
-            persistent);
+            persistent,
+            args.is_original_create,
+            args.stored_binary_type_origin_to_stamp);
     };
 
     factory.registerStorage(
@@ -1118,6 +1191,7 @@ Pipe StorageJoin::read(
     size_t /*num_streams*/)
 {
     storage_snapshot->check(column_names);
+    checkOriginNotRequired();
 
     auto source_sample_block = std::make_shared<const Block>(storage_snapshot->getSampleBlockForColumns(column_names));
     RWLockImpl::LockHolder holder = tryLockTimedWithContext(rwlock, RWLockImpl::Read, context);

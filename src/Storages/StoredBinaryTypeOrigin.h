@@ -170,6 +170,10 @@ public:
         IDisk & disk, const String & table_path, const StorageID & table_id, BinaryTypeOrigin origin_to_register,
         const WriteSettings & write_settings, bool sync);
 
+    /// After the directory of the table was removed and created again (TRUNCATE of Set and Join): writes the record of the origin again, so
+    /// that the table keeps its identity. A record that did not apply to the table is gone with the directory: the table is unset.
+    void restoreAfterTruncate(IDisk & disk, const String & table_path, const StorageID & table_id, const WriteSettings & write_settings, bool sync);
+
     BinaryTypeOrigin get() const { return origin.load(); }
     bool isUnset() const { return !record_exists.load(); }
 

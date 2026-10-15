@@ -425,6 +425,21 @@ void StoredBinaryTypeOriginOfTableDirectory::registerOrigin(
              getBinaryTypeOriginName(origin_to_register), table_id.getNameForLogs());
 }
 
+void StoredBinaryTypeOriginOfTableDirectory::restoreAfterTruncate(
+    IDisk & disk, const String & table_path, const StorageID & table_id, const WriteSettings & write_settings, bool sync)
+{
+    if (!record_exists.load() || record_ignored.load())
+    {
+        origin = BinaryTypeOrigin::Unknown;
+        record_exists = false;
+        record_ignored = false;
+        return;
+    }
+
+    const String record_path = fs::path(table_path) / STORED_BINARY_TYPE_ORIGIN_FILE_NAME;
+    writeStoredBinaryTypeOriginRecord(disk, record_path, StoredBinaryTypeOriginRecord::forTable(origin.load(), table_id.uuid), write_settings, sync);
+}
+
 String StoredBinaryTypeOriginOfTableDirectory::describe() const
 {
     if (record_ignored.load())

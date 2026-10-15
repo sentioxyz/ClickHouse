@@ -38,7 +38,9 @@ public:
         const ConstraintsDescription & constraints_,
         const String & comment,
         bool overwrite,
-        bool persistent_);
+        bool persistent_,
+        bool is_original_create = false,
+        std::optional<BinaryTypeOrigin> stored_binary_type_origin_to_stamp = {});
 
     String getName() const override { return "Join"; }
 
@@ -54,7 +56,9 @@ public:
     HashJoinPtr getJoinLocked(std::shared_ptr<TableJoin> analyzed_join, String query_id, std::chrono::milliseconds acquire_timeout, const Names & required_columns_names) const;
 
     /// Get result type for function "joinGet(OrNull)"
-    DataTypePtr joinGetCheckAndGetReturnType(const DataTypes & data_types, const String & column_name, bool or_null) const;
+    /// Takes rwlock for read until it returns: the join it asks can be replaced (TRUNCATE, mutations, the registration of the stored binary
+    /// type origin). The type is metadata, which a blocked table also answers.
+    DataTypePtr joinGetCheckAndGetReturnType(const DataTypes & data_types, const String & column_name, bool or_null, ContextPtr context) const;
 
     /// Execute function "joinGet(OrNull)" on data block.
     /// Takes rwlock for read to prevent parallel StorageJoin updates during processing data block
@@ -129,6 +133,12 @@ private:
     static RWLockImpl::LockHolder tryLockForCurrentQueryTimedWithContext(const RWLock & lock, RWLockImpl::Type type, ContextPtr context);
 
     void convertRightBlock(Block & block) const;
+
+    HashJoinPtr createEmptyJoin() const;
+    std::unique_ptr<ReplacementState> createReplacementState() const override;
+    void persistAndPublish(ReplacementState & state, const std::function<void()> & persist, ContextPtr context) override;
+    void resetState() override;
+    std::unique_lock<std::mutex> lockForRegistration() override { return std::unique_lock(mutate_mutex); }
 };
 
 }
