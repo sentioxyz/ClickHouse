@@ -100,6 +100,20 @@ void acceptObjectSharedDataRows(IColumn & shared_data, size_t from, const Format
 /// A `JSON` shared data column with its values written for `mode`; the same column for SentioWideV1.
 ColumnPtr recodeObjectSharedDataForWrite(const ColumnPtr & shared_data, BinaryTypeWriterMode mode);
 
+/// The hash APIs that hash the bytes of binary `Dynamic` values (the range, weak and fast hashes of the columns of `Dynamic` and `JSON`)
+/// hash them as the Decimal512 fork had them in memory, with the legacy indexes of its 512-bit types (SentioLegacyBridge): the same data
+/// keeps the hash that the fork computed, which insert deduplication persisted in the IDs of the blocks. Only values that hold a SentioWide
+/// descriptor are written differently; everything else that these APIs hash (the layout, the order, the sizes) stays as it is.
+
+/// A column of canonical binary `Dynamic` values for a hash that reads only its rows [from, from + count): the column itself if none of them
+/// holds a SentioWide descriptor, otherwise a column of the same size whose rows [from, from + count) are written with SentioLegacyBridge
+/// and whose other rows, which that hash does not read, are empty. So the cost follows the rows that are hashed, not the whole column.
+ColumnPtr getBinaryDynamicValuesForHashing(const ColumnPtr & values, size_t from, size_t count);
+
+/// The same for the rows [from, from + count) of a `JSON` shared data column (Array(Tuple(paths String, values String))): only the values of
+/// these rows are written again.
+ColumnPtr getObjectSharedDataForHashing(const ColumnPtr & shared_data, size_t from, size_t count);
+
 /// Elements of aggregation states: one value of each of `types` serialized by IColumn::serializeValueIntoArena with the aggregation state
 /// settings, one after another (the arena form that `groupArray`, `groupUniqArray`, `groupArrayIntersect`, `topK` and `-Distinct` keep).
 /// Accepts elements read with `decoding`: every element is deserialized with its origin, nested in the value the state belongs to (the

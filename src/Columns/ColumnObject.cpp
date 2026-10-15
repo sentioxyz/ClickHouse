@@ -1364,7 +1364,9 @@ void ColumnObject::updateHashWithValueRange(size_t begin, size_t end, SipHash & 
         dynamic_paths.find(path)->second->updateHashWithValueRange(begin, end, hash);
     }
 
-    shared_data->updateHashWithValueRange(begin, end, hash);
+    /// The values of the shared data as the Decimal512 fork had them in memory (getObjectSharedDataForHashing), as for the shared variant of
+    /// `Dynamic`; the dynamic paths do the same themselves.
+    getObjectSharedDataForHashing(shared_data, begin, end - begin)->updateHashWithValueRange(begin, end, hash);
 }
 
 void ColumnObject::computeHashInto(size_t row_begin, size_t row_end, UInt32 * hash_out, bool initial) const
@@ -1390,7 +1392,8 @@ void ColumnObject::computeHashInto(size_t row_begin, size_t row_end, UInt32 * ha
             column->computeHashInto(row_begin, row_end, out, first);
             first = false;
         }
-        shared_data->computeHashInto(row_begin, row_end, out, first);
+        /// As in `updateHashWithValueRange`.
+        getObjectSharedDataForHashing(shared_data, row_begin, row_end - row_begin)->computeHashInto(row_begin, row_end, out, first);
     };
 
     if (initial)
@@ -1415,7 +1418,8 @@ void ColumnObject::updateHashFast(SipHash & hash) const
         column->updateHashFast(hash);
     for (const auto & [_, column] : dynamic_paths_ptrs)
         column->updateHashFast(hash);
-    shared_data->updateHashFast(hash);
+    /// As in `updateHashWithValueRange`.
+    getObjectSharedDataForHashing(shared_data, 0, size())->updateHashFast(hash);
 }
 
 ColumnPtr ColumnObject::filter(const Filter & filt, ssize_t result_size_hint) const

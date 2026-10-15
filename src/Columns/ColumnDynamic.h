@@ -195,20 +195,18 @@ public:
     /// The hash is the same for the same INSERT data, but NOT necessarily the same for
     /// logically equivalent data with different variant layouts (e.g. value stored in a typed
     /// variant vs the shared variant).
+    /// The values of the shared variant are hashed as the Decimal512 fork had them in memory (getVariantColumnForHashing), so that the same
+    /// data keeps the IDs of its blocks that this fork persisted.
     void updateHashWithValueRange(size_t begin, size_t end, SipHash & hash) const override;
 
     /// Weak hash of the raw variant storage. Like `updateHashWithValueRange`, this is NOT guaranteed
     /// to be equal for logically equal values stored with different variant layouts (typed variant
     /// vs the shared variant); the in-memory scatter consumers only need fast per-query partitioning.
-    void computeHashInto(size_t row_begin, size_t row_end, UInt32 * hash_out, bool initial) const override
-    {
-        variant_column_ptr->computeHashInto(row_begin, row_end, hash_out, initial);
-    }
+    /// The shared variant is hashed as in `updateHashWithValueRange`.
+    void computeHashInto(size_t row_begin, size_t row_end, UInt32 * hash_out, bool initial) const override;
 
-    void updateHashFast(SipHash & hash) const override
-    {
-        variant_column_ptr->updateHashFast(hash);
-    }
+    /// The shared variant is hashed as in `updateHashWithValueRange`.
+    void updateHashFast(SipHash & hash) const override;
 
     ColumnPtr filter(const Filter & filt, ssize_t result_size_hint) const override
     {
@@ -487,6 +485,10 @@ private:
     VectorWithMemoryTracking<UInt8> * combineVariants(const VariantInfo & other_variant_info);
 
     void updateVariantInfoAndExpandVariantColumn(const DataTypePtr & new_variant_type);
+
+    /// The variant column for the range, weak and fast hashes of the rows [begin, end): the column itself, or a view of it whose shared variant
+    /// holds the values of these rows as the Decimal512 fork had them in memory (getBinaryDynamicValuesForHashing).
+    ColumnPtr getVariantColumnForHashing(size_t begin, size_t end) const;
 
     WrappedPtr variant_column;
     /// Store and use pointer to ColumnVariant to avoid virtual calls.

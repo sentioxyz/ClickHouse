@@ -997,9 +997,64 @@ void ColumnDynamic::updateHashWithValue(size_t n, SipHash & hash) const
     variant_col.getVariantByGlobalDiscriminator(discr).updateHashWithValue(variant_col.offsetAt(n), hash);
 }
 
+ColumnPtr ColumnDynamic::getVariantColumnForHashing(size_t begin, size_t end) const
+{
+    /// Only the shared variant holds binary type headers: every other variant has a type of its own, and a value of a type that its name does
+    /// not identify is always in the shared variant. The view shares every other column, so the hashes see the same discriminators,
+    /// offsets, variants and order.
+    const auto & variant_col = getVariantColumn();
+    const auto shared_variant_local_discr = variant_col.localDiscriminatorByGlobal(getSharedVariantDiscriminator());
+    const auto & shared_variant = variant_col.getVariantPtrByLocalDiscriminator(shared_variant_local_discr);
+
+    /// The rows of the shared variant that the rows [begin, end) refer to, which are contiguous (see ColumnVariant::updateHashWithValueRange):
+    /// all of them for all the rows. The hashes of ColumnVariant read no other rows of it for the rows [begin, end).
+    size_t first = 0;
+    size_t count = 0;
+    if (begin == 0 && end == variant_col.size())
+    {
+        count = shared_variant->size();
+    }
+    else
+    {
+        const auto & local_discriminators = variant_col.getLocalDiscriminators();
+        const auto & offsets = variant_col.getOffsets();
+        for (size_t i = begin; i < end; ++i)
+        {
+            if (local_discriminators[i] != shared_variant_local_discr)
+                continue;
+            if (count == 0)
+                first = offsets[i];
+            ++count;
+        }
+    }
+
+    auto shared_variant_for_hashing = getBinaryDynamicValuesForHashing(shared_variant, first, count);
+    if (shared_variant_for_hashing.get() == shared_variant.get())
+        return variant_column;
+
+    Columns variants;
+    variants.reserve(variant_col.getVariants().size());
+    for (const auto & variant : variant_col.getVariants())
+        variants.push_back(variant);
+    variants[shared_variant_local_discr] = std::move(shared_variant_for_hashing);
+    return ColumnVariant::create(
+        variant_col.getLocalDiscriminatorsPtr(), variant_col.getOffsetsPtr(), variants, variant_col.getLocalToGlobalDiscriminatorsMapping());
+}
+
 void ColumnDynamic::updateHashWithValueRange(size_t begin, size_t end, SipHash & hash) const
 {
-    variant_column_ptr->updateHashWithValueRange(begin, end, hash);
+    getVariantColumnForHashing(begin, end)->updateHashWithValueRange(begin, end, hash);
+}
+
+void ColumnDynamic::computeHashInto(size_t row_begin, size_t row_end, UInt32 * hash_out, bool initial) const
+{
+    /// ColumnVariant::computeHashInto may hash every row of a variant, but uses only those of the rows [row_begin, row_end).
+    getVariantColumnForHashing(row_begin, row_end)->computeHashInto(row_begin, row_end, hash_out, initial);
+}
+
+void ColumnDynamic::updateHashFast(SipHash & hash) const
+{
+    getVariantColumnForHashing(0, size())->updateHashFast(hash);
 }
 
 namespace

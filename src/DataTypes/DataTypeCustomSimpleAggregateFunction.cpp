@@ -5,6 +5,7 @@
 #include <DataTypes/DataTypeLowCardinality.h>
 #include <DataTypes/DataTypeTuple.h>
 #include <DataTypes/DataTypeFactory.h>
+#include <DataTypes/TypeNameIdentity.h>
 
 #include <AggregateFunctions/AggregateFunctionFactory.h>
 #include <AggregateFunctions/IAggregateFunction.h>
@@ -23,6 +24,7 @@ namespace ErrorCodes
 {
     extern const int SYNTAX_ERROR;
     extern const int BAD_ARGUMENTS;
+    extern const int INCORRECT_DATA;
     extern const int PARAMETERS_TO_AGGREGATE_FUNCTIONS_MUST_BE_LITERALS;
     extern const int NUMBER_OF_ARGUMENTS_DOESNT_MATCH;
     extern const int LOGICAL_ERROR;
@@ -173,8 +175,23 @@ String DataTypeCustomSimpleAggregateFunction::getFunctionName() const
     return function->getName();
 }
 
+void DataTypeCustomSimpleAggregateFunction::checkTypeOfFunctionIsIdentifiedByName(const IDataType & type, const String & function_name)
+{
+    if (!isTypeIdentifiedByName(type))
+        throw Exception(
+            ErrorCodes::INCORRECT_DATA,
+            "SimpleAggregateFunction({}, ...) cannot be made for the type {}: a SimpleAggregateFunction type is created from the name of its "
+            "type, which does not identify this one (a decimal with the precision of another decimal class, or with a scale greater than its "
+            "precision, has the name of another type or of none)",
+            function_name, type.getName());
+}
+
 DataTypePtr createSimpleAggregateFunctionType(const AggregateFunctionPtr & function, const DataTypes & argument_types, const Array & parameters)
 {
+    /// getCustom creates the type from its name, which holds the names of the argument types.
+    for (const auto & argument_type : argument_types)
+        DataTypeCustomSimpleAggregateFunction::checkTypeOfFunctionIsIdentifiedByName(*argument_type, function->getName());
+
     auto custom_desc = std::make_unique<DataTypeCustomDesc>(
         std::make_unique<DataTypeCustomSimpleAggregateFunction>(function, argument_types, parameters));
 

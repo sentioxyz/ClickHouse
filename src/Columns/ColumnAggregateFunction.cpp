@@ -3,6 +3,7 @@
 #include <DataTypes/IDataType.h>
 
 #include <AggregateFunctions/IAggregateFunction.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <Columns/ColumnsCommon.h>
 #include <Columns/MaskOperations.h>
 #include <IO/Operators.h>
@@ -445,11 +446,16 @@ ColumnPtr ColumnAggregateFunction::indexImpl(const PaddedPODArray<Type> & indexe
 
 INSTANTIATE_INDEX_IMPL(ColumnAggregateFunction)
 
+/// The hashes of states hash their serialization as the Decimal512 fork wrote it: a state that keeps values with binary type headers
+/// (`groupArray(Dynamic)` and the like, see IAggregateFunction::serializeWithBinaryTypeWriterMode) with the legacy indexes of the 512-bit
+/// types (SentioLegacyBridge), so that the same states keep the hashes that the fork computed; every other state is serialized as before,
+/// the default of that method being serialize itself. The version, the order and the hash of each API are unchanged.
+
 /// Is required to support operations with Set
 void ColumnAggregateFunction::updateHashWithValue(size_t n, SipHash & hash) const
 {
     WriteBufferFromOwnString wbuf;
-    func->serialize(data[n], wbuf, version);
+    func->serializeWithBinaryTypeWriterMode(data[n], wbuf, version, BinaryTypeWriterMode::SentioLegacyBridge);
     hash.update(wbuf.str().c_str(), wbuf.str().size());
 }
 
@@ -460,7 +466,7 @@ void ColumnAggregateFunction::computeHashInto(size_t row_begin, size_t row_end, 
     {
         {
             WriteBufferFromVector<VectorWithMemoryTracking<UInt8>> wbuf(v);
-            func->serialize(data[i], wbuf, version);
+            func->serializeWithBinaryTypeWriterMode(data[i], wbuf, version, BinaryTypeWriterMode::SentioLegacyBridge);
         }
         const UInt32 value = ::updateWeakHash32(v.data(), v.size(), WEAK_HASH32_INITIAL_VALUE);
         UInt32 & out = hash_out[i - row_begin];
@@ -472,7 +478,18 @@ void ColumnAggregateFunction::updateHashFast(SipHash & hash) const
 {
     WriteBufferFromOwnString wbuf;
     const ColumnAggregateFunction::Container & vec = getData();
-    func->serializeBatch(vec, 0, size(), wbuf);
+    /// serializeBatch is the loop of serialize over the states, with the version it is given, here none (IAggregateFunctionHelper). States
+    /// that can keep binary type headers are written by the same loop with the legacy indexes; every other state keeps the batch.
+    const auto & argument_types = func->getArgumentTypes();
+    if (std::ranges::any_of(argument_types, [](const DataTypePtr & type) { return valuesMayHaveBinaryTypeHeaders(*type); }))
+    {
+        for (size_t i = 0; i < size(); ++i)
+            func->serializeWithBinaryTypeWriterMode(vec[i], wbuf, std::nullopt, BinaryTypeWriterMode::SentioLegacyBridge);
+    }
+    else
+    {
+        func->serializeBatch(vec, 0, size(), wbuf);
+    }
     hash.update(wbuf.str().c_str(), wbuf.str().size());
 }
 

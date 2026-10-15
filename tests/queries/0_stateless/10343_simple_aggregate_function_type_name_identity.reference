@@ -1,0 +1,5 @@
+anySimpleState of a native Decimal512(50, 2): refused
+binary SimpleAggregateFunction header: refused
+SimpleAggregateFunction(sum, Decimal(154, 2))
+SimpleAggregateFunction(any, Decimal(80, 2))
+SimpleAggregateFunction(any, Decimal(50, 2))

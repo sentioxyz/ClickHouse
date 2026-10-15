@@ -45,6 +45,12 @@ public:
     const Array & getParameters() const { return parameters; }
     String getName() const override;
     static void checkSupportedFunctions(const AggregateFunctionPtr & function);
+
+    /// A SimpleAggregateFunction type is created from names (DataTypeFactory::getCustom, and the clones of AggregateFunctionSimpleState), so
+    /// its storage type is the type of the name of `type`. Throws INCORRECT_DATA unless that name identifies `type` (see
+    /// isTypeIdentifiedByName): a native decimal with the precision of another decimal class would become that class, under a function that
+    /// expects its own type.
+    static void checkTypeOfFunctionIsIdentifiedByName(const IDataType & type, const String & function_name);
 };
 
 DataTypePtr createSimpleAggregateFunctionType(const AggregateFunctionPtr & function, const DataTypes & argument_types, const Array & parameters);

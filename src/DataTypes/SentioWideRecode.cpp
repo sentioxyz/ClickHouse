@@ -322,6 +322,59 @@ void acceptObjectSharedDataRows(IColumn & shared_data, size_t from, const Format
     values.insertRangeFrom(*canonical, 0, canonical->size());
 }
 
+namespace
+{
+
+/// One search over the bytes of the values [from, from + count): a value that holds the namespace of the descriptors holds it within its own
+/// bytes, and a match across two values only costs a recoding that changes nothing.
+bool anyBinaryDynamicValueMayHaveSentioWideType(const ColumnString & values, size_t from, size_t count)
+{
+    if (count == 0)
+        return false;
+    const auto & offsets = values.getOffsets();
+    const size_t begin = offsets[static_cast<ssize_t>(from) - 1];
+    const size_t end = offsets[from + count - 1];
+    const char * chars = reinterpret_cast<const char *>(values.getChars().data());
+    return binaryDynamicValueMayHaveSentioWideType(std::string_view(chars + begin, end - begin));
+}
+
+}
+
+ColumnPtr getBinaryDynamicValuesForHashing(const ColumnPtr & values, size_t from, size_t count)
+{
+    const auto & strings = assert_cast<const ColumnString &>(*values);
+    if (!anyBinaryDynamicValueMayHaveSentioWideType(strings, from, count))
+        return values;
+
+    /// The same number of rows, so that the hash finds the rows it reads where they were.
+    auto result = ColumnString::create();
+    result->reserve(strings.size());
+    result->insertManyDefaults(from);
+    String storage;
+    for (size_t i = from; i < from + count; ++i)
+    {
+        auto written = recodeBinaryDynamicValueForWrite(strings.getDataAt(i), BinaryTypeWriterMode::SentioLegacyBridge, storage);
+        result->insertData(written.data(), written.size());
+    }
+    result->insertManyDefaults(strings.size() - from - count);
+    return result;
+}
+
+ColumnPtr getObjectSharedDataForHashing(const ColumnPtr & shared_data, size_t from, size_t count)
+{
+    const auto & shared_data_array = assert_cast<const ColumnArray &>(*shared_data);
+    const auto & shared_data_tuple = assert_cast<const ColumnTuple &>(shared_data_array.getData());
+    const auto & offsets = shared_data_array.getOffsets();
+    const size_t first_value = offsets[static_cast<ssize_t>(from) - 1];
+    const size_t values_count = count == 0 ? 0 : offsets[from + count - 1] - first_value;
+    const auto & values = shared_data_tuple.getColumnPtr(1);
+    auto values_for_hashing = getBinaryDynamicValuesForHashing(values, first_value, values_count);
+    if (values_for_hashing.get() == values.get())
+        return shared_data;
+    return ColumnArray::create(
+        ColumnTuple::create(Columns{shared_data_tuple.getColumnPtr(0), std::move(values_for_hashing)}), shared_data_array.getOffsetsPtr());
+}
+
 ColumnPtr recodeObjectSharedDataForWrite(const ColumnPtr & shared_data, BinaryTypeWriterMode mode)
 {
     if (mode == BinaryTypeWriterMode::SentioWideV1)

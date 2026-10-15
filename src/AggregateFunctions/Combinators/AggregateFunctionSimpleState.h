@@ -30,6 +30,8 @@ public:
     static DataTypePtr createResultType(const AggregateFunctionPtr & nested_, const Array & params_)
     {
         DataTypeCustomSimpleAggregateFunction::checkSupportedFunctions(nested_);
+        /// The clones below are created from the name of the result type.
+        DataTypeCustomSimpleAggregateFunction::checkTypeOfFunctionIsIdentifiedByName(*nested_->getResultType(), nested_->getName());
 
         // Need to make a clone to avoid recursive reference.
         auto storage_type_out = DataTypeFactory::instance().get(nested_->getResultType()->getName());
