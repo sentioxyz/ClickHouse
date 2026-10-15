@@ -307,37 +307,43 @@ TEST(HashApiLegacyProjection, DynamicNested)
 }
 
 /// The shared data of `JSON` (no typed or dynamic paths, so that it is all that the object hashes): the values a = 123.45 (a Decimal512
-/// with the precision of its class, 154) and b = 7, hashed as the legacy shared data column hashes them.
+/// with the precision of its class, 154) and b = 7 or 2^40, hashed as the legacy shared data column hashes them.
 TEST(HashApiLegacyProjection, ObjectSharedData)
 {
-    auto object_column = ColumnObject::create(UnorderedMapWithMemoryTracking<String, MutableColumnPtr>{}, 0, 0);
-    Object object;
-    object["a"] = Field(DecimalField<Decimal512>(Decimal512(12345), 2));
-    object["b"] = Field(Int64(7));
-    object_column->insert(Field(object));
-    ASSERT_EQ(object_column->size(), 1u);
-
-    auto paths = ColumnString::create();
-    auto values = ColumnString::create();
-    for (const auto & [path, value] : std::vector<std::pair<String, String>>{{"a", legacyDecimal512(154, 2, 12345)}, {"b", int64Value(7)}})
+    /// Keep the original small value and also exercise a value that cannot be narrowed to Int8/16/32.
+    for (const Int64 ordinary_value : {Int64(7), Int64(1) << 40})
     {
-        paths->insertData(path.data(), path.size());
-        values->insertData(value.data(), value.size());
+        auto object_column = ColumnObject::create(UnorderedMapWithMemoryTracking<String, MutableColumnPtr>{}, 0, 0);
+        Object object;
+        object["a"] = Field(DecimalField<Decimal512>(Decimal512(12345), 2));
+        object["b"] = Field(ordinary_value);
+        object_column->insert(Field(object));
+        ASSERT_EQ(object_column->size(), 1u);
+
+        auto paths = ColumnString::create();
+        auto values = ColumnString::create();
+        /// FieldToDataType narrows 7 to Int8; 2^40 retains Int64. Both old wire headers are specified independently.
+        const String ordinary_legacy = ordinary_value == 7 ? String{"\x07\x07", 2} : int64Value(ordinary_value);
+        for (const auto & [path, value] : std::vector<std::pair<String, String>>{{"a", legacyDecimal512(154, 2, 12345)}, {"b", ordinary_legacy}})
+        {
+            paths->insertData(path.data(), path.size());
+            values->insertData(value.data(), value.size());
+        }
+        auto shared_data_offsets = ColumnArray::ColumnOffsets::create();
+        shared_data_offsets->getData().push_back(2);
+        auto legacy_shared_data = ColumnArray::create(ColumnTuple::create(Columns{std::move(paths), std::move(values)}), std::move(shared_data_offsets));
+
+        EXPECT_EQ(rangeHash(*object_column, 0, 1), rangeHash(*legacy_shared_data, 0, 1));
+        EXPECT_EQ(rangeHash(*object_column, 1, 1), rangeHash(*legacy_shared_data, 1, 1));
+        EXPECT_EQ(weakHash(*object_column, 0, 1, true), weakHash(*legacy_shared_data, 0, 1, true));
+        EXPECT_EQ(fastHash(*object_column), fastHash(*legacy_shared_data));
+
+        /// A combining weak hash combines the finalized hash of the object into the seed (ColumnObject::computeHashInto).
+        auto expected = weakHash(*legacy_shared_data, 0, 1, true);
+        auto combined = weakHash(*object_column, 0, 1, false);
+        const UInt32 seed = 0x9E3779B9u;
+        EXPECT_EQ(combined[0], combineWeakHash32(expected[0], seed));
     }
-    auto shared_data_offsets = ColumnArray::ColumnOffsets::create();
-    shared_data_offsets->getData().push_back(2);
-    auto legacy_shared_data = ColumnArray::create(ColumnTuple::create(Columns{std::move(paths), std::move(values)}), std::move(shared_data_offsets));
-
-    EXPECT_EQ(rangeHash(*object_column, 0, 1), rangeHash(*legacy_shared_data, 0, 1));
-    EXPECT_EQ(rangeHash(*object_column, 1, 1), rangeHash(*legacy_shared_data, 1, 1));
-    EXPECT_EQ(weakHash(*object_column, 0, 1, true), weakHash(*legacy_shared_data, 0, 1, true));
-    EXPECT_EQ(fastHash(*object_column), fastHash(*legacy_shared_data));
-
-    /// A combining weak hash combines the finalized hash of the object into the seed (ColumnObject::computeHashInto).
-    auto expected = weakHash(*legacy_shared_data, 0, 1, true);
-    auto combined = weakHash(*object_column, 0, 1, false);
-    const UInt32 seed = 0x9E3779B9u;
-    EXPECT_EQ(combined[0], combineWeakHash32(expected[0], seed));
 }
 
 namespace

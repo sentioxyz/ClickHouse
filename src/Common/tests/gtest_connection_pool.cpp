@@ -161,9 +161,12 @@ protected:
         // before each test).
     }
 
-    void TearDown() override {
-        // Code here will be called immediately after each test (right
-        // before the destructor).
+    void TearDown() override
+    {
+        /// Pool limits and cached sessions are process-global. Restore them before another suite runs.
+        DB::HTTPConnectionPools::Limits default_limits{};
+        DB::HTTPConnectionPools::instance().setLimits(default_limits, default_limits, default_limits);
+        DB::HTTPConnectionPools::instance().dropCache();
     }
 
     DB::IHTTPConnectionPoolForEndpoint::Ptr getPool()

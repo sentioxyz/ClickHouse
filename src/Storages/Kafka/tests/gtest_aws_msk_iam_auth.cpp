@@ -5,6 +5,7 @@
 
 #include <Storages/Kafka/AWSMSKIAMAuth.h>
 #include <IO/S3/Credentials.h>
+#include <IO/S3/Client.h>
 #include <Common/Exception.h>
 #include <base/scope_guard.h>
 #include <IO/S3Defines.h>
@@ -262,6 +263,9 @@ private:
 
 TEST(AWSMSKIAMAuth, SetupResolvesEnvironmentCredentials)
 {
+    /// Cached profile APIs require the AWS SDK even when this test is the first in its shard.
+    DB::S3::ClientFactory::instance();
+
     // Kafka AWS_MSK_IAM is server-side, operator-configured authentication, not a user S3 query. The S3
     // credential restriction (`forbid_implicit_credentials`, default true) must not apply here: with
     // `kafka.use_environment_credentials = 1` the provider chain must still resolve the environment credentials.

@@ -728,6 +728,9 @@ TEST(IOTestAwsS3Client, ClientCacheRegistryRefcount)
 
 TEST(IOTestAwsS3Client, WebIdentityConfiguredFromEnvironment)
 {
+    /// Profile lookup requires the AWS SDK; other tests may be in different shards.
+    DB::S3::ClientFactory::instance();
+
     constexpr const char * k_role = "AWS_ROLE_ARN";
     constexpr const char * k_token = "AWS_WEB_IDENTITY_TOKEN_FILE";
 
@@ -749,6 +752,9 @@ TEST(IOTestAwsS3Client, WebIdentityConfiguredFromEnvironment)
 
 TEST(IOTestAwsS3Client, WebIdentityConfiguredFromKmsRoleOverrideAndTokenFile)
 {
+    /// Profile lookup requires the AWS SDK; other tests may be in different shards.
+    DB::S3::ClientFactory::instance();
+
     constexpr const char * k_role = "AWS_ROLE_ARN";
     constexpr const char * k_token = "AWS_WEB_IDENTITY_TOKEN_FILE";
 
