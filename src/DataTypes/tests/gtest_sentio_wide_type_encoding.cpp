@@ -648,3 +648,60 @@ TEST(SentioWideTypeEncoding, StridedQBitRespectsComplexityAndShapeLimits)
     EXPECT_EQ(errorOf([&] { decode(unhex("370d884008"), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::BAD_ARGUMENTS);
     EXPECT_EQ(errorOf([&] { decode(unhex("3a0d884008"), BinaryTypeOrigin::SentioLegacyV0); }).first, ErrorCodes::BAD_ARGUMENTS);
 }
+
+
+/// Removing the hidden-structure charge must fail these independently counted boundaries. The QBit node, its element,
+/// the hidden Tuple and each FixedString stream count: 3 + bit planes * stride groups. No data values are needed.
+TEST(SentioWideTypeEncoding, QBitHiddenStructureUsesTheHeaderBudget)
+{
+    const std::vector<std::tuple<const char *, BinaryTypeOrigin, size_t>> cases{
+        {"360710", BinaryTypeOrigin::Unknown, 11},
+        {"363110", BinaryTypeOrigin::Unknown, 19},
+        {"360d10", BinaryTypeOrigin::Unknown, 35},
+        {"360e10", BinaryTypeOrigin::Unknown, 67},
+        {"37071008", BinaryTypeOrigin::OfficialCanonical, 19},
+        {"37311008", BinaryTypeOrigin::OfficialCanonical, 35},
+        {"370d1008", BinaryTypeOrigin::OfficialCanonical, 67},
+        {"370e1008", BinaryTypeOrigin::OfficialCanonical, 131},
+        {"370e800408", BinaryTypeOrigin::OfficialCanonical, 4099},
+        {"3a071008", BinaryTypeOrigin::SentioLegacyV0, 19},
+        {"3a311008", BinaryTypeOrigin::SentioLegacyV0, 35},
+        {"3a0d1008", BinaryTypeOrigin::SentioLegacyV0, 67},
+        {"3a0e1008", BinaryTypeOrigin::SentioLegacyV0, 131},
+        {"3a0e800408", BinaryTypeOrigin::SentioLegacyV0, 4099},
+    };
+    for (const auto & [header, origin, cost] : cases)
+    {
+        SCOPED_TRACE(header);
+        const auto bytes = unhex(header);
+        const auto [code, message] = errorOf([&] { decode(bytes, origin, cost - 1); });
+        EXPECT_EQ(code, ErrorCodes::INCORRECT_DATA);
+        EXPECT_NE(message.find("Binary type decoding complexity limit exceeded"), String::npos);
+        EXPECT_NO_THROW(decode(bytes, origin, cost));
+        EXPECT_NO_THROW(decode(bytes, origin, 0));
+        /// Both Array (0x1e) and Nullable (0x23) share the same counter with their child.
+        for (const char * wrapper : {"1e", "23"})
+        {
+            const auto nested = unhex(wrapper) + bytes;
+            EXPECT_EQ(errorOf([&] { decode(nested, origin, cost); }).first, ErrorCodes::INCORRECT_DATA);
+            EXPECT_NO_THROW(decode(nested, origin, cost + 1));
+        }
+    }
+}
+
+/// A tiny remaining budget must not replace the existing shape/type/group errors, or permit an invalid shape with max=0.
+TEST(SentioWideTypeEncoding, QBitBudgetPreservesParameterValidation)
+{
+    for (size_t limit : {size_t(0), size_t(2)})
+    {
+        for (const char * header : {"370d1000", "370d1020", "370d1004", "370d100c"})
+            EXPECT_EQ(errorOf([&] { decode(unhex(header), BinaryTypeOrigin::OfficialCanonical, limit); }).first,
+                ErrorCodes::UNEXPECTED_AST_STRUCTURE) << header;
+        EXPECT_EQ(errorOf([&] { decode(unhex("370a1008"), BinaryTypeOrigin::OfficialCanonical, limit); }).first,
+            ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT);
+        EXPECT_EQ(errorOf([&] { decode(unhex("370d884008"), BinaryTypeOrigin::OfficialCanonical, limit); }).first,
+            ErrorCodes::BAD_ARGUMENTS);
+        EXPECT_EQ(errorOf([&] { decode(unhex("3a0d884008"), BinaryTypeOrigin::SentioLegacyV0, limit); }).first,
+            ErrorCodes::BAD_ARGUMENTS);
+    }
+}

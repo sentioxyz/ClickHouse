@@ -4,11 +4,14 @@
 #include <DataTypes/DataTypeFactory.h>
 #include <DataTypes/DataTypeFixedString.h>
 #include <DataTypes/DataTypeQBit.h>
+#include <DataTypes/QBitTypeValidation.h>
 #include <DataTypes/DataTypeTuple.h>
 #include <DataTypes/Serializations/SerializationQBit.h>
 #include <IO/WriteHelpers.h>
 #include <Parsers/ASTLiteral.h>
 #include <Common/SipHash.h>
+
+#include <limits>
 
 
 namespace DB
@@ -28,46 +31,57 @@ bool DataTypeQBit::isSupportedElementType(const DataTypePtr & type)
     return id == TypeIndex::Int8 || id == TypeIndex::BFloat16 || id == TypeIndex::Float32 || id == TypeIndex::Float64;
 }
 
-DataTypeQBit::DataTypeQBit(const DataTypePtr & element_type_, const size_t dimension_, const size_t stride_)
-    : element_type(element_type_)
-    , dimension(dimension_)
-    , stride(stride_)
+size_t validateQBitAndGetNumStreams(const DataTypePtr & element_type_, const size_t dimension_, const size_t stride_)
 {
     /// Prevents maliciously crafted byte streams from being deserialized into illegal types, which could be exploited to crash the server
-    if (!isSupportedElementType(element_type_))
+    if (!DataTypeQBit::isSupportedElementType(element_type_))
         throw Exception(
             ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT,
             "QBit data type only supports Int8, BFloat16, Float32, or Float64 as element type. Got: {}",
             element_type_->getName());
 
-    if (stride == 0 || stride > dimension || dimension % stride != 0)
+    if (stride_ == 0 || stride_ > dimension_ || dimension_ % stride_ != 0)
         throw Exception(
             ErrorCodes::UNEXPECTED_AST_STRUCTURE,
             "QBit stride must be a positive divisor of the dimension {}. Got: {}",
-            dimension,
-            stride);
+            dimension_,
+            stride_);
 
     /// When actually strided, each group's bit plane is a FixedString of `stride / 8` bytes. Requiring `stride % 8 == 0` keeps the
     /// groups byte-aligned and contiguous, which simplifies both the storage layout and the partial-dimension reads in distance
     /// functions. The non-strided case (`stride == dimension`) keeps the previous behaviour and allows any dimension.
-    if (stride != dimension && stride % 8 != 0)
+    if (stride_ != dimension_ && stride_ % 8 != 0)
         throw Exception(
             ErrorCodes::UNEXPECTED_AST_STRUCTURE,
             "QBit stride must be a multiple of 8 when it is smaller than the dimension. Got: {}",
-            stride);
+            stride_);
 
     /// The nested storage is a Tuple of `element size * (dimension / stride)` FixedString streams. Bound the number of stride groups
     /// so that a (possibly maliciously crafted) type with a huge dimension and a small stride cannot make `getNestedType` materialize
     /// an unreasonable number of streams (and exhaust memory). A non-strided QBit always has just `element size` streams regardless of
     /// the dimension, so this only constrains the strided case.
-    if (getNumStrides() > MAX_STRIDE_GROUPS)
+    const size_t num_strides = dimension_ / stride_;
+    if (num_strides > DataTypeQBit::MAX_STRIDE_GROUPS)
         throw Exception(
             ErrorCodes::BAD_ARGUMENTS,
             "QBit has too many stride groups: {} (dimension {} / stride {}). The maximum is {}.",
-            getNumStrides(),
-            dimension,
-            stride,
-            MAX_STRIDE_GROUPS);
+            num_strides,
+            dimension_,
+            stride_,
+            DataTypeQBit::MAX_STRIDE_GROUPS);
+
+    const size_t element_bits = 8 * element_type_->getSizeOfValueInMemory();
+    if (num_strides > std::numeric_limits<size_t>::max() / element_bits)
+        throw Exception(ErrorCodes::BAD_ARGUMENTS, "QBit nested stream count overflows the addressable size");
+    return element_bits * num_strides;
+}
+
+DataTypeQBit::DataTypeQBit(const DataTypePtr & element_type_, const size_t dimension_, const size_t stride_)
+    : element_type(element_type_)
+    , dimension(dimension_)
+    , stride(stride_)
+{
+    validateQBitAndGetNumStreams(element_type_, dimension_, stride_);
 
     /// QBit stores data as a Tuple of binary FixedStrings. Setting custom_serialization
     /// ensures that ReplaceQueryParameterVisitor::visitQueryParameter uses the original

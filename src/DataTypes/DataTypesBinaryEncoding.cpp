@@ -12,6 +12,7 @@
 #include <DataTypes/DataTypeMap.h>
 #include <DataTypes/DataTypeObject.h>
 #include <DataTypes/DataTypeQBit.h>
+#include <DataTypes/QBitTypeValidation.h>
 #include <DataTypes/DataTypeVariant.h>
 #include <DataTypes/DataTypeString.h>
 #include <DataTypes/DataTypeUUID.h>
@@ -42,6 +43,7 @@
 #include <Common/checkStackSize.h>
 
 #include <algorithm>
+#include <limits>
 
 namespace DB
 {
@@ -68,6 +70,22 @@ namespace
 /// It prevents from allocating too large arrays if the data is corrupted.
 constexpr size_t MAX_ARRAY_SIZE = 1000000;
 
+DataTypePtr makeDecodedQBit(
+    const DataTypePtr & element_type, size_t dimension, size_t stride, size_t & complexity, size_t max_complexity)
+{
+    /// Validation is shared with the constructor, and must precede division and any hidden Tuple/stream materialization.
+    const size_t streams = validateQBitAndGetNumStreams(element_type, dimension, stride);
+    if (streams == std::numeric_limits<size_t>::max() || streams + 1 > std::numeric_limits<size_t>::max() - complexity)
+        throw Exception(ErrorCodes::INCORRECT_DATA, "Binary type decoding complexity limit exceeded: hidden QBit structure size overflows");
+    const size_t total_complexity = complexity + 1 + streams;
+    if (max_complexity > 0 && total_complexity > max_complexity)
+        throw Exception(ErrorCodes::INCORRECT_DATA,
+            "Binary type decoding complexity limit exceeded: {} > {} (adjust input_format_binary_max_type_complexity)",
+            total_complexity, max_complexity);
+    complexity = total_complexity;
+    return std::make_shared<DataTypeQBit>(element_type, dimension, stride);
+}
+
 DataTypePtr decodeQBitWithStride(ReadBuffer & buf, size_t & complexity, size_t max_complexity, BinaryTypeOrigin origin)
 {
     auto element_type = decodeDataTypeImpl(buf, complexity, max_complexity, origin);
@@ -75,8 +93,7 @@ DataTypePtr decodeQBitWithStride(ReadBuffer & buf, size_t & complexity, size_t m
     size_t stride = 0;
     readVarUInt(dimension, buf);
     readVarUInt(stride, buf);
-    /// The constructor checks the element, shape and group bounds before materializing the nested streams.
-    return std::make_shared<DataTypeQBit>(element_type, dimension, stride);
+    return makeDecodedQBit(element_type, dimension, stride, complexity, max_complexity);
 }
 
 /// MAX_ARRAY_SIZE prevents wide types (single Tuple with 10M elements) before allocation. The max_complexity
@@ -787,7 +804,7 @@ static DataTypePtr decodeDataTypeImpl(ReadBuffer & buf, size_t & complexity, siz
             size_t dimension = 0;
             readVarUInt(dimension, buf);
             /// Non-strided QBit: the stride defaults to the dimension.
-            return std::make_shared<DataTypeQBit>(element_type, dimension, dimension);
+            return makeDecodedQBit(element_type, dimension, dimension, complexity, max_complexity);
         }
         case BinaryTypeIndex::QBitWithStride:
             /// Only the explicit official origin reaches this case: legacy reads `0x37` as `UInt512`, unknown refuses it above.
