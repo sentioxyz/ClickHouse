@@ -36,6 +36,7 @@
 #include <Common/Exception.h>
 #include <Common/assert_cast.h>
 #include <Common/tests/gtest_global_context.h>
+#include <Common/tests/gtest_global_register.h>
 #include <base/scope_guard.h>
 
 #include <algorithm>
@@ -595,6 +596,7 @@ TEST_F(SetOrJoinOriginRegistrationTest, FreshScalarJoinKeepsItsOriginalFileLayou
 
 TEST_F(SetOrJoinOriginRegistrationTest, AutomaticOriginRecordIsConservativeForOtherPayloads)
 {
+    tryRegisterAggregateFunctions();
     /// Even currently unambiguous wide types and containers keep the record. In particular, aggregate states cannot be judged by
     /// `hasDynamicStructure` or `haveSubtypes`: a state may contain binary type headers without reporting either property.
     const std::vector<String> type_names{
