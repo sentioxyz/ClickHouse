@@ -1693,9 +1693,13 @@ void Connection::initBlockInput()
     if (!block_in)
     {
         initMaybeCompressedInput();
-        /// The server may send marshalled result blocks; their consumers convert them back.
+        /// The server may send marshalled result blocks; their consumers convert them back. An input-only complexity setting must not
+        /// reject already-stored values returned by the server. Keep the declared origin and all other format settings unchanged.
+        auto result_format_settings = format_settings;
+        if (result_format_settings)
+            result_format_settings->binary.max_binary_type_complexity = 0;
         block_in = std::make_unique<NativeReader>(
-            *maybe_compressed_in, server_revision, format_settings, ISerialization::KindSet::all());
+            *maybe_compressed_in, server_revision, result_format_settings, ISerialization::KindSet::all());
     }
 }
 
