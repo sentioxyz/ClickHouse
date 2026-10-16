@@ -1,35 +1,35 @@
 --- Log
 stamped by CREATE: refused
-1	[1.50]
+1	[1.5]
 restored into the stamped table: refused
 1
 2
-1	[1.50]
+1	[1.5]
 combined with another command: refused
 registered twice: refused
-1	[1.50]
+1	[1.5]
 kept over TRUNCATE and RENAME: refused
 --- TinyLog
 stamped by CREATE: refused
-1	[1.50]
+1	[1.5]
 restored into the stamped table: refused
 1
 2
-1	[1.50]
+1	[1.5]
 combined with another command: refused
 registered twice: refused
-1	[1.50]
+1	[1.5]
 kept over TRUNCATE and RENAME: refused
 --- StripeLog
 stamped by CREATE: refused
-1	[1.50]
+1	[1.5]
 restored into the stamped table: refused
 1
 2
-1	[1.50]
+1	[1.5]
 combined with another command: refused
 registered twice: refused
-1	[1.50]
+1	[1.5]
 kept over TRUNCATE and RENAME: refused
 --- the grant
 without the grant: refused

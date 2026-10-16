@@ -50,7 +50,13 @@ make_old() {
     local dir number=1
     dir=$(data_path "$table")
     $CLICKHOUSE_CLIENT --query "DETACH TABLE $table"
-    rm "${dir:?}${RECORD}"
+    # A scalar-only UInt64/String table may have no automatic origin record. The legacy fixture needs no record either.
+    # Keep the original existence premise for every header-bearing blocked/corrupt table.
+    if [[ "$table" == t_join_healthy || "$table" == t_set_healthy ]]; then
+        rm -f "${dir:?}${RECORD}"
+    else
+        rm "${dir:?}${RECORD}"
+    fi
     for file in "$@"; do
         cp "$file" "${dir:?}${number}.bin"
         number=$((number + 1))

@@ -7,12 +7,12 @@ mutation: refused
 1	1
 2
 --- Join: registered
-1	[1.50]
-2	[2.50]
-[1.50]
-1	[1.50]
-2	[2.50]
-3	[3.50]
+1	[1.5]
+2	[2.5]
+[1.5]
+1	[1.5]
+2	[2.5]
+3	[3.5]
 registered twice: refused
 --- Join: a registration that fails on a corrupt file changes nothing
 registration over a corrupt file: refused
@@ -23,7 +23,7 @@ still blocked: refused
 0
 --- Join: a corrupt file without legacy indexes fails the load
 ATTACH: refused
-2	[2.50]
+2	[2.5]
 --- Set: blocked, then registered
 IN: refused
 INSERT: refused

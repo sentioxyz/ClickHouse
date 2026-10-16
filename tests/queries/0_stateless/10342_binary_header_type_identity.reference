@@ -15,7 +15,7 @@ INSERT: refused
 0
 --- several files: each header is checked against the structure
 1.bin	64	123.45
-3.bin	64	2.50
+3.bin	64	2.5
 a file with the same name for another type: refused
 --- types with other names, skipped columns
 7

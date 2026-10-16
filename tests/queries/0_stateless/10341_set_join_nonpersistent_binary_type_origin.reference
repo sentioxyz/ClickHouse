@@ -2,13 +2,13 @@
 SELECT: refused
 INSERT: refused
 --- Join: registered, then a row in no file, then reloaded
-1	[1.50]
-3	[3.50]
-1	[1.50]
-3	[3.50]
-4	[4.50]
-1	[1.50]
-3	[3.50]
+1	[1.5]
+3	[3.5]
+1	[1.5]
+3	[3.5]
+4	[4.5]
+1	[1.5]
+3	[3.5]
 registered twice: refused
 --- Join: a registration that fails on a corrupt file changes nothing
 registration over a corrupt file: refused
@@ -17,8 +17,8 @@ still blocked: refused
 2.bin
 1.bin: the same bytes
 2.bin: the same bytes
-1	[1.50]
-3	[3.50]
+1	[1.5]
+3	[3.5]
 --- Join, not blocked: the registration keeps the rows in no file
 1	file
 2	memory
