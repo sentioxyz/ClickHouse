@@ -654,7 +654,13 @@ void MergeTreeData::stampStoredBinaryTypeOriginOfNewTable(bool is_original_creat
     }
 
     /// A new table with parts is a read-only table over existing data: that data keeps whatever origin it has.
-    if (!getDataPartsForInternalUsage().empty())
+    /// A read-only shared disk can also be empty when its reader is created before the writer produces the first part.
+    /// That reader does not take ownership of the directory or rebind the writer's record to its own UUID. The loaded
+    /// origin stays unchanged, including Unknown when the record belongs to another table.
+    if (!getDataPartsForInternalUsage().empty() || std::ranges::all_of(getDisks(), [](const auto & disk)
+        {
+            return disk->isBroken() || disk->isReadOnly();
+        }))
         return;
 
     if (stored_binary_type_origin_record_found)
