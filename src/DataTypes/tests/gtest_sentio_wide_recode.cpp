@@ -304,7 +304,7 @@ TEST(SentioWideRecode, NestingRefusalPreservesItsTypeAcrossCloneAndRethrow)
         EXPECT_EQ(e.code(), ErrorCodes::INCORRECT_DATA);
         Exception plain(ErrorCodes::INCORRECT_DATA, "{}", e.message());
         EXPECT_STREQ(e.name(), plain.name());
-        EXPECT_STREQ(e.className(), plain.className());
+        EXPECT_STREQ(static_cast<const Poco::Exception &>(e).className(), static_cast<const Poco::Exception &>(plain).className());
         std::unique_ptr<Exception> copy(e.clone());
         ASSERT_NE(dynamic_cast<BinaryValueNestingLimitException *>(copy.get()), nullptr);
         EXPECT_EQ(copy->code(), e.code());
