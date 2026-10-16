@@ -1,6 +1,8 @@
 #include <DataTypes/BinaryTypeOriginRequiredException.h>
 #include <DataTypes/DataTypeLowCardinality.h>
 #include <DataTypes/DataTypeString.h>
+#include <DataTypes/Serializations/SerializationNumber.h>
+#include <DataTypes/Serializations/SerializationString.h>
 #include <Storages/SetSettings.h>
 #include <Storages/StorageSet.h>
 #include <Storages/StorageFactory.h>
@@ -28,6 +30,7 @@
 #include <base/scope_guard.h>
 #include <filesystem>
 #include <optional>
+#include <typeinfo>
 
 namespace fs = std::filesystem;
 
@@ -59,6 +62,27 @@ namespace
 std::chrono::milliseconds getLockAcquireTimeout(const ContextPtr & context)
 {
     return std::chrono::milliseconds(context->getSettingsRef()[Setting::lock_acquire_timeout].totalMilliseconds());
+}
+
+/// `SetOrJoinSink` writes revision-0 `Native` files: type names and default serializations. Standard `UInt64` and `String` payloads
+/// have no binary type headers, so their meaning does not depend on an origin. Preserve their original file/object layout instead of
+/// adding a record (and, on S3, another object). This is deliberately a closed list: containers, aggregate states, dynamic types, 512-bit
+/// types and every future or customized serialization retain the record. Never use a dynamic-structure negative as proof here.
+bool needsAutomaticStoredBinaryTypeOriginRecord(const ColumnsDescription & columns)
+{
+    for (const auto & column : columns.getAll())
+    {
+        const auto & type = *column.type;
+        if (type.hasCustomName())
+            return true;
+        const auto serialization = type.getDefaultSerialization();
+        if (type.getTypeId() == TypeIndex::UInt64 && typeid(*serialization) == typeid(SerializationNumber<UInt64>))
+            continue;
+        if (type.getTypeId() == TypeIndex::String && typeid(*serialization) == typeid(SerializationString))
+            continue;
+        return true;
+    }
+    return false;
 }
 
 }
@@ -211,7 +235,7 @@ StorageSetOrJoinBase::StorageSetOrJoinBase(
     if (is_original_create)
     {
         disk->createDirectories(fs::path(path) / "tmp/");
-        if (origin_to_stamp)
+        if (origin_to_stamp && needsAutomaticStoredBinaryTypeOriginRecord(columns_))
         {
             const auto query_context = CurrentThread::tryGetQueryContext();
             stored_binary_type_origin.stampNewTable(

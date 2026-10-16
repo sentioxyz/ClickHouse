@@ -6,6 +6,11 @@
 #include <Core/Joins.h>
 #include <Core/Settings.h>
 #include <DataTypes/DataTypeNullable.h>
+#include <DataTypes/DataTypeArray.h>
+#include <DataTypes/DataTypeCustom.h>
+#include <DataTypes/DataTypeDynamic.h>
+#include <DataTypes/DataTypeFactory.h>
+#include <DataTypes/Serializations/SerializationNullable.h>
 #include <DataTypes/DataTypeString.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <Disks/DiskLocal.h>
@@ -65,6 +70,7 @@ namespace DB::ErrorCodes
 extern const int DEADLOCK_AVOIDED;
 extern const int NO_SUCH_COLUMN_IN_TABLE;
 extern const int TYPE_MISMATCH;
+extern const int TABLE_ALREADY_EXISTS;
 }
 
 namespace
@@ -532,4 +538,111 @@ TEST_F(SetOrJoinOriginRegistrationTest, SetRegistrationWithFinishedAndCancelledI
     insertFinished(table, writer, setBlock(4));
     EXPECT_EQ(dataFiles(path), (std::vector<String>{"1.bin", "3.bin", "4.bin"}));
     EXPECT_EQ(table->totalRows(reader), std::optional<UInt64>(3));
+}
+
+/// A source marker must not add an object to the unchanged scalar `Set`/`Join` S3 layout. Their revision-0 `Native` payloads are
+/// origin-independent; loading an existing or explicitly registered marker remains required even for these schemas.
+TEST_F(SetOrJoinOriginRegistrationTest, FreshScalarSetKeepsItsOriginalFileLayout)
+{
+    const String path = "fresh_scalar_set/";
+    const UUID uuid = UUIDHelpers::generateV4();
+    const NamesAndTypesList columns{{"k", std::make_shared<DataTypeUInt64>()}};
+    auto table = std::make_shared<StorageSet>(
+        disk, path, StorageID("test", "set", uuid), ColumnsDescription(columns), ConstraintsDescription{}, String{},
+        /*persistent=*/ true, /*is_original_create=*/ true, BinaryTypeOrigin::OfficialCanonical);
+    table->startup();
+    EXPECT_FALSE(record(path).has_value());
+    const auto context = makeContext("fixed scalar Set", LONG_TIMEOUT_SECONDS);
+    insertFinished(table, context, setBlock(1));
+    EXPECT_EQ(dataFiles(path), (std::vector<String>{"1.bin"}));
+    table.reset();
+    auto loaded = createSet(disk, path, uuid);
+    EXPECT_EQ(loaded->totalRows(context), std::optional<UInt64>(1));
+    EXPECT_FALSE(record(path).has_value());
+    registerOrigin(loaded, context);
+    EXPECT_EQ(record(path), legacyRecord(uuid));
+    loaded.reset();
+    loaded = createSet(disk, path, uuid);
+    EXPECT_EQ(loaded->totalRows(context), std::optional<UInt64>(1));
+    EXPECT_EQ(record(path), legacyRecord(uuid));
+}
+
+TEST_F(SetOrJoinOriginRegistrationTest, FreshScalarJoinKeepsItsOriginalFileLayout)
+{
+    const String path = "fresh_scalar_join/";
+    const UUID uuid = UUIDHelpers::generateV4();
+    const NamesAndTypesList columns{{"k", std::make_shared<DataTypeUInt64>()}, {"v", std::make_shared<DataTypeString>()}};
+    auto table = std::make_shared<StorageJoin>(
+        disk, path, StorageID("test", "join", uuid), Names{"k"}, /*use_nulls=*/ false, SizeLimits{}, JoinKind::Left, JoinStrictness::Any,
+        ColumnsDescription(columns), ConstraintsDescription{}, String{}, /*overwrite=*/ false, /*persistent=*/ true,
+        /*is_original_create=*/ true, BinaryTypeOrigin::OfficialCanonical);
+    table->startup();
+    EXPECT_FALSE(record(path).has_value());
+    const auto context = makeContext("fixed scalar Join", LONG_TIMEOUT_SECONDS);
+    insertFinished(table, context, joinBlock(1, "a"));
+    EXPECT_EQ(dataFiles(path), (std::vector<String>{"1.bin"}));
+    table.reset();
+    auto loaded = createJoin(disk, path, uuid);
+    EXPECT_EQ(joinKeys(loaded, context), (std::vector<UInt64>{1}));
+    EXPECT_FALSE(record(path).has_value());
+    registerOrigin(loaded, context);
+    EXPECT_EQ(record(path), legacyRecord(uuid));
+    loaded.reset();
+    loaded = createJoin(disk, path, uuid);
+    EXPECT_EQ(joinKeys(loaded, context), (std::vector<UInt64>{1}));
+    EXPECT_EQ(record(path), legacyRecord(uuid));
+}
+
+TEST_F(SetOrJoinOriginRegistrationTest, AutomaticOriginRecordIsConservativeForOtherPayloads)
+{
+    /// Even currently unambiguous wide types and containers keep the record. In particular, aggregate states cannot be judged by
+    /// `hasDynamicStructure` or `haveSubtypes`: a state may contain binary type headers without reporting either property.
+    const std::vector<String> type_names{
+        "UInt512", "Int512", "Decimal(154, 2)", "Dynamic", "JSON", "Array(Dynamic)", "Array(UInt64)",
+        "Nullable(UInt64)", "AggregateFunction(groupArray, UInt64)", "Variant(UInt64, String)"};
+    for (size_t i = 0; i < type_names.size(); ++i)
+    {
+        SCOPED_TRACE(type_names[i]);
+        const String path = "retained_origin_" + std::to_string(i) + "/";
+        const UUID uuid = UUIDHelpers::generateV4();
+        const NamesAndTypesList columns{{"k", DataTypeFactory::instance().get(type_names[i])}};
+        auto table = std::make_shared<StorageSet>(
+            disk, path, StorageID("test", "set", uuid), ColumnsDescription(columns), ConstraintsDescription{}, String{},
+            /*persistent=*/ true, /*is_original_create=*/ true, BinaryTypeOrigin::OfficialCanonical);
+        EXPECT_EQ(record(path), StoredBinaryTypeOriginRecord::forTable(BinaryTypeOrigin::OfficialCanonical, uuid).toString());
+    }
+}
+
+TEST_F(SetOrJoinOriginRegistrationTest, ScalarOptimizationDoesNotTakeOverAnExistingDirectory)
+{
+    const String path = "preexisting_scalar/";
+    disk->createDirectories(path);
+    const NamesAndTypesList columns{{"k", std::make_shared<DataTypeUInt64>()}};
+    EXPECT_EQ(codeOf([&]
+    {
+        auto table = std::make_shared<StorageSet>(
+            disk, path, StorageID("test", "set", UUIDHelpers::generateV4()), ColumnsDescription(columns), ConstraintsDescription{}, String{},
+            /*persistent=*/ true, /*is_original_create=*/ true, BinaryTypeOrigin::OfficialCanonical);
+    }), ErrorCodes::TABLE_ALREADY_EXISTS);
+    EXPECT_FALSE(record(path).has_value());
+}
+
+TEST_F(SetOrJoinOriginRegistrationTest, CustomizedScalarSerializationRetainsTheOriginRecord)
+{
+    auto named = std::make_shared<DataTypeString>();
+    named->setCustomization(std::make_unique<DataTypeCustomDesc>(std::make_unique<DataTypeCustomFixedName>("NamedString")));
+    auto wrapped = std::make_shared<DataTypeString>();
+    wrapped->setCustomization(std::make_unique<DataTypeCustomDesc>(nullptr, nullptr,
+        +[](const SerializationPtr & nested) -> SerializationPtr { return SerializationNullable::create(nested); }));
+    const DataTypes types{named, wrapped};
+    for (size_t i = 0; i < types.size(); ++i)
+    {
+        const String path = "customized_scalar_" + std::to_string(i) + "/";
+        const UUID uuid = UUIDHelpers::generateV4();
+        const NamesAndTypesList columns{{"k", types[i]}};
+        auto table = std::make_shared<StorageSet>(
+            disk, path, StorageID("test", "set", uuid), ColumnsDescription(columns), ConstraintsDescription{}, String{},
+            /*persistent=*/ true, /*is_original_create=*/ true, BinaryTypeOrigin::OfficialCanonical);
+        EXPECT_EQ(record(path), StoredBinaryTypeOriginRecord::forTable(BinaryTypeOrigin::OfficialCanonical, uuid).toString());
+    }
 }
