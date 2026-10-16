@@ -213,6 +213,7 @@ public:
     void setFormatSettings(const FormatSettings & settings) override
     {
         format_settings = settings;
+        query_format_settings = settings;
     }
 
     UInt64 getParallelReplicasProtocolVersion() const { return server_parallel_replicas_protocol_version; }
@@ -341,7 +342,9 @@ private:
 
     AsyncCallback async_callback = {};
 
+    /// Explicit connection defaults are never overwritten by a query's temporary origin.
     std::optional<FormatSettings> format_settings;
+    std::optional<FormatSettings> query_format_settings;
 
     void connect(const ConnectionTimeouts & timeouts);
 

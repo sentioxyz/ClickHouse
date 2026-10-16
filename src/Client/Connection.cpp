@@ -18,6 +18,7 @@
 #include <Formats/NativeWriter.h>
 #include <Client/ClientApplicationBase.h>
 #include <Client/Connection.h>
+#include <Client/NativeQueryFormatSettings.h>
 #include <Client/ConnectionParameters.h>
 #include <Client/sanitizeUntrustedServerString.h>
 #include <Common/logger_useful.h>
@@ -1024,6 +1025,9 @@ void Connection::sendQuery(
     socket->setReceiveTimeout(timeouts.receive_timeout);
     socket->setSendTimeout(timeouts.send_timeout);
 
+    /// Keep query-specific decoding authority separate from explicit connection defaults.
+    query_format_settings = getNativeQueryFormatSettings(format_settings, settings);
+
     if (settings)
     {
         std::optional<int> level;
@@ -1229,7 +1233,7 @@ void Connection::sendData(const Block & block, const String & name, bool scalar)
         else
             maybe_compressed_out = out;
 
-        block_out = std::make_unique<NativeWriter>(*maybe_compressed_out, server_revision, std::make_shared<const Block>(block.cloneEmpty()), format_settings);
+        block_out = std::make_unique<NativeWriter>(*maybe_compressed_out, server_revision, std::make_shared<const Block>(block.cloneEmpty()), query_format_settings);
     }
 
     if (scalar)
@@ -1695,7 +1699,7 @@ void Connection::initBlockInput()
         initMaybeCompressedInput();
         /// The server may send marshalled result blocks; their consumers convert them back. An input-only complexity setting must not
         /// reject already-stored values returned by the server. Keep the declared origin and all other format settings unchanged.
-        auto result_format_settings = format_settings;
+        auto result_format_settings = query_format_settings;
         if (result_format_settings)
             result_format_settings->binary.max_binary_type_complexity = 0;
         block_in = std::make_unique<NativeReader>(
@@ -1716,7 +1720,7 @@ void Connection::initBlockLogsInput()
         }
 
         /// Have to return superset of SystemLogsQueue::getSampleBlock() columns
-        block_logs_in = std::make_unique<NativeReader>(*logs_buf, server_revision, format_settings);
+        block_logs_in = std::make_unique<NativeReader>(*logs_buf, server_revision, query_format_settings);
     }
 }
 
@@ -1732,7 +1736,7 @@ void Connection::initBlockProfileEventsInput()
             profile_events_buf = maybe_compressed_in.get();
         }
 
-        block_profile_events_in = std::make_unique<NativeReader>(*profile_events_buf, server_revision, format_settings);
+        block_profile_events_in = std::make_unique<NativeReader>(*profile_events_buf, server_revision, query_format_settings);
     }
 }
 

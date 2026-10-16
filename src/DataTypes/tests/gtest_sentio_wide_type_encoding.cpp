@@ -1,3 +1,4 @@
+#include <Client/NativeQueryFormatSettings.h>
 #include <gtest/gtest.h>
 
 #include <Core/Field.h>
@@ -704,4 +705,45 @@ TEST(SentioWideTypeEncoding, QBitBudgetPreservesParameterValidation)
         EXPECT_EQ(errorOf([&] { decode(unhex("3a0d884008"), BinaryTypeOrigin::SentioLegacyV0, limit); }).first,
             ErrorCodes::BAD_ARGUMENTS);
     }
+}
+
+TEST(SentioWideNativeQueryFormatSettings, QuerySettingsDoNotAuthorizeLaterQueries)
+{
+    const std::optional<DB::FormatSettings> connection_defaults;
+    DB::Settings legacy;
+    legacy.set("input_format_binary_type_origin", String("sentio_legacy_v0"));
+    legacy.set("output_format_binary_type_writer_mode", String("sentio_legacy_bridge"));
+    auto current = DB::getNativeQueryFormatSettings(connection_defaults, &legacy);
+    ASSERT_TRUE(current);
+    EXPECT_EQ(current->binary.type_origin, DB::BinaryTypeOrigin::SentioLegacyV0);
+    EXPECT_EQ(current->binary.type_writer_mode, DB::BinaryTypeWriterMode::SentioLegacyBridge);
+
+    const DB::Settings defaults;
+    current = DB::getNativeQueryFormatSettings(connection_defaults, &defaults);
+    ASSERT_TRUE(current);
+    EXPECT_EQ(current->binary.type_origin, DB::BinaryTypeOrigin::Unknown);
+    EXPECT_EQ(current->binary.type_writer_mode, DB::BinaryTypeWriterMode::SentioWideV1);
+    current = DB::getNativeQueryFormatSettings(connection_defaults, nullptr);
+    EXPECT_FALSE(current);
+    EXPECT_FALSE(connection_defaults);
+}
+
+TEST(SentioWideNativeQueryFormatSettings, ExplicitDefaultsSurvivePerQueryOverrides)
+{
+    std::optional<DB::FormatSettings> connection_defaults{std::in_place};
+    connection_defaults->binary.type_origin = DB::BinaryTypeOrigin::OfficialCanonical;
+    connection_defaults->binary.type_writer_mode = DB::BinaryTypeWriterMode::SentioLegacyBridge;
+    connection_defaults->binary.max_binary_string_size = 12345;
+    const DB::Settings defaults;
+    auto current = DB::getNativeQueryFormatSettings(connection_defaults, &defaults);
+    ASSERT_TRUE(current);
+    EXPECT_EQ(current->binary.type_origin, DB::BinaryTypeOrigin::Unknown);
+    EXPECT_EQ(current->binary.type_writer_mode, DB::BinaryTypeWriterMode::SentioWideV1);
+    EXPECT_EQ(current->binary.max_binary_string_size, 12345);
+    current = DB::getNativeQueryFormatSettings(connection_defaults, nullptr);
+    ASSERT_TRUE(current);
+    EXPECT_EQ(current->binary.type_origin, DB::BinaryTypeOrigin::OfficialCanonical);
+    EXPECT_EQ(current->binary.type_writer_mode, DB::BinaryTypeWriterMode::SentioLegacyBridge);
+    EXPECT_EQ(current->binary.max_binary_string_size, 12345);
+    EXPECT_EQ(connection_defaults->binary.type_origin, DB::BinaryTypeOrigin::OfficialCanonical);
 }
