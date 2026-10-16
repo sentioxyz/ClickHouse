@@ -10,7 +10,7 @@
 #include <DataTypes/DataTypeCustom.h>
 #include <DataTypes/DataTypeDynamic.h>
 #include <DataTypes/DataTypeFactory.h>
-#include <DataTypes/Serializations/SerializationNullable.h>
+#include <DataTypes/Serializations/SerializationNamed.h>
 #include <DataTypes/DataTypeString.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <Disks/DiskLocal.h>
@@ -633,7 +633,7 @@ TEST_F(SetOrJoinOriginRegistrationTest, CustomizedScalarSerializationRetainsTheO
     named->setCustomization(std::make_unique<DataTypeCustomDesc>(std::make_unique<DataTypeCustomFixedName>("NamedString")));
     auto wrapped = std::make_shared<DataTypeString>();
     wrapped->setCustomization(std::make_unique<DataTypeCustomDesc>(nullptr, nullptr,
-        +[](const SerializationPtr & nested) -> SerializationPtr { return SerializationNullable::create(nested); }));
+        +[](const SerializationPtr & nested) -> SerializationPtr { return SerializationNamed::create(nested, "wrapped", ISerialization::Substream::TupleElement); }));
     const DataTypes types{named, wrapped};
     for (size_t i = 0; i < types.size(); ++i)
     {
