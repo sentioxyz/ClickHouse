@@ -76,9 +76,10 @@ bool needsAutomaticStoredBinaryTypeOriginRecord(const ColumnsDescription & colum
         if (type.hasCustomName())
             return true;
         const auto serialization = type.getDefaultSerialization();
-        if (type.getTypeId() == TypeIndex::UInt64 && typeid(*serialization) == typeid(SerializationNumber<UInt64>))
+        const auto & serialization_value = *serialization;
+        if (type.getTypeId() == TypeIndex::UInt64 && typeid(serialization_value) == typeid(SerializationNumber<UInt64>))
             continue;
-        if (type.getTypeId() == TypeIndex::String && typeid(*serialization) == typeid(SerializationString))
+        if (type.getTypeId() == TypeIndex::String && typeid(serialization_value) == typeid(SerializationString))
             continue;
         return true;
     }
