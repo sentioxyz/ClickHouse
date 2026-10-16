@@ -1,4 +1,5 @@
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/BinaryValueNestingLimitException.h>
 #include <DataTypes/DataTypeDateTime64.h>
 #include <DataTypes/DataTypeFixedString.h>
 #include <DataTypes/DataTypeEnum.h>
@@ -985,7 +986,7 @@ BinaryValueNestingScope::BinaryValueNestingScope(BinaryTypeDecodingContext & con
     : context(context_)
 {
     if (context.max_complexity > 0 && context.depth >= context.max_complexity)
-        throw Exception(
+        throw BinaryValueNestingLimitException(
             ErrorCodes::INCORRECT_DATA,
             "Binary values are nested too deeply: more than {} levels (adjust input_format_binary_max_type_complexity)",
             context.max_complexity);

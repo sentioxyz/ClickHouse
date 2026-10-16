@@ -2,6 +2,7 @@
 
 #include <Columns/ColumnString.h>
 #include <DataTypes/BinaryTypeOrigin.h>
+#include <DataTypes/BinaryValueNestingLimitException.h>
 #include <DataTypes/SentioWideRecode.h>
 #include <Formats/FormatSettings.h>
 #include <IO/VarInt.h>
@@ -10,6 +11,7 @@
 
 #include <fmt/format.h>
 
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -288,4 +290,51 @@ TEST(SentioWideRecode, NestingScopeIsRestoredAfterAnException)
     const String legacy = legacyDecimal512Header(76, 10) + littleEndian(1, 64);
     EXPECT_EQ(errorOf([&] { accept(arrayOfDynamic({legacy}), settings); }).first, ErrorCodes::INCORRECT_DATA);
     EXPECT_EQ(context.depth, 0U);
+}
+
+TEST(SentioWideRecode, NestingRefusalPreservesItsTypeAcrossCloneAndRethrow)
+{
+    try
+    {
+        accept(nestedChain(6), settingsWith(BinaryTypeOrigin::Unknown, 5));
+        FAIL() << "The value-nesting budget must reject the sixth level";
+    }
+    catch (const BinaryValueNestingLimitException & e)
+    {
+        EXPECT_EQ(e.code(), ErrorCodes::INCORRECT_DATA);
+        Exception plain(ErrorCodes::INCORRECT_DATA, "{}", e.message());
+        EXPECT_STREQ(e.name(), plain.name());
+        EXPECT_STREQ(e.className(), plain.className());
+        std::unique_ptr<Exception> copy(e.clone());
+        ASSERT_NE(dynamic_cast<BinaryValueNestingLimitException *>(copy.get()), nullptr);
+        EXPECT_EQ(copy->code(), e.code());
+        EXPECT_EQ(copy->message(), e.message());
+        EXPECT_THROW(copy->rethrow(), BinaryValueNestingLimitException);
+    }
+    catch (const Exception & e)
+    {
+        FAIL() << "A nesting refusal lost its concrete boundary exception: " << e.message();
+    }
+}
+
+TEST(SentioWideRecode, DescriptorAndOriginErrorsAreNotValueNestingRefusals)
+{
+    const String array_header = String(1, ARRAY) + INT64 + varUInt(0);
+    const String legacy = legacyDecimal512Header(76, 10) + littleEndian(1, 64);
+    for (const auto & value : {array_header, legacy})
+    {
+        try
+        {
+            accept(value, settingsWith(BinaryTypeOrigin::Unknown, 1));
+            FAIL() << "The descriptor or origin must be rejected";
+        }
+        catch (const BinaryValueNestingLimitException &)
+        {
+            FAIL() << "RowBinary must not turn a type-header/origin refusal into a value-nesting error";
+        }
+        catch (const Exception & e)
+        {
+            EXPECT_EQ(e.code(), ErrorCodes::INCORRECT_DATA);
+        }
+    }
 }

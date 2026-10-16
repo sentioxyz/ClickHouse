@@ -6,6 +6,7 @@
 #include <Formats/registerWithNamesAndTypes.h>
 #include <DataTypes/DataTypeFactory.h>
 #include <DataTypes/DataTypesBinaryEncoding.h>
+#include <DataTypes/BinaryValueNestingLimitException.h>
 #include <Core/Defines.h>
 #include <Core/Field.h>
 
@@ -16,6 +17,7 @@ namespace ErrorCodes
 {
     extern const int CANNOT_SKIP_UNKNOWN_FIELD;
     extern const int TOO_LARGE_ARRAY_SIZE;
+    extern const int TOO_DEEP_RECURSION;
 }
 
 /// Bound number of columns in header so user cannot reserve() arbitrarily large amount of memory
@@ -144,7 +146,15 @@ bool BinaryFormatReader<with_defaults>::readFieldImpl(IColumn & column, const Se
             return false;
         }
     }
-    serialization->deserializeBinary(column, *in, format_settings);
+    try
+    {
+        serialization->deserializeBinary(column, *in, format_settings);
+    }
+    catch (const BinaryValueNestingLimitException & e)
+    {
+        /// RowBinary's payload nesting failure retains its established error contract; type-header complexity errors stay INCORRECT_DATA.
+        throw Exception(ErrorCodes::TOO_DEEP_RECURSION, "{}", e.message());
+    }
     return true;
 }
 
@@ -195,7 +205,15 @@ void BinaryFormatReader<with_defaults>::skipField(size_t file_column)
     }
 
     Field field;
-    read_data_types[file_column]->getDefaultSerialization()->deserializeBinary(field, *in, format_settings);
+    try
+    {
+        read_data_types[file_column]->getDefaultSerialization()->deserializeBinary(field, *in, format_settings);
+    }
+    catch (const BinaryValueNestingLimitException & e)
+    {
+        /// RowBinary's payload nesting failure retains its established error contract; type-header complexity errors stay INCORRECT_DATA.
+        throw Exception(ErrorCodes::TOO_DEEP_RECURSION, "{}", e.message());
+    }
 }
 
 BinaryWithNamesAndTypesSchemaReader::BinaryWithNamesAndTypesSchemaReader(ReadBuffer & in_, const FormatSettings & format_settings_)
