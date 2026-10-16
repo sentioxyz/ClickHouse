@@ -633,8 +633,24 @@ void MergeTreeData::loadStoredBinaryTypeOrigin()
     const auto match = matchTableRecord(*found, getStorageID().uuid);
     if (match != StoredBinaryTypeOriginRecordMatch::Applies)
     {
-        LOG_WARNING(log, "Ignoring the stored binary type origin record of table {}: it is {}. The table is Unknown",
-                    getStorageID().getNameForLogs(), describeStoredBinaryTypeOriginRecordMatch(match));
+        /// Different UUIDs are expected for a read-only reader sharing its writer's directory. Keep that reader Unknown, but do not
+        /// send a warning for this normal shared-disk topology. Other mismatches still warrant a warning.
+        const auto disks = getDisks();
+        const bool read_only_shared_reader = match == StoredBinaryTypeOriginRecordMatch::OtherTable
+            && std::ranges::any_of(disks, [](const auto & disk)
+            {
+                return !disk->isBroken() && disk->isReadOnly();
+            })
+            && std::ranges::all_of(disks, [](const auto & disk)
+            {
+                return disk->isBroken() || disk->isReadOnly();
+            });
+        if (read_only_shared_reader)
+            LOG_DEBUG(log, "Ignoring the stored binary type origin record of table {}: it is {}. The table is Unknown",
+                      getStorageID().getNameForLogs(), describeStoredBinaryTypeOriginRecordMatch(match));
+        else
+            LOG_WARNING(log, "Ignoring the stored binary type origin record of table {}: it is {}. The table is Unknown",
+                        getStorageID().getNameForLogs(), describeStoredBinaryTypeOriginRecordMatch(match));
         stored_binary_type_origin_record_ignored = true;
         stored_binary_type_origin = BinaryTypeOrigin::Unknown;
         return;
