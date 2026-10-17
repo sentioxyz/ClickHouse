@@ -638,10 +638,10 @@ TEST(SentioWideTypeEncoding, StridedQBitBridgeStaysInLegacyScope)
 
 TEST(SentioWideTypeEncoding, StridedQBitRespectsComplexityAndShapeLimits)
 {
-    EXPECT_NO_THROW(decode(unhex("370d1008"), BinaryTypeOrigin::OfficialCanonical, 2));
-    EXPECT_EQ(errorOf([&] { decode(unhex("370d1008"), BinaryTypeOrigin::OfficialCanonical, 1); }).first, ErrorCodes::INCORRECT_DATA);
-    EXPECT_NO_THROW(decode(unhex("1e370d1008"), BinaryTypeOrigin::OfficialCanonical, 3));
-    EXPECT_EQ(errorOf([&] { decode(unhex("1e370d1008"), BinaryTypeOrigin::OfficialCanonical, 2); }).first, ErrorCodes::INCORRECT_DATA);
+    EXPECT_NO_THROW(decode(unhex("370d1008"), BinaryTypeOrigin::OfficialCanonical, 67));
+    EXPECT_EQ(errorOf([&] { decode(unhex("370d1008"), BinaryTypeOrigin::OfficialCanonical, 66); }).first, ErrorCodes::INCORRECT_DATA);
+    EXPECT_NO_THROW(decode(unhex("1e370d1008"), BinaryTypeOrigin::OfficialCanonical, 68));
+    EXPECT_EQ(errorOf([&] { decode(unhex("1e370d1008"), BinaryTypeOrigin::OfficialCanonical, 67); }).first, ErrorCodes::INCORRECT_DATA);
     for (const auto & header : {"370d1000", "370d1020", "370d1004", "370d100c"})
         EXPECT_EQ(errorOf([&] { decode(unhex(header), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::UNEXPECTED_AST_STRUCTURE) << header;
     EXPECT_EQ(errorOf([&] { decode(unhex("370a1008"), BinaryTypeOrigin::OfficialCanonical); }).first, ErrorCodes::ILLEGAL_TYPE_OF_ARGUMENT);
