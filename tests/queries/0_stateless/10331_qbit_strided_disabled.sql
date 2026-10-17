@@ -1,12 +1,12 @@
--- The first release of this fork disables QBit with an explicit stride (stride != dimension). The canonical QBit, including an
--- explicit stride equal to the dimension, is unchanged; a strided type is refused wherever it is created, also nested.
+-- Supported strided QBit retains safe constructor validation; canonical QBit and explicit stride == dimension remain unchanged.
+-- Legacy binary fixtures below declare their provenance explicitly; no input-origin inference or default writer change is assumed.
 SELECT toTypeName(CAST(range(1, 5)::Array(Float32), 'QBit(Float32, 4)'));
 SELECT toTypeName(CAST(range(1, 5)::Array(Float32), 'QBit(Float32, 4, 4)'));
 SELECT CAST(CAST(range(1, 5)::Array(Float32), 'QBit(Float32, 4)') AS Array(Float32));
-SELECT CAST(range(1, 17)::Array(Float32), 'QBit(Float32, 16, 8)'); -- { serverError SUPPORT_IS_DISABLED }
-CREATE TABLE qbit_strided_disabled (v QBit(Float32, 16, 8)) ENGINE = Memory; -- { serverError SUPPORT_IS_DISABLED }
-CREATE TABLE qbit_strided_disabled_nested (v Array(QBit(BFloat16, 16, 8))) ENGINE = Memory; -- { serverError SUPPORT_IS_DISABLED }
-SELECT CAST([] AS Array(Tuple(QBit(Int8, 32, 8)))); -- { serverError SUPPORT_IS_DISABLED }
+SELECT CAST(range(1, 17)::Array(Float32), 'QBit(Float32, 16, 8)');
+CREATE TABLE qbit_strided_disabled (v QBit(Float32, 16, 8)) ENGINE = Memory;
+CREATE TABLE qbit_strided_disabled_nested (v Array(QBit(BFloat16, 16, 8))) ENGINE = Memory;
+SELECT CAST([] AS Array(Tuple(QBit(Int8, 32, 8))));
 
 -- The element type and dimension checks keep their errors (the element type is checked before the stride).
 SELECT CAST(range(1, 5)::Array(Float32), 'QBit(String, 4)'); -- { serverError ILLEGAL_TYPE_OF_ARGUMENT }
@@ -24,13 +24,13 @@ SELECT hex(substring(x, 1, 6)) FROM (SELECT formatRow('RowBinaryWithNamesAndType
 -- 26.3 LTS release binary (build id 203677193CDA6BD5FAAC9AB6B125066CFACE0ADB).
 SELECT toTypeName(a), toTypeName(b), toTypeName(c), a, b, c
 FROM format(RowBinaryWithNamesAndTypes, x'030161016201633837399a02f9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000083ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff')
-SETTINGS input_format_binary_decode_types_in_binary_format = 1;
+SETTINGS input_format_binary_decode_types_in_binary_format = 1, input_format_binary_type_origin = 'sentio_legacy_v0';
 
--- Round trip in the current binary uses the same indexes.
-SELECT hex(substring(x, 1, 11)) FROM (SELECT formatRow('RowBinaryWithNamesAndTypes', toInt512(-7) AS a, toUInt512(9) AS b, toDecimal512('-1.25', 2) AS c) AS x) SETTINGS output_format_binary_encode_types_in_binary_format = 1;
+-- Explicit offline bridge output retains the legacy indexes; the default Custom writer is checked separately.
+SELECT hex(substring(x, 1, 11)) FROM (SELECT formatRow('RowBinaryWithNamesAndTypes', toInt512(-7) AS a, toUInt512(9) AS b, toDecimal512('-1.25', 2) AS c) AS x) SETTINGS output_format_binary_encode_types_in_binary_format = 1, output_format_binary_type_writer_mode = 'sentio_legacy_bridge';
 
 -- Values in the shared variant of `Dynamic` carry a binary type index per value. The blob is
 -- `SELECT number::UInt32 AS id, multiIf(number % 3 = 0, toInt512(-7)::Dynamic, number % 3 = 1, toUInt512(9)::Dynamic,
 -- toDecimal512('-1.25', 2)::Dynamic)::Dynamic(max_types = 1) AS v FROM numbers(3) FORMAT Native` from the same 26.3 binary.
 -- With shifted indexes these rows decode without any error as 2^512 - 7 (UInt512) and -8191334 (Int512).
-SELECT id, v, dynamicType(v), isDynamicElementInSharedData(v) FROM format(Native, x'02030269640655496e74333200000000010000000200000001761444796e616d6963286d61785f74797065733d3129010000000000000001010755496e7435313200000000000000000001004138f9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff43399a0283ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff09000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') ORDER BY id;
+SELECT id, v, dynamicType(v), isDynamicElementInSharedData(v) FROM format(Native, x'02030269640655496e74333200000000010000000200000001761444796e616d6963286d61785f74797065733d3129010000000000000001010755496e7435313200000000000000000001004138f9ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff43399a0283ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff09000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000') ORDER BY id SETTINGS input_format_binary_type_origin = 'sentio_legacy_v0';

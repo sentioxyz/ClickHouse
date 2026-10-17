@@ -1,7 +1,8 @@
-rejected: SUPPORT_IS_DISABLED
-rejected: SUPPORT_IS_DISABLED
-rejected: SUPPORT_IS_DISABLED
-rejected: SUPPORT_IS_DISABLED
-rejected: SUPPORT_IS_DISABLED
+rejected: CANNOT_READ_ALL_DATA
+rejected: ATTEMPT_TO_READ_AFTER_EOF
+x	QBit(Float32, 16, 8)
+x	QBit(Float32, 16)
+rejected: INCORRECT_DATA (complexity 4099 > 1000)
+rejected: INCORRECT_DATA (unknown origin)
 x	QBit(Float32, 16)
 QBit(Float32, 4)	[1,2,3,4]
