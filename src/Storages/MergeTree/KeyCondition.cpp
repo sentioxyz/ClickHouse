@@ -5182,8 +5182,10 @@ std::optional<Range> KeyCondition::applyMonotonicFunctionsChainToRange(
     for (const auto & func : functions)
     {
         /// We check the monotonicity of each function on a specific range.
-        /// If we know the given range only contains one value, then we treat all functions as positive monotonic.
-        IFunction::Monotonicity monotonicity = single_point
+        /// A single point is trivially monotonic only if the function is defined there.
+        /// For example, intDiv(constant, 0) must not be applied to a key-range endpoint.
+        /// Functions without monotonicity information retain the single-point shortcut.
+        IFunction::Monotonicity monotonicity = single_point && !func->hasInformationAboutMonotonicity()
             ? IFunction::Monotonicity{true}
             : func->getMonotonicityForRange(*current_type.get(), key_range.left, key_range.right);
 
