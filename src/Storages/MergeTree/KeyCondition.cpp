@@ -1595,8 +1595,9 @@ static Field applyFunctionForField(
 static FieldRef applyFunction(const FunctionBasePtr & func, const DataTypePtr & current_type, const FieldRef & field)
 {
     chassert(func != nullptr);
-    /// Fallback for fields without block reference.
-    if (field.isExplicit())
+    /// A cached full-column intDiv can evaluate unrelated index values, including a zero
+    /// divisor outside this range. Apply it only to the approved endpoint instead.
+    if (field.isExplicit() || func->getName() == "intDiv")
         return applyFunctionForField(func, current_type, field);
 
     /// We will cache the function result inside `field.columns`, because this function will call many times
