@@ -9,6 +9,7 @@
 
 import copy
 import enum
+import filecmp
 import glob
 
 # Not requests, to avoid requiring extra dependency.
@@ -1954,6 +1955,15 @@ def replace_in_file(filename, what, with_what):
         f.write(data.replace(what.encode(), with_what.encode()))
 
 
+def normalize_hostname_if_needed(stdout_file, reference_file, hostname):
+    # A host name can also be ordinary expected text (e.g. the host is "build").
+    # An already matching result needs no hostname substitution.
+    if reference_file and os.path.isfile(reference_file) and filecmp.cmp(stdout_file, reference_file, shallow=False):
+        return False
+    replace_in_file(stdout_file, hostname, "localhost")
+    return True
+
+
 def replace_in_file_re(filename, what, with_what):
     os.system(f"LC_ALL=C sed -i -e 's/{what}/{with_what}/' {filename}")
 
@@ -3765,8 +3775,8 @@ class TestCase:
             replace_in_file(self.stdout_file, "auto_{replica}", "")
             replace_in_file(self.stdout_file, "auto_r1", "")
 
-        # Normalize hostname in stdout file.
-        replace_in_file(self.stdout_file, socket.gethostname(), "localhost")
+        # Normalize hostname only if the output does not already match its reference.
+        normalize_hostname_if_needed(self.stdout_file, self.reference_file, socket.gethostname())
 
         if os.environ.get("CLICKHOUSE_PORT_TCP"):
             replace_in_file(
