@@ -73,11 +73,9 @@ FormatSettings makeNestedSettings(const FormatSettings & settings, BinaryTypeWri
 
 /// Whether the binary header of the type depends on the writer mode: it has a 512-bit type or strided `QBit` somewhere (also as an aggregate function
 /// argument or a `JSON` typed path), which only the encoder knows completely.
-bool headerDependsOnWriterMode(const DataTypePtr & type)
+bool headerDependsOnWriterMode(const DataTypePtr & type, WriteBufferFromOwnString & canonical, WriteBufferFromOwnString & legacy)
 {
-    WriteBufferFromOwnString canonical;
     encodeDataType(type, canonical, BinaryTypeWriterMode::SentioWideV1);
-    WriteBufferFromOwnString legacy;
     encodeDataType(type, legacy, BinaryTypeWriterMode::SentioLegacyBridge);
     return canonical.stringView() != legacy.stringView();
 }
@@ -99,8 +97,17 @@ void readValue(std::string_view value, const FormatSettings & settings, BinaryTy
 
     if (out)
     {
-        if (headerDependsOnWriterMode(type))
-            encodeDataType(type, *out, mode);
+        WriteBufferFromOwnString canonical_header;
+        WriteBufferFromOwnString legacy_header;
+        if (headerDependsOnWriterMode(type, canonical_header, legacy_header))
+        {
+            if (mode == BinaryTypeWriterMode::SentioWideV1)
+                out->write(canonical_header.stringView().data(), canonical_header.stringView().size());
+            else if (mode == BinaryTypeWriterMode::SentioLegacyBridge)
+                out->write(legacy_header.stringView().data(), legacy_header.stringView().size());
+            else
+                encodeDataType(type, *out, mode);
+        }
         else
             out->write(value.data(), header_size);
     }
