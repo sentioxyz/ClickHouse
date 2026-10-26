@@ -1,3 +1,8 @@
+-- The 26.3 Decimal512 fork's type indexes overlap upstream indexes, so this
+-- legacy binary fixture must declare its producer and request legacy output.
+SET input_format_binary_type_origin = 'sentio_legacy_v0';
+SET output_format_binary_type_writer_mode = 'sentio_legacy_bridge';
+
 -- Binary type indexes of the 512-bit types must stay 0x37 (UInt512), 0x38 (Int512) and 0x39 (Decimal512):
 -- the Decimal512 fork of 26.3 LTS wrote them into `Dynamic`/`JSON` parts and binary formats.
 -- The blob below is `SELECT toInt512(-7) AS a, toUInt512(9) AS b, toDecimal512('-1.25', 2) AS c` in
