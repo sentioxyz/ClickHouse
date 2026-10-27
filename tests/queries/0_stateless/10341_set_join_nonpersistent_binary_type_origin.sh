@@ -19,6 +19,26 @@ REGISTER="MODIFY SENTIO BINARY TYPE ORIGIN 'sentio_legacy_v0'"
 BLOCKED='was loaded without its data'
 RECORD='sentio_binary_type_origin.txt'
 
+# Keep expected server logs in their original form, while query errors stay on stderr.
+SERVER_LOG_SEQUENCE=0
+expected_server_logs() {
+    local logger="$1" table="$2" count="$3"
+    shift 3
+    SERVER_LOG_SEQUENCE=$((SERVER_LOG_SEQUENCE + 1))
+    local log="${CLICKHOUSE_TMP:?}/${CLICKHOUSE_TEST_UNIQUE_NAME:?}.expected_server_${SERVER_LOG_SEQUENCE}.log"
+    if ! (set -o noclobber; : > "$log"); then
+        echo 'UNEXPECTED existing expected-server log'; exit 1
+    fi
+    "$@" --server_logs_file "$log"
+    local query_rc=$?
+    python3 "$CUR_DIR/../sentio_expected_server_logs.py" --log "$log" --database "$CLICKHOUSE_DATABASE" --table "$table" --logger "$logger" --count "$count"
+    local log_rc=$?
+    if [[ "$query_rc" -ne 0 || "$log_rc" -ne 0 ]]; then
+        echo "UNEXPECTED expected-server-log query_rc=$query_rc validation_rc=$log_rc"
+        exit 1
+    fi
+}
+
 # A refusal passes only with a non-zero exit code, the expected error code and the expected message; any other outcome prints the exit
 # code, stdout and stderr. The arguments after the message are the command.
 reject() {
@@ -35,7 +55,24 @@ reject() {
 }
 
 data_path() {
-    $CLICKHOUSE_CLIENT --query "SELECT arrayJoin(data_paths) FROM system.tables WHERE database = currentDatabase() AND name = '$1'"
+    # These tables use the default disk: no CREATE statement sets a custom disk.
+    # StorageSet/StorageJoin expose their disk-relative path in system.tables.
+    local path disk_path
+    path=$($CLICKHOUSE_CLIENT --format TSVRaw --query "SELECT data_paths[1] FROM system.tables WHERE database = currentDatabase() AND name = '$1' AND length(data_paths) = 1") || return 1
+    if [[ -z "$path" || "$path" == *$'\n'* || "$path" != */ || "/$path" == */../* || "/$path" == */./* ]]; then
+        echo 'Expected exactly one non-empty table data path without dot components' >&2
+        return 1
+    fi
+    if [[ "$path" == /* ]]; then
+        printf '%s\n' "$path"
+        return
+    fi
+    disk_path=$($CLICKHOUSE_CLIENT --format TSVRaw --query "SELECT path FROM system.disks WHERE name = 'default'") || return 1
+    if [[ "$disk_path" != /* || "$disk_path" != */ || "$disk_path" == *$'\n'* || "$disk_path" == */../* || "$disk_path" == */./* ]]; then
+        echo 'Expected exactly one absolute default disk path without dot components' >&2
+        return 1
+    fi
+    printf '%s/%s\n' "${disk_path%/}" "$path"
 }
 
 # Flips one byte inside the compressed data of a file (after its checksum and header), so that its checksum no longer matches.
@@ -48,7 +85,7 @@ make_old() {
     local table="$1"
     shift
     local dir number=1
-    dir=$(data_path "$table")
+    dir=$(data_path "$table") || exit 1
     $CLICKHOUSE_CLIENT --query "DETACH TABLE $table"
     # A scalar-only UInt64/String table may have no automatic origin record. The legacy fixture needs no record either.
     # Keep the original existence premise for every header-bearing blocked/corrupt table.
@@ -61,7 +98,9 @@ make_old() {
         cp "$file" "${dir:?}${number}.bin"
         number=$((number + 1))
     done
-    $CLICKHOUSE_CLIENT --query "ATTACH TABLE $table"
+    local expected_count=1
+    if [[ "$table" == t_join_healthy || "$table" == t_set_healthy ]]; then expected_count=0; fi
+    expected_server_logs StorageSetOrJoinBase "$table" "$expected_count" $CLICKHOUSE_CLIENT --query "ATTACH TABLE $table"
 }
 
 # Files in the format of the data of Set and Join: compressed Native blocks of the columns of the table. The legacy ones hold the bytes of
@@ -118,7 +157,7 @@ $CLICKHOUSE_CLIENT --query "CREATE TABLE t_join_partial $JOIN_COLUMNS ENGINE = J
 cp "${PREFIX}_join3.bin" "${PREFIX}_join3_corrupt.bin"
 corrupt "${PREFIX}_join3_corrupt.bin"
 make_old t_join_partial "${PREFIX}_join1.bin" "${PREFIX}_join3_corrupt.bin"
-PARTIAL_PATH=$(data_path t_join_partial)
+PARTIAL_PATH=$(data_path t_join_partial) || exit 1
 reject 'registration over a corrupt file' CHECKSUM_DOESNT_MATCH '' $CLICKHOUSE_CLIENT --query "ALTER TABLE t_join_partial ${REGISTER}"
 reject 'still blocked' INCORRECT_DATA "$BLOCKED" $CLICKHOUSE_CLIENT --query "SELECT k FROM t_join_partial"
 ls "${PARTIAL_PATH:?}" | grep -v -x 'tmp' | sort
@@ -157,7 +196,7 @@ $CLICKHOUSE_CLIENT --query "CREATE TABLE t_set_partial $SET_COLUMNS ENGINE = Set
 cp "${PREFIX}_set3.bin" "${PREFIX}_set3_corrupt.bin"
 corrupt "${PREFIX}_set3_corrupt.bin"
 make_old t_set_partial "${PREFIX}_set1.bin" "${PREFIX}_set3_corrupt.bin"
-SET_PARTIAL_PATH=$(data_path t_set_partial)
+SET_PARTIAL_PATH=$(data_path t_set_partial) || exit 1
 reject 'registration over a corrupt file' CHECKSUM_DOESNT_MATCH '' $CLICKHOUSE_CLIENT --query "ALTER TABLE t_set_partial ${REGISTER}"
 reject 'still blocked' INCORRECT_DATA "$BLOCKED" in_set t_set_partial
 ls "${SET_PARTIAL_PATH:?}" | grep -v -x 'tmp' | sort

@@ -97,11 +97,11 @@ $CLICKHOUSE_CLIENT --query "INSERT INTO FUNCTION file('$USER_FILE_CONTROL', 'Raw
 reject 'AS file()' DATA_TYPE_CANNOT_BE_USED_IN_TABLES "$STORED" \
     $CLICKHOUSE_CLIENT $DECODE --query "CREATE TABLE t_e7b AS file('$USER_FILE', 'RowBinaryWithNamesAndTypes')"
 reject 'ENGINE = File' DATA_TYPE_CANNOT_BE_USED_IN_TABLES "$STORED" \
-    $CLICKHOUSE_CLIENT $DECODE --query "CREATE TABLE t_e7b ENGINE = File(RowBinaryWithNamesAndTypes, '$USER_FILE')"
+    $CLICKHOUSE_CLIENT $DECODE --query "CREATE TABLE t_e7b ENGINE = File(RowBinaryWithNamesAndTypes, '$USER_FILE') SETTINGS input_format_binary_decode_types_in_binary_format = 1"
 # Nothing was created, and the refused storage left its file as it was.
 $CLICKHOUSE_CLIENT --query "SELECT count() FROM system.tables WHERE database = currentDatabase() AND (name IN ('t_e7b', 'v_e7b', 'mv_e7b') OR name LIKE '.inner%')"
 $CLICKHOUSE_CLIENT --query "SELECT hex(raw_blob) = upper('$D_P50') FROM file('$USER_FILE', 'RawBLOB')"
-$CLICKHOUSE_CLIENT $DECODE --query "CREATE TABLE t_e7b_file_control ENGINE = File(RowBinaryWithNamesAndTypes, '$USER_FILE_CONTROL')"
+$CLICKHOUSE_CLIENT $DECODE --query "CREATE TABLE t_e7b_file_control ENGINE = File(RowBinaryWithNamesAndTypes, '$USER_FILE_CONTROL') SETTINGS input_format_binary_decode_types_in_binary_format = 1"
 $CLICKHOUSE_CLIENT $DECODE --query "SELECT toTypeName(x), byteSize(x), x FROM t_e7b_file_control"
 $CLICKHOUSE_CLIENT --query "SELECT position(create_table_query, 'Decimal(80, 2)') > 0 FROM system.tables WHERE database = currentDatabase() AND name = 't_e7b_file_control'"
 
