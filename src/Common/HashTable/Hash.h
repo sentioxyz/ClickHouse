@@ -628,6 +628,14 @@ struct IntHash32
         {
             return intHash32<salt>(key.items[0] ^ key.items[1] ^ key.items[2] ^ key.items[3]);
         }
+        else if constexpr (is_big_int_v<T> && sizeof(T) == 64)
+        {
+            /// (U)Int512 (the Decimal512 fork), folded like the 128- and 256-bit integers: a value that fits a narrower integer hashes as
+            /// it does there. Without this branch the call fell through to UNREACHABLE, which uniqHLL12 reached for its 17th distinct
+            /// value (HyperLogLogWithSmallSetOptimization::toLarge) and crashed the server.
+            return intHash32<salt>(
+                key.items[0] ^ key.items[1] ^ key.items[2] ^ key.items[3] ^ key.items[4] ^ key.items[5] ^ key.items[6] ^ key.items[7]);
+        }
         else if constexpr (sizeof(T) <= sizeof(UInt64))
         {
             UInt64 out {0};
