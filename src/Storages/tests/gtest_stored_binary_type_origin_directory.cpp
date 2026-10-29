@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <DataTypes/BinaryTypeOrigin.h>
+#include <DataTypes/DataTypeDynamic.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <Disks/tests/gtest_disk.h>
 #include <IO/ReadBufferFromFileBase.h>
@@ -262,27 +263,36 @@ TEST_F(StoredBinaryTypeOriginDirectoryTest, AttachLoadsEveryKindOfRecord)
 TEST_F(StoredBinaryTypeOriginDirectoryTest, StoragesRefuseOriginalCreateOverExistingDirectory)
 {
     NamesAndTypesList columns{{"a", std::make_shared<DataTypeUInt64>()}};
+    /// A column whose values can hold binary type headers: only such a table gets a record.
+    NamesAndTypesList header_columns{{"a", std::make_shared<DataTypeUInt64>()}, {"d", std::make_shared<DataTypeDynamic>()}};
 
-    auto create_log = [&](const String & path, const UUID & uuid)
+    auto create_log = [&](const String & path, const UUID & uuid, const NamesAndTypesList & table_columns)
     {
         return std::make_shared<StorageLog>(
-            "Log", disk, path, StorageID("db", "log", uuid), ColumnsDescription{columns}, ConstraintsDescription{}, String{},
+            "Log", disk, path, StorageID("db", "log", uuid), ColumnsDescription{table_columns}, ConstraintsDescription{}, String{},
             LoadingStrictnessLevel::CREATE, getContext().context, true, BinaryTypeOrigin::OfficialCanonical);
     };
-    auto create_stripe_log = [&](const String & path, const UUID & uuid)
+    auto create_stripe_log = [&](const String & path, const UUID & uuid, const NamesAndTypesList & table_columns)
     {
         return std::make_shared<StorageStripeLog>(
-            disk, path, StorageID("db", "stripe_log", uuid), ColumnsDescription{columns}, ConstraintsDescription{}, String{},
+            disk, path, StorageID("db", "stripe_log", uuid), ColumnsDescription{table_columns}, ConstraintsDescription{}, String{},
             LoadingStrictnessLevel::CREATE, getContext().context, true, BinaryTypeOrigin::OfficialCanonical);
     };
 
-    /// A fresh directory is created and stamped.
-    create_log("log/", TABLE_UUID)->flushAndShutdown();
+    /// A fresh directory is created and stamped, if a column can hold binary type headers.
+    create_log("log/", TABLE_UUID, header_columns)->flushAndShutdown();
     EXPECT_EQ(readFileText(disk, String("log/") + STORED_BINARY_TYPE_ORIGIN_FILE_NAME),
               StoredBinaryTypeOriginRecord::forTable(BinaryTypeOrigin::OfficialCanonical, TABLE_UUID).toString());
-    create_stripe_log("stripe_log/", OTHER_UUID)->flushAndShutdown();
+    create_stripe_log("stripe_log/", OTHER_UUID, header_columns)->flushAndShutdown();
     EXPECT_EQ(readFileText(disk, String("stripe_log/") + STORED_BINARY_TYPE_ORIGIN_FILE_NAME),
               StoredBinaryTypeOriginRecord::forTable(BinaryTypeOrigin::OfficialCanonical, OTHER_UUID).toString());
+    /// Otherwise it keeps the layout of upstream: no record.
+    create_log("log_plain/", TABLE_UUID, columns)->flushAndShutdown();
+    EXPECT_TRUE(disk->existsDirectory("log_plain/"));
+    EXPECT_FALSE(disk->existsFile(String("log_plain/") + STORED_BINARY_TYPE_ORIGIN_FILE_NAME));
+    create_stripe_log("stripe_log_plain/", OTHER_UUID, columns)->flushAndShutdown();
+    EXPECT_TRUE(disk->existsDirectory("stripe_log_plain/"));
+    EXPECT_FALSE(disk->existsFile(String("stripe_log_plain/") + STORED_BINARY_TYPE_ORIGIN_FILE_NAME));
 
     /// An existing directory is refused, with or without a UUID, and stays as it was. The resident file is one that the constructors do not
     /// read (each of them parses an existing sizes.json in its FileChecker before the check).
@@ -290,8 +300,10 @@ TEST_F(StoredBinaryTypeOriginDirectoryTest, StoragesRefuseOriginalCreateOverExis
     {
         disk->createDirectories("old/");
         writeFileText(disk, "old/resident.bin", "resident");
-        EXPECT_EQ(codeOf([&] { create_log("old/", uuid); }), ErrorCodes::TABLE_ALREADY_EXISTS);
-        EXPECT_EQ(codeOf([&] { create_stripe_log("old/", uuid); }), ErrorCodes::TABLE_ALREADY_EXISTS);
+        EXPECT_EQ(codeOf([&] { create_log("old/", uuid, header_columns); }), ErrorCodes::TABLE_ALREADY_EXISTS);
+        EXPECT_EQ(codeOf([&] { create_stripe_log("old/", uuid, header_columns); }), ErrorCodes::TABLE_ALREADY_EXISTS);
+        EXPECT_EQ(codeOf([&] { create_log("old/", uuid, columns); }), ErrorCodes::TABLE_ALREADY_EXISTS);
+        EXPECT_EQ(codeOf([&] { create_stripe_log("old/", uuid, columns); }), ErrorCodes::TABLE_ALREADY_EXISTS);
         EXPECT_EQ(readFileText(disk, "old/resident.bin"), "resident");
         EXPECT_FALSE(disk->existsFile(String("old/") + STORED_BINARY_TYPE_ORIGIN_FILE_NAME));
         EXPECT_FALSE(disk->existsFile("old/sizes.json"));

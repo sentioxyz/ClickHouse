@@ -30,6 +30,7 @@
 #include <Storages/MergeTree/Backup.h>
 #include <Storages/MergeTree/LoadedMergeTreeDataPartInfoForReader.h>
 #include <Storages/MergeTree/MergeTreeData.h>
+#include <DataTypes/SentioWideRecode.h>
 #include <Storages/StoredBinaryTypeOrigin.h>
 #include <Storages/MergeTree/MergeTreeVirtualColumns.h>
 #include <Storages/MergeTree/MergeTreeIndexGranularityAdaptive.h>
@@ -1914,6 +1915,26 @@ void IMergeTreeDataPart::writeAndLoadStoredBinaryTypeOriginRecord(BinaryTypeOrig
         throw Exception(ErrorCodes::LOGICAL_ERROR, "The stored binary type origin record written into part {} is not read back", name);
 }
 
+bool IMergeTreeDataPart::mayHaveDataDependingOnBinaryTypeOrigin() const
+{
+    if (parent_part)
+        return parent_part->mayHaveDataDependingOnBinaryTypeOrigin();
+    if (columnsMayHaveBinaryTypeHeaders(getColumns()))
+        return true;
+    for (const auto & [_, projection_part] : projection_parts)
+        if (columnsMayHaveBinaryTypeHeaders(projection_part->getColumns()))
+            return true;
+    const auto table_metadata = storage.getInMemoryMetadataPtr(storage.getContext(), false);
+    for (const auto & index_description : table_metadata->getSecondaryIndices())
+        for (const auto & type : index_description.data_types)
+            if (type && valuesMayHaveBinaryTypeHeaders(*type))
+                return true;
+    for (const auto & projection_description : table_metadata->getProjections())
+        if (columnsMayHaveBinaryTypeHeaders(projection_description.sample_block.getNamesAndTypesList()))
+            return true;
+    return false;
+}
+
 BinaryTypeOrigin IMergeTreeDataPart::getBinaryTypeOriginForReading() const
 {
     if (parent_part)
@@ -2933,8 +2954,9 @@ DataPartStoragePtr IMergeTreeDataPart::makeCloneInDetached(const String & prefix
 
     /// A part that leaves its table as raw files carries the stored binary type origin its data is read with (Storages/
     /// StoredBinaryTypeOrigin.h), so that wherever it is attached it is read with the same meaning. A part with a record has it in the
-    /// clone already; a part of an Unknown table carries nothing, since Unknown says nothing about its data.
-    if (detached_storage && !disk_transaction && !parent_part && !stored_binary_type_origin)
+    /// clone already; a part of an Unknown table carries nothing, since Unknown says nothing about its data, and neither does a part without
+    /// data whose meaning depends on the origin.
+    if (detached_storage && !disk_transaction && !parent_part && !stored_binary_type_origin && mayHaveDataDependingOnBinaryTypeOrigin())
     {
         const auto origin = getBinaryTypeOriginForReading();
         if (origin != BinaryTypeOrigin::Unknown)

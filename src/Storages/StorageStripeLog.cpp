@@ -356,7 +356,9 @@ StorageStripeLog::StorageStripeLog(
         }
     }
 
-    if (origin_to_stamp)
+    /// Only a table whose values can hold binary type headers gets a record: the files of any other table mean the same under every origin
+    /// (Storages/StoredBinaryTypeOrigin.h), so it keeps the file layout of upstream. The columns of these engines cannot be altered.
+    if (origin_to_stamp && columnsMayHaveBinaryTypeHeaders(columns_))
         stored_binary_type_origin.stampNewTable(
             *disk, table_path, table_id_, *origin_to_stamp, context_->getWriteSettings(), context_->getSettingsRef()[Setting::fsync_metadata]);
 

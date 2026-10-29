@@ -1,6 +1,9 @@
 #include <Storages/StoredBinaryTypeOrigin.h>
 
+#include <DataTypes/SentioWideRecode.h>
 #include <Disks/IDisk.h>
+#include <Storages/ColumnsDescription.h>
+#include <Storages/StorageInMemoryMetadata.h>
 #include <Interpreters/StorageID.h>
 #include <IO/ReadBufferFromFileBase.h>
 #include <IO/ReadBufferFromMemory.h>
@@ -121,6 +124,33 @@ UUID parseCanonicalUUID(std::string_view token)
     return uuid;
 }
 
+}
+
+bool columnsMayHaveBinaryTypeHeaders(const NamesAndTypesList & columns)
+{
+    for (const auto & column : columns)
+        if (valuesMayHaveBinaryTypeHeaders(*column.type))
+            return true;
+    return false;
+}
+
+bool columnsMayHaveBinaryTypeHeaders(const ColumnsDescription & columns)
+{
+    return columnsMayHaveBinaryTypeHeaders(columns.getAll());
+}
+
+bool metadataMayHaveBinaryTypeHeaders(const StorageInMemoryMetadata & metadata)
+{
+    if (columnsMayHaveBinaryTypeHeaders(metadata.getColumns()))
+        return true;
+    for (const auto & index : metadata.getSecondaryIndices())
+        for (const auto & type : index.data_types)
+            if (type && valuesMayHaveBinaryTypeHeaders(*type))
+                return true;
+    for (const auto & projection : metadata.getProjections())
+        if (columnsMayHaveBinaryTypeHeaders(projection.sample_block.getNamesAndTypesList()))
+            return true;
+    return false;
 }
 
 std::string_view getBinaryTypeOriginName(BinaryTypeOrigin origin)

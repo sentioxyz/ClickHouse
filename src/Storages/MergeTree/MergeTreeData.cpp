@@ -696,6 +696,13 @@ void MergeTreeData::stampStoredBinaryTypeOriginOfNewTable(bool is_original_creat
     if (!origin_to_stamp || getStorageID().uuid == UUIDHelpers::Nil)
         return;
 
+    /// A table without a column whose values can hold binary type headers stores nothing whose meaning depends on the origin
+    /// (Storages/StoredBinaryTypeOrigin.h): it gets no record and keeps the directory and object layout of upstream. It is stamped when an
+    /// ALTER gives it such a column (stampStoredBinaryTypeOriginForNewHeaderColumns).
+    const auto metadata_snapshot = getInMemoryMetadataPtr(getContext(), false);
+    if (!metadataMayHaveBinaryTypeHeaders(*metadata_snapshot))
+        return;
+
     if (!persistStoredBinaryTypeOrigin(*origin_to_stamp))
     {
         LOG_INFO(log, "Table {} has no writable disk for its stored binary type origin record; it stays Unknown", getStorageID().getNameForLogs());
@@ -720,6 +727,48 @@ void MergeTreeData::removeStoredBinaryTypeOriginRecordWrittenByCreate()
     stored_binary_type_origin_record_written_by_create = false;
     stored_binary_type_origin_stated = false;
     stored_binary_type_origin = BinaryTypeOrigin::Unknown;
+}
+
+void MergeTreeData::stampStoredBinaryTypeOriginForNewHeaderColumns(
+    const StorageInMemoryMetadata & old_metadata, const StorageInMemoryMetadata & new_metadata)
+{
+    if (metadataMayHaveBinaryTypeHeaders(old_metadata) || !metadataMayHaveBinaryTypeHeaders(new_metadata))
+        return;
+    if (getStorageID().uuid == UUIDHelpers::Nil)
+        return;
+
+    std::lock_guard admission_lock(stored_binary_type_origin_admission_mutex);
+    if (!hasUnsetStoredBinaryTypeOrigin())
+        return;
+
+    for (const auto & part : getDataPartsVectorForInternalUsage({DataPartState::PreActive, DataPartState::Active, DataPartState::Outdated}))
+    {
+        if (part->mayHaveDataDependingOnBinaryTypeOrigin())
+        {
+            LOG_WARNING(log, "Table {} gets a column whose values can hold binary type headers, but its part {} holds such data already: "
+                        "the table keeps no stored binary type origin", getStorageID().getNameForLogs(), part->name);
+            return;
+        }
+    }
+
+    if (!persistStoredBinaryTypeOrigin(BinaryTypeOrigin::OfficialCanonical))
+    {
+        LOG_INFO(log, "Table {} has no writable disk for its stored binary type origin record; it stays unset", getStorageID().getNameForLogs());
+        return;
+    }
+    LOG_INFO(log, "Stamped table {} with the stored binary type origin official_canonical: it gets its first column whose values can hold "
+             "binary type headers", getStorageID().getNameForLogs());
+}
+
+bool MergeTreeData::partitionMoveDependsOnStoredBinaryTypeOrigin(
+    const MergeTreeData & src_data, const StorageInMemoryMetadata & src_metadata, const StorageInMemoryMetadata & my_metadata) const
+{
+    if (metadataMayHaveBinaryTypeHeaders(my_metadata) || metadataMayHaveBinaryTypeHeaders(src_metadata))
+        return true;
+    for (const auto & part : src_data.getDataPartsVectorForInternalUsage({DataPartState::PreActive, DataPartState::Active}))
+        if (part->mayHaveDataDependingOnBinaryTypeOrigin())
+            return true;
+    return false;
 }
 
 bool MergeTreeData::persistStoredBinaryTypeOrigin(BinaryTypeOrigin origin)
@@ -7429,7 +7478,9 @@ void MergeTreeData::movePartToDetachedCarryingStoredBinaryTypeOrigin(const DataP
 {
     /// The origin the part is read with in this table, before it leaves it. A part with a record has it in its directory already, and an
     /// Unknown origin says nothing about its data.
-    const auto origin = part->stored_binary_type_origin ? BinaryTypeOrigin::Unknown : part->getBinaryTypeOriginForReading();
+    /// A part without data whose meaning depends on the origin gets no record either.
+    const auto origin = part->stored_binary_type_origin || !part->mayHaveDataDependingOnBinaryTypeOrigin()
+        ? BinaryTypeOrigin::Unknown : part->getBinaryTypeOriginForReading();
     forcefullyMovePartToDetachedAndRemoveFromMemory(part);
     if (origin != BinaryTypeOrigin::Unknown)
         part->writeStoredBinaryTypeOriginRecord(
@@ -11379,8 +11430,13 @@ MergeTreeData & MergeTreeData::checkStructureAndGetMergeTreeData(IStorage & sour
     /// apply to it or of a replicated conflict takes part in no move, even with another such table: its origin is not determined, and a
     /// conflict resolved later would give the moved parts the trust of the table they are in. The initiator of a replicated REPLACE refuses
     /// here, before its log entry exists; a replica that later fails this check fetches the parts the initiator cloned.
-    if (!hasDeterminateStoredBinaryTypeOrigin() || !src_data->hasDeterminateStoredBinaryTypeOrigin()
-        || getStatedStoredBinaryTypeOrigin() != src_data->getStatedStoredBinaryTypeOrigin())
+    /// None of this applies when neither table has a column whose values can hold binary type headers and no part of the source holds
+    /// one: then no stored byte of the moved parts depends on the origin (Storages/StoredBinaryTypeOrigin.h), whatever the origins of the
+    /// tables, as between a table created before the upgrade and one created after it, a table of an `Ordinary` database, or a table on
+    /// a read-only disk. Should the destination get such a column later, the moved parts hold no data of it.
+    if (partitionMoveDependsOnStoredBinaryTypeOrigin(*src_data, *src_snapshot, *my_snapshot)
+        && (!hasDeterminateStoredBinaryTypeOrigin() || !src_data->hasDeterminateStoredBinaryTypeOrigin()
+            || getStatedStoredBinaryTypeOrigin() != src_data->getStatedStoredBinaryTypeOrigin()))
         throw Exception(ErrorCodes::BAD_ARGUMENTS, "Tables have different stored binary type origins: {} and {}",
                         describeStoredBinaryTypeOrigin(), src_data->describeStoredBinaryTypeOrigin());
 

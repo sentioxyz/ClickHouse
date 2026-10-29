@@ -601,6 +601,10 @@ void StorageMergeTree::alter(
             /// `prepareMutationEntry` writes the file but leaves `is_registered == false`,
             /// so `~MergeTreeMutationEntry` removes it on unwinding. Writing it before the
             /// durable commit keeps durable metadata and the mutation file in lockstep. See #80648.
+            /// Before the metadata is committed: a table that gets its first column whose values can hold binary type headers is stamped
+            /// with the origin they are written with. A stamp left by an ALTER that fails later changes nothing for the old columns.
+            stampStoredBinaryTypeOriginForNewHeaderColumns(old_metadata, new_metadata);
+
             std::optional<PreparedMutationEntry> prepared;
             try
             {

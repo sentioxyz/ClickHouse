@@ -494,6 +494,10 @@ public:
     /// The origin the stored data of the part is read with: that of its own record if it has one, Unknown for a raw import that its table
     /// has not admitted yet, otherwise the stored origin of its table. A projection is read with the origin of its parent part.
     BinaryTypeOrigin getBinaryTypeOriginForReading() const;
+    /// Whether the stored data of the part can depend on the binary type origin (Storages/StoredBinaryTypeOrigin.h): a column it holds (its
+    /// own columns, not those of the table), a column of a projection part it holds or of a projection of the table, or the expression of a
+    /// skip index of the table, has values that can hold binary type headers. A projection answers for its parent part.
+    bool mayHaveDataDependingOnBinaryTypeOrigin() const;
     /// Writes a part record with `origin`, bound to the checksums of this part, into `part_storage`: the directory of this part or of a
     /// copy of it. The previous file is removed first, since it may be a hard link shared with the part this one was cloned from.
     void writeStoredBinaryTypeOriginRecord(IDataPartStorage & part_storage, BinaryTypeOrigin origin, const WriteSettings & settings, bool sync) const;

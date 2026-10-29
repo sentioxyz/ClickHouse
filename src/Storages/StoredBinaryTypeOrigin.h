@@ -11,8 +11,11 @@
 namespace DB
 {
 
+class ColumnsDescription;
 class IDisk;
+class NamesAndTypesList;
 class ReadBuffer;
+struct StorageInMemoryMetadata;
 class WriteBuffer;
 struct ReadSettings;
 struct StorageID;
@@ -23,21 +26,34 @@ struct WriteSettings;
 /// bound to the one entity it describes and never applies to another one; an absent record, an invalid one and a record of another
 /// entity all mean Unknown, which reads only self-describing encodings and refuses the ambiguous legacy indexes.
 ///  - A table record lives in the data directory of a table with a UUID (`Atomic` and `Replicated` databases) and binds exactly that
-///    non-nil UUID. It is written only by an original `CREATE` on this binary (OfficialCanonical, or the origin of the source table of
-///    `CREATE ... AS` and `CLONE AS`), by a trusted restore of a backup that carries the record of the table, by the privileged one-time
-///    registration `ALTER TABLE ... MODIFY SENTIO BINARY TYPE ORIGIN 'sentio_legacy_v0'` (accepted only from Unknown), and by a `Replicated`
-///    table taking the origin of its ZooKeeper metadata. A table without a UUID (an `Ordinary` database) has no table record: it stays
-///    Unknown and cannot be registered.
+///    non-nil UUID. It is written only by an original `CREATE` on this binary of a table with a column whose values can hold binary type
+///    headers (OfficialCanonical, or the origin of the source table of `CREATE ... AS` and `CLONE AS`), by an `ALTER` that gives a
+///    `MergeTree` table without a record its first such column (OfficialCanonical), by a trusted restore of a backup that carries the
+///    record of the table, by the privileged one-time registration `ALTER TABLE ... MODIFY SENTIO BINARY TYPE ORIGIN 'sentio_legacy_v0'`
+///    (accepted only from Unknown), and by a `Replicated` table taking the origin of its ZooKeeper metadata. A table without a UUID (an
+///    `Ordinary` database) has no table record: it stays Unknown and cannot be registered.
 ///  - A part record lives in the directory of a data part that left its table as raw files (detached, fetched from another table, restored
 ///    into a table of another origin), or of a mutation of such a part, and binds the total checksum of that part. It carries the origin
 ///    of the data of the part: a part with a record is read with it, any other part with the origin of its table. A part that comes into a
 ///    table as raw files (fetched from another table into detached/, attached from detached/, restored from a backup) is read with its
 ///    own record or with Unknown from the first read of its load on, never with the origin of the table, which is no proof of its data.
-///    A part fetched from another table gets a record of the origin of that table, if its ZooKeeper metadata holds one. A part attached or
-///    restored without a record of its own follows a table with an unset origin, is refused by a SentioLegacyV0 table, and gets a record
-///    of the Unknown origin in any other table (MergeTreeData::admitStoredBinaryTypeOriginOfRawPart).
+///    A part without data whose meaning depends on the origin gets no record when it leaves its table. A part fetched from another table
+///    gets a record of the origin of that table, if its ZooKeeper metadata holds one. A part attached or restored without a record of its
+///    own follows a table with an unset origin, is refused by a SentioLegacyV0 table, and gets a record of the Unknown origin in any other
+///    table (MergeTreeData::admitStoredBinaryTypeOriginOfRawPart).
 /// A part record is never a table record and the reverse: the loader of each kind rejects the other one.
 inline constexpr auto STORED_BINARY_TYPE_ORIGIN_FILE_NAME = "sentio_binary_type_origin.txt";
+
+/// Which stored data depends on the origin. The origin is consulted only by the readers of values that can hold binary type headers
+/// (valuesMayHaveBinaryTypeHeaders: `Dynamic`, `JSON`, any type with them nested, and `AggregateFunction` states with such arguments). The
+/// bytes of every other column, plain `Decimal512`/`Int512`/`UInt512` and aggregation states of them included, mean the same under every
+/// origin. A table whose structure has no such type is origin-neutral: it gets no table record, its parts get no part records, and moving
+/// parts between such tables does not compare origins. A table that gets such a column by ALTER gets its record then
+/// (MergeTreeData::stampStoredBinaryTypeOriginForNewHeaderColumns). An existing record is always loaded and kept, whatever the structure.
+bool columnsMayHaveBinaryTypeHeaders(const NamesAndTypesList & columns);
+bool columnsMayHaveBinaryTypeHeaders(const ColumnsDescription & columns);
+/// The columns (all kinds), the expressions of the skip indices and the columns of the projections.
+bool metadataMayHaveBinaryTypeHeaders(const StorageInMemoryMetadata & metadata);
 
 enum class StoredBinaryTypeOriginRecordKind : uint8_t
 {

@@ -1741,6 +1741,22 @@ protected:
     /// stamp). A table without a UUID is not stamped.
     void stampStoredBinaryTypeOriginOfNewTable(bool is_original_create, std::optional<BinaryTypeOrigin> origin_to_stamp);
 
+    /// An ALTER that gives a table without a stored binary type origin its first column whose values can hold binary type headers
+    /// (metadataMayHaveBinaryTypeHeaders: `old_metadata` has none, `new_metadata` has one) stamps it OfficialCanonical, as an original
+    /// CREATE of such a table does: from now on such values are written only by this binary, in the canonical encoding, and the table had
+    /// none before. The stamp is written before the new metadata is committed, with stored_binary_type_origin_admission_mutex held
+    /// exclusively, so that raw parts admitted meanwhile for the unset origin are refused at their commit. It is not written if the table
+    /// states an origin already (a record, also a registration, or a replicated conflict), has no UUID, or has a part that physically holds
+    /// such a column (left over by a DROP COLUMN that has not been materialized yet, or attached from elsewhere): such a table stays unset,
+    /// which reads only self-describing encodings. Not called for replicated tables, whose origin is part of their replicated metadata: a
+    /// replicated table that gets such a column by ALTER stays unset.
+    void stampStoredBinaryTypeOriginForNewHeaderColumns(const StorageInMemoryMetadata & old_metadata, const StorageInMemoryMetadata & new_metadata);
+
+    /// Whether moving parts of `src_data` into this table depends on the stored binary type origins of the tables: unless neither
+    /// structure nor any part of the source has a value that can hold binary type headers (Storages/StoredBinaryTypeOrigin.h).
+    bool partitionMoveDependsOnStoredBinaryTypeOrigin(
+        const MergeTreeData & src_data, const StorageInMemoryMetadata & src_metadata, const StorageInMemoryMetadata & my_metadata) const;
+
     /// Removes the record that this CREATE wrote (stored_binary_type_origin_record_written_by_create), and so the origin it stamped: a new
     /// replica of a table without an origin has none either.
     void removeStoredBinaryTypeOriginRecordWrittenByCreate();
