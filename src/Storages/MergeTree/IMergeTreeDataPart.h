@@ -504,6 +504,9 @@ public:
     /// Writes a part record with `origin` into the directory of this part, and loads it as the origin of this part, as a load of the part
     /// from its directory does.
     void writeAndLoadStoredBinaryTypeOriginRecord(BinaryTypeOrigin origin, const WriteSettings & settings, bool sync);
+    /// Removes the part record from the directory of this part and forgets its origin: only for a part without data whose meaning depends
+    /// on the origin (mayHaveDataDependingOnBinaryTypeOrigin), which then reads with the origin of its table, the same as with any other.
+    void removeStoredBinaryTypeOriginRecord();
 
     CompressionCodecPtr default_codec;
 

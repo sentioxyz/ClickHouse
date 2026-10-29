@@ -1925,6 +1925,18 @@ void IMergeTreeDataPart::writeAndLoadStoredBinaryTypeOriginRecord(BinaryTypeOrig
         throw Exception(ErrorCodes::LOGICAL_ERROR, "The stored binary type origin record written into part {} is not read back", name);
 }
 
+void IMergeTreeDataPart::removeStoredBinaryTypeOriginRecord()
+{
+    if (mayHaveDataDependingOnBinaryTypeOrigin())
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "Cannot remove the stored binary type origin record of part {}: its data depends on the origin",
+                        name);
+    auto & part_storage = getDataPartStorage();
+    part_storage.beginTransaction();
+    part_storage.removeFileIfExists(STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
+    part_storage.commitTransaction();
+    stored_binary_type_origin.reset();
+}
+
 bool IMergeTreeDataPart::mayHaveDataDependingOnBinaryTypeOrigin() const
 {
     if (parent_part)

@@ -280,8 +280,16 @@ MergeTreeData::DataPart::Checksums Service::sendPartFromDisk(
         files_to_replicate.insert(name);
     }
 
+    /// The part record of the stored binary type origin travels only with a part whose data depends on the origin (Storages/
+    /// StoredBinaryTypeOrigin.h): a part without such data may still have one (restored or attached by a previous version of this fork),
+    /// and a fetching replica of an older or official version would refuse it as an unexpected file.
+    const bool send_origin_record = part->mayHaveDataDependingOnBinaryTypeOrigin();
+
     for (const auto & name : file_names_without_checksums)
     {
+        if (name == STORED_BINARY_TYPE_ORIGIN_FILE_NAME && !send_origin_record)
+            continue;
+
         if (client_protocol_version < REPLICATION_PROTOCOL_VERSION_WITH_PARTS_DEFAULT_COMPRESSION
             && name == IMergeTreeDataPart::DEFAULT_COMPRESSION_CODEC_FILE_NAME)
             continue;

@@ -8241,8 +8241,13 @@ bool MergeTreeData::admitStoredBinaryTypeOriginOfRawPart(IMergeTreeDataPart & pa
     /// A part without a record of its own and without data whose meaning depends on the origin (no column of it, of its projections or of
     /// the skip indices of the table can hold binary type headers) is admitted into any table as it is: it is read the same with every
     /// origin, so it needs no proof and no record. Should the table get such a column later, the part holds no data of it.
-    if (!part.stored_binary_type_origin && !part.mayHaveDataDependingOnBinaryTypeOrigin())
+    /// A record that such a part brings along (from a backup, a fetch into detached/ or an older detach) is removed: it says nothing about
+    /// the data, and as a file of the part it would reach servers that do not know it (a replica of an older or official version that
+    /// fetches the part refuses it as an unexpected file).
+    if (!part.mayHaveDataDependingOnBinaryTypeOrigin())
     {
+        if (part.stored_binary_type_origin)
+            part.removeStoredBinaryTypeOriginRecord();
         part.is_raw_import = false;
         return true;
     }
@@ -9036,10 +9041,18 @@ MergeTreeData::PartsBackupEntries MergeTreeData::backupParts(
                 part->checkConsistency(/*require_part_metadata=*/true);
         }
 
+        /// A part without data whose meaning depends on the origin is backed up without a part record (Storages/StoredBinaryTypeOrigin.h),
+        /// also if it has one: the backup keeps the file layout of upstream, and a restore by a server that does not know the record (an
+        /// older or official version) does not find a file it does not expect.
+        const bool part_needs_origin_record = part->mayHaveDataDependingOnBinaryTypeOrigin();
+        NameSet file_names_without_checksums = part->getFileNamesWithoutChecksums();
+        if (!part_needs_origin_record)
+            file_names_without_checksums.erase(STORED_BINARY_TYPE_ORIGIN_FILE_NAME);
+
         BackupEntries backup_entries_from_part;
         part->getDataPartStorage().backup(
             part->checksums,
-            part->getFileNamesWithoutChecksums(),
+            file_names_without_checksums,
             data_path_in_backup,
             backup_settings,
             make_temporary_hard_links,
@@ -9051,7 +9064,7 @@ MergeTreeData::PartsBackupEntries MergeTreeData::backupParts(
         /// (Storages/StoredBinaryTypeOrigin.h): the record of that origin bound to its checksums, Unknown included, made from the part in
         /// memory without modifying its files. A restore reads the part with it, whatever table it is restored into and whatever the UUID
         /// of that table. A part with a record has it among its files already.
-        if (!part->stored_binary_type_origin)
+        if (!part->stored_binary_type_origin && part_needs_origin_record)
             backup_entries_from_part.emplace_back(
                 fs::path(data_path_in_backup) / part->getDataPartStorage().getPartDirectory() / STORED_BINARY_TYPE_ORIGIN_FILE_NAME,
                 std::make_shared<BackupEntryFromMemory>(

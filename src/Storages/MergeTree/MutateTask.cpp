@@ -1665,8 +1665,9 @@ static void finalizeMutatedPart(
     /// The mutated part keeps the stored binary type origin record of its source part (Storages/StoredBinaryTypeOrigin.h), bound to its
     /// own checksums: the columns it does not rewrite are hard links to the source part's files and keep their meaning, and the rewritten
     /// ones are canonical, which reads the same with every origin. The record itself is not hard linked (collectFilesToSkip skips the
-    /// files without checksums). A part without a record stays without one.
-    if (source_part->stored_binary_type_origin)
+    /// files without checksums). A part without a record stays without one, and so does a part whose source part has no data whose meaning
+    /// depends on the origin: its record says nothing (Storages/StoredBinaryTypeOrigin.h) and would only reach servers that do not know it.
+    if (source_part->stored_binary_type_origin && source_part->mayHaveDataDependingOnBinaryTypeOrigin())
     {
         auto out_origin = new_data_part->getDataPartStorage().writeFile(STORED_BINARY_TYPE_ORIGIN_FILE_NAME, 4096, context->getWriteSettings());
         StoredBinaryTypeOriginRecord::forPart(*source_part->stored_binary_type_origin, new_data_part->checksums.getTotalChecksumHex()).write(*out_origin);
