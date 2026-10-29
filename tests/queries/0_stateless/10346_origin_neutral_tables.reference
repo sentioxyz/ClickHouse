@@ -1,0 +1,41 @@
+--- table records
+mt_plain: no record
+log_plain: no record
+tinylog_plain: no record
+stripelog_plain: no record
+mt_dynamic: record origin: official_canonical
+mt_json: record origin: official_canonical
+mt_state: record origin: official_canonical
+log_state: record origin: official_canonical
+log_plain: no record
+--- ALTER gives a table its first such column
+mt_alter: no record
+mt_alter: record origin: official_canonical
+1	\N	None
+2	x	String
+3	3	UInt512
+registered after the ALTER: refused
+mt_alter: record origin: official_canonical
+--- parts move between tables without such data, whatever their origins
+p_new: no record
+p_reg: record origin: sentio_legacy_v0
+p_canon: record origin: official_canonical
+p_new	1	1.5
+p_new	2	2.5
+p_reg	2	2.5
+p_reg	3	3.5
+p_canon	1	1.5
+p_canon	2	2.5
+--- tables with such data keep the check
+s_canon: record origin: official_canonical
+s_unset: no record
+ATTACH PARTITION FROM a table without an origin: refused
+--- detached parts
+part records detached from a canonical table without such data: 0
+d_dst	5	5.5
+a part with such data without a record into a registered table: refused
+--- a detached part whose files changed after its record was written
+record: origin: official_canonical
+1	x	String
+2	3	UInt512
+3	-7	Int512

@@ -8238,6 +8238,15 @@ bool MergeTreeData::admitStoredBinaryTypeOriginOfRawPart(IMergeTreeDataPart & pa
     if (!part.is_raw_import || part.getParentPart())
         throw Exception(ErrorCodes::LOGICAL_ERROR, "Part {} was not loaded as a raw import", part.name);
 
+    /// A part without a record of its own and without data whose meaning depends on the origin (no column of it, of its projections or of
+    /// the skip indices of the table can hold binary type headers) is admitted into any table as it is: it is read the same with every
+    /// origin, so it needs no proof and no record. Should the table get such a column later, the part holds no data of it.
+    if (!part.stored_binary_type_origin && !part.mayHaveDataDependingOnBinaryTypeOrigin())
+    {
+        part.is_raw_import = false;
+        return true;
+    }
+
     if (!part.stored_binary_type_origin)
     {
         /// The origin the part would be read with: that of the table, or, while the table has none, that of its replicated metadata,

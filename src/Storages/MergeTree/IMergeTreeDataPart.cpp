@@ -1886,8 +1886,18 @@ void IMergeTreeDataPart::loadStoredBinaryTypeOrigin()
     const auto record = StoredBinaryTypeOriginRecord::read(*in);
     const auto match = matchPartRecord(record, checksums.getTotalChecksumHex());
     if (match != StoredBinaryTypeOriginRecordMatch::Applies)
-        throw Exception(ErrorCodes::CORRUPTED_DATA, "The stored binary type origin record of part {} does not apply to it: it is {}",
-                        name, describeStoredBinaryTypeOriginRecordMatch(match));
+    {
+        /// The files of the part changed after the record was written: checksums.txt removed and recomputed from files that were changed
+        /// or renamed (upstream supports attaching such a part, e.g. a part of an old format whose index files were renamed), or the
+        /// record was copied from another part. The record proves nothing about this data then, and neither does the table it is in, so
+        /// the part is read as Unknown, as with a record of the Unknown origin: only self-describing binary type encodings are read, and
+        /// the ambiguous legacy indexes are refused, never read with an origin the part cannot prove. A part without data whose meaning
+        /// depends on the origin reads the same with every origin.
+        LOG_WARNING(storage.log, "The stored binary type origin record of part {} does not apply to it: it is {}. The part is read with the "
+                    "unknown origin", name, describeStoredBinaryTypeOriginRecordMatch(match));
+        stored_binary_type_origin = BinaryTypeOrigin::Unknown;
+        return;
+    }
     stored_binary_type_origin = record.origin;
 }
 
