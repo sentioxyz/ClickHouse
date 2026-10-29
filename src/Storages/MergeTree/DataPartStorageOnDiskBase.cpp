@@ -226,17 +226,23 @@ bool DataPartStorageOnDiskBase::looksLikeBrokenDetachedPartHasTheSameContent(con
     if (original_checksums_content != detached_checksums_content)
         return false;
 
+    /// The part record of the stored binary type origin (Storages/StoredBinaryTypeOrigin.h) is not compared: a detached clone may get one
+    /// that the part in the table does not have (IMergeTreeDataPart::makeCloneInDetached), and it says nothing about the content, which
+    /// checksums.txt and the other files already compare. Otherwise every clone of the same broken part would look different and would be
+    /// detached again with a `_tryN` suffix.
     if (!original_files_list)
     {
         original_files_list.emplace();
         for (auto it = iterate(); it->isValid(); it->next())
-            original_files_list->emplace_back(it->name());
+            if (it->name() != STORED_BINARY_TYPE_ORIGIN_FILE_NAME)
+                original_files_list->emplace_back(it->name());
         std::sort(original_files_list->begin(), original_files_list->end());
     }
 
     Strings detached_files_list;
     for (auto it = storage_from_detached->iterate(); it->isValid(); it->next())
-        detached_files_list.emplace_back(it->name());
+        if (it->name() != STORED_BINARY_TYPE_ORIGIN_FILE_NAME)
+            detached_files_list.emplace_back(it->name());
     std::sort(detached_files_list.begin(), detached_files_list.end());
 
     return original_files_list == detached_files_list;
