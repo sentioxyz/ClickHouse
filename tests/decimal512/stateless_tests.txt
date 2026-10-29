@@ -257,3 +257,7 @@ blockchain_decimal512_type_conversion
 10328_decimal512_26_3_function_parity    # c1ac031710f: functions restored from 1f0fb3353cd
 10329_decimal512_26_3_core_parity    # 67ea6a3f089: low_cardinality_keys512, getMostSubtype, array fast paths
 10330_decimal512_26_3_format_parity    # b3cd7c1c9bf: MsgPack, CapnProto, Protobuf, generateRandom
+02470_decimal512_nullable_runtime_filter    # c808312c14c: KeysNullMap of nullable 512-bit runtime filter keys (never selected before 2026-10-29)
+04496_qbit_stride_binary_decode_complexity    # strided QBit complexity guard under both declared origins (0x37 official_canonical, 0x3A sentio_legacy_v0)
+10345_uniqhll12_int512    # uniqHLL12 of (U)Int512: IntHash32 of 64-byte integers (SIGSEGV after 16 distinct values)
+10346_origin_neutral_tables    # stored binary type origin only for tables and parts with values that can hold binary type headers

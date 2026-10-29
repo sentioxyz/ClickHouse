@@ -1,3 +1,10 @@
-rejected
-accepted
-accepted
+--- 0x37 official_canonical
+complexity limit
+x	QBit(Float64, 512, 8)
+x	QBit(Float32, 16, 8)
+--- 0x3a sentio_legacy_v0
+complexity limit
+x	QBit(Float64, 512, 8)
+x	QBit(Float32, 16, 8)
+--- 0x3a without an origin
+unknown type code 0x3a
