@@ -126,7 +126,7 @@ start)
   BID=$(readelf -n "$BIN" | awk '/Build ID/{print substr($3,1,12)}')
   COPY=$ROOT/bin/clickhouse-$BID
   [ -x "$COPY" ] || cp "$BIN" "$COPY"
-  mkdir -p "$D"/{data,tmp,log,conf,access}
+  mkdir -p "$D"/{data,tmp,log,conf,access,backups}
   KEEPER_XML=""
   if [ "${CH_ISO_KEEPER:-0}" = 1 ]; then
     mkdir -p "$D/coordination"; touch "$D/keeper.enabled"
@@ -170,6 +170,9 @@ start)
     <query_log><database>system</database><table>query_log</table><flush_interval_milliseconds>1000</flush_interval_milliseconds></query_log>
     <text_log><database>system</database><table>text_log</table><level>trace</level><flush_interval_milliseconds>1000</flush_interval_milliseconds></text_log>
     <crash_log><database>system</database><table>crash_log</table><flush_interval_milliseconds>1000</flush_interval_milliseconds></crash_log>
+    <!-- a local 'backups' disk for the tests that BACKUP to Disk('backups', ...) (10337, 10339, 10344, 10346, 10347) -->
+    <storage_configuration><disks><backups><type>local</type><path>$D/backups/</path></backups></disks></storage_configuration>
+    <backups><allowed_disk>backups</allowed_disk><allowed_path>$D/backups/</allowed_path></backups>
     $KEEPER_XML
 </clickhouse>
 XML

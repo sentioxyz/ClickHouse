@@ -262,3 +262,4 @@ blockchain_decimal512_type_conversion
 10345_uniqhll12_int512    # uniqHLL12 of (U)Int512: IntHash32 of 64-byte integers (SIGSEGV after 16 distinct values)
 10346_origin_neutral_tables    # stored binary type origin only for tables and parts with values that can hold binary type headers
 10347_origin_record_not_shipped_with_neutral_parts    # neutral parts carry no origin record into backups, fetches or attached parts (test_different_versions)
+10348_key_condition_undefined_arithmetic    # key analysis at points where a function is undefined; upstream single-point pruning (04003/04073)

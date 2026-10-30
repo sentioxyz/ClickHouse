@@ -3846,5 +3846,81 @@
  "src/Storages/StorageSQLite.cpp|type-256-without-512|- [Decimal32, Decimal64, Decimal128, Decimal256](/reference/data-types/decimal)": {
   "decision": "reviewed: not a gap - Documentation list. The actual SQLite Decimal512 regression is in ExternalResultDescription.cpp:119-126.",
   "evidence": "src/Storages/StorageSQLite.cpp:312-323; src/Core/ExternalResultDescription.cpp:119-126 (dispatch_review_r3, subagent core (read-only), 2026-09-30, 2026-09-30)"
+ },
+ "src/Columns/tests/gtest_column_dynamic_native_width.cpp|type-256-without-512|return std::make_shared<DataTypeDecimal<Decimal256>>(76, 10);": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.cpp|type-256-without-512|case TypeIndex::Int256:": {
+  "decision": "reviewed: not a gap - getBinaryTypeIndex: the 512-bit types have no BinaryTypeIndex by design; encodeDataTypeImpl writes them with encodeSentioWideType before asking for one, and the UInt512/Int512/Decimal512 cases of this switch throw LOGICAL_ERROR",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.cpp|type-256-without-512|return BinaryTypeIndex::Int256;": {
+  "decision": "reviewed: not a gap - getBinaryTypeIndex: the 512-bit types have no BinaryTypeIndex by design; encodeDataTypeImpl writes them with encodeSentioWideType before asking for one, and the UInt512/Int512/Decimal512 cases of this switch throw LOGICAL_ERROR",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.cpp|type-256-without-512|case TypeIndex::Decimal256:": {
+  "decision": "reviewed: not a gap - getBinaryTypeIndex: the 512-bit types have no BinaryTypeIndex by design; encodeDataTypeImpl writes them with encodeSentioWideType before asking for one, and the UInt512/Int512/Decimal512 cases of this switch throw LOGICAL_ERROR",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.cpp|type-256-without-512|return BinaryTypeIndex::Decimal256;": {
+  "decision": "reviewed: not a gap - getBinaryTypeIndex: the 512-bit types have no BinaryTypeIndex by design; encodeDataTypeImpl writes them with encodeSentioWideType before asking for one, and the UInt512/Int512/Decimal512 cases of this switch throw LOGICAL_ERROR",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.cpp|type-256-without-512|encodeDecimal<Decimal256>(type, buf);": {
+  "decision": "reviewed: not a gap - encodeDataTypeImpl switch over BinaryTypeIndex: Decimal512 never reaches it, it is written by encodeSentioWideType (v1 descriptor, or the legacy index with encodeDecimal<Decimal512> for the bridge mode)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.cpp|type-256-without-512|case BinaryTypeIndex::UInt256:": {
+  "decision": "reviewed: not a gap - decodeDataType switch over BinaryTypeIndex: the legacy 0x37/0x38/0x39 indexes are decoded before it for sentio_legacy_v0 and refused for the unknown origin; the SentioWide v1 encoding of the 512-bit types is a Custom descriptor (parseSentioWideDescriptor)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.cpp|type-256-without-512|case BinaryTypeIndex::Int256:": {
+  "decision": "reviewed: not a gap - decodeDataType switch over BinaryTypeIndex: the legacy 0x37/0x38/0x39 indexes are decoded before it for sentio_legacy_v0 and refused for the unknown origin; the SentioWide v1 encoding of the 512-bit types is a Custom descriptor (parseSentioWideDescriptor)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/DataTypesBinaryEncoding.cpp|type-256-without-512|return decodeDecimal<Decimal256>(buf);": {
+  "decision": "reviewed: not a gap - decodeDataType switch over BinaryTypeIndex: the legacy 0x37/0x38/0x39 indexes are decoded before it for sentio_legacy_v0 and refused for the unknown origin; the SentioWide v1 encoding of the 512-bit types is a Custom descriptor (parseSentioWideDescriptor); Decimal512 is decoded with decodeDecimal<Decimal512> there",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/TypeNameIdentity.cpp|type-256-without-512|case TypeIndex::Decimal256:": {
+  "decision": "reviewed: not a gap - isDecimalIdentifiedByName has its Decimal512 case right after (line 44); isTypeItselfNameUnambiguous returns false for Decimal32..256 because a wider class can share the name, and Decimal512 has no wider class, so its default true is correct",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/tests/gtest_binary_index_collision_locks.cpp|type-256-without-512|{\"UInt256\", 0x06},": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/tests/gtest_binary_index_collision_locks.cpp|type-256-without-512|{\"Int256\", 0x0C},": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/tests/gtest_sentio_wide_type_encoding.cpp|type-256-without-512|for (const char * name : {\"Int256\", \"UInt256\", \"Decimal(76, 10)\", \"QBit(Float32, 8)\", \"Bool\", \"Ring\", \"Dynamic(max_types=10)\", \"String\"})": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/tests/gtest_sentio_wide_type_encoding.cpp|type-256-without-512|EXPECT_EQ(hexOf(encodeDataType(factory.get(\"Int256\"))), \"0c\");": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/DataTypes/tests/gtest_sentio_wide_type_encoding.cpp|type-256-without-512|EXPECT_EQ(hexOf(encodeDataType(factory.get(\"UInt256\"))), \"06\");": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/Processors/tests/gtest_binary_row_input_header_types.cpp|type-256-without-512|writeValue(decimal256, DecimalField<Decimal256>(Decimal256(12345), 2), first);": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/Processors/tests/gtest_binary_row_input_header_types.cpp|type-256-without-512|const auto & x = assert_cast<const ColumnDecimal<Decimal256> &>(*columns[0]).getData();": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/Processors/tests/gtest_binary_row_input_header_types.cpp|type-256-without-512|EXPECT_EQ(x[0], Decimal256(12345));": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
+ },
+ "src/Processors/tests/gtest_binary_row_input_header_types.cpp|type-256-without-512|EXPECT_EQ(x[1], Decimal256(150));": {
+  "decision": "reviewed: not a gap - unit-test fixture under a tests/ directory, linked only into unit_tests_dbms and never into the clickhouse binary; the 256-bit type is the subject of the assertion (upstream index table, 'other types unchanged' locks, a Decimal256 column next to a 512-bit one)",
+  "evidence": "e162bff84a6 (fix3 review 2026-10-29): sites moved away from their 512 counterparts when the 512-bit types left BinaryTypeIndex; a Native round trip of Dynamic with Decimal512(3)/Int512/UInt512 returns the right types"
  }
 }
