@@ -613,6 +613,67 @@ using FunctionReinterpretAsFixedString = FunctionReinterpretAs<DataTypeFixedStri
 
 }
 
+namespace
+{
+
+/// reinterpretAsUInt512: a type of the Sentio Decimal512 fork, documented in a function of its own (keeps the frame of the registration small).
+NO_INLINE FunctionDocumentation documentationReinterpretAsUInt512()
+{
+    FunctionDocumentation::Description description_reinterpretAsUInt512 = R"(
+Reinterprets the input value as a value of type UInt512 (a unsigned 512-bit integer of the Sentio Decimal512 fork).
+Unlike [`CAST`](#CAST), the function does not attempt to preserve the original value - if the target type is not able to represent the input type, the output is undefined.
+    )";
+    FunctionDocumentation::Syntax syntax_reinterpretAsUInt512 = "reinterpretAsUInt512(x)";
+    FunctionDocumentation::Arguments arguments_reinterpretAsUInt512 = {
+        {"x", "Value to reinterpret as UInt512.", {"(U)Int*", "Float*", "Date", "DateTime", "UUID", "String", "FixedString"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_reinterpretAsUInt512 = {"Returns the reinterpreted value `x`.", {"UInt512"}};
+    FunctionDocumentation::Examples examples_reinterpretAsUInt512 = {
+    {
+        "Usage example",
+        R"(
+SELECT reinterpretAsUInt512(toUInt8(1)), toTypeName(reinterpretAsUInt512(toUInt8(1)))
+        )",
+        R"(
+1	UInt512
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_reinterpretAsUInt512 = {26, 3};
+    FunctionDocumentation::Category category_reinterpretAsUInt512 = FunctionDocumentation::Category::TypeConversion;
+    return {description_reinterpretAsUInt512, syntax_reinterpretAsUInt512, arguments_reinterpretAsUInt512, {}, returned_value_reinterpretAsUInt512, examples_reinterpretAsUInt512, introduced_in_reinterpretAsUInt512, category_reinterpretAsUInt512};
+}
+
+/// reinterpretAsInt512: a type of the Sentio Decimal512 fork, documented in a function of its own (keeps the frame of the registration small).
+NO_INLINE FunctionDocumentation documentationReinterpretAsInt512()
+{
+    FunctionDocumentation::Description description_reinterpretAsInt512 = R"(
+Reinterprets the input value as a value of type Int512 (a signed 512-bit integer of the Sentio Decimal512 fork).
+Unlike [`CAST`](#CAST), the function does not attempt to preserve the original value - if the target type is not able to represent the input type, the output is undefined.
+    )";
+    FunctionDocumentation::Syntax syntax_reinterpretAsInt512 = "reinterpretAsInt512(x)";
+    FunctionDocumentation::Arguments arguments_reinterpretAsInt512 = {
+        {"x", "Value to reinterpret as Int512.", {"(U)Int*", "Float*", "Date", "DateTime", "UUID", "String", "FixedString"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_reinterpretAsInt512 = {"Returns the reinterpreted value `x`.", {"Int512"}};
+    FunctionDocumentation::Examples examples_reinterpretAsInt512 = {
+    {
+        "Usage example",
+        R"(
+SELECT reinterpretAsInt512(toUInt8(1)), toTypeName(reinterpretAsInt512(toUInt8(1)))
+        )",
+        R"(
+1	Int512
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_reinterpretAsInt512 = {26, 3};
+    FunctionDocumentation::Category category_reinterpretAsInt512 = FunctionDocumentation::Category::TypeConversion;
+    return {description_reinterpretAsInt512, syntax_reinterpretAsInt512, arguments_reinterpretAsInt512, {}, returned_value_reinterpretAsInt512, examples_reinterpretAsInt512, introduced_in_reinterpretAsInt512, category_reinterpretAsInt512};
+}
+
+}
+
 REGISTER_FUNCTION(ReinterpretAs)
 {
     FunctionDocumentation::Description description_reinterpretAsUInt8 = R"(
@@ -806,7 +867,7 @@ SELECT
     FunctionDocumentation documentation_reinterpretAsUInt256 = {description_reinterpretAsUInt256, syntax_reinterpretAsUInt256, arguments_reinterpretAsUInt256, {}, returned_value_reinterpretAsUInt256, examples_reinterpretAsUInt256, introduced_in_reinterpretAsUInt256, category_reinterpretAsUInt256};
 
     factory.registerFunction<FunctionReinterpretAsUInt256>(documentation_reinterpretAsUInt256);
-    factory.registerFunction<FunctionReinterpretAsUInt512>({});
+    factory.registerFunction<FunctionReinterpretAsUInt512>(documentationReinterpretAsUInt512());
 
     FunctionDocumentation::Description description_reinterpretAsInt8 = R"(
 Reinterprets the input value as a value of type Int8.
@@ -999,7 +1060,7 @@ SELECT
     FunctionDocumentation documentation_reinterpretAsInt256 = {description_reinterpretAsInt256, syntax_reinterpretAsInt256, arguments_reinterpretAsInt256, {}, returned_value_reinterpretAsInt256, examples_reinterpretAsInt256, introduced_in_reinterpretAsInt256, category_reinterpretAsInt256};
 
     factory.registerFunction<FunctionReinterpretAsInt256>(documentation_reinterpretAsInt256);
-    factory.registerFunction<FunctionReinterpretAsInt512>({});
+    factory.registerFunction<FunctionReinterpretAsInt512>(documentationReinterpretAsInt512());
 
     FunctionDocumentation::Description description_reinterpretAsFloat32 = R"(
 Reinterprets the input value as a value of type Float32.

@@ -3,6 +3,275 @@
 namespace DB
 {
 
+namespace
+{
+
+/// toUInt512: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToUInt512()
+{
+    FunctionDocumentation::Description description_toUInt512 = R"(
+Converts an input value to a value of type [`UInt512`](/reference/data-types/int-uint): an unsigned 512-bit integer of the Sentio Decimal512 fork. Throws an exception in case of an error.
+Like [`toUInt256`](#toUInt256), values that do not fit are wrapped, and fractional parts are truncated towards zero.
+
+See also:
+- [`toUInt512OrZero`](#toUInt512OrZero).
+- [`toUInt512OrNull`](#toUInt512OrNull).
+- [`toUInt512OrDefault`](#toUInt512OrDefault).
+    )";
+    FunctionDocumentation::Syntax syntax_toUInt512 = "toUInt512(expr)";
+    FunctionDocumentation::Arguments arguments_toUInt512 = {
+        {"expr", "Expression returning a number or a string representation of a number.", {"Expression"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toUInt512 = {"Returns a 512-bit unsigned integer value.", {"UInt512"}};
+    FunctionDocumentation::Examples examples_toUInt512 = {
+    {
+        "Usage example",
+        R"(
+SELECT toUInt512(512), toUInt512('512')
+        )",
+        R"(
+512	512
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toUInt512 = {26, 3};
+    FunctionDocumentation::Category category_toUInt512 = FunctionDocumentation::Category::TypeConversion;
+    return {description_toUInt512, syntax_toUInt512, arguments_toUInt512, {}, returned_value_toUInt512, examples_toUInt512, introduced_in_toUInt512, category_toUInt512};
+}
+
+/// toInt512: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToInt512()
+{
+    FunctionDocumentation::Description description_toInt512 = R"(
+Converts an input value to a value of type [`Int512`](/reference/data-types/int-uint): a signed 512-bit integer of the Sentio Decimal512 fork. Throws an exception in case of an error.
+Like [`toInt256`](#toInt256), values that do not fit are wrapped, and fractional parts are truncated towards zero.
+
+See also:
+- [`toInt512OrZero`](#toInt512OrZero).
+- [`toInt512OrNull`](#toInt512OrNull).
+- [`toInt512OrDefault`](#toInt512OrDefault).
+    )";
+    FunctionDocumentation::Syntax syntax_toInt512 = "toInt512(expr)";
+    FunctionDocumentation::Arguments arguments_toInt512 = {
+        {"expr", "Expression returning a number or a string representation of a number.", {"Expression"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toInt512 = {"Returns a 512-bit signed integer value.", {"Int512"}};
+    FunctionDocumentation::Examples examples_toInt512 = {
+    {
+        "Usage example",
+        R"(
+SELECT toInt512(-512), toInt512('-512')
+        )",
+        R"(
+-512	-512
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toInt512 = {26, 3};
+    FunctionDocumentation::Category category_toInt512 = FunctionDocumentation::Category::TypeConversion;
+    return {description_toInt512, syntax_toInt512, arguments_toInt512, {}, returned_value_toInt512, examples_toInt512, introduced_in_toInt512, category_toInt512};
+}
+
+/// toDecimal512: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToDecimal512()
+{
+    FunctionDocumentation::Description description_toDecimal512 = R"(
+Converts an input value to a value of type [`Decimal512(S)`](/reference/data-types/decimal) with scale `S`: a decimal of the Sentio Decimal512 fork with up to 154 digits. Throws an exception in case of an error.
+Like [`toDecimal256`](#toDecimal256), the fractional part beyond the scale is truncated. Build values with more digits than a Float64 holds from strings.
+
+See also:
+- [`toDecimal512OrZero`](#toDecimal512OrZero).
+- [`toDecimal512OrNull`](#toDecimal512OrNull).
+- [`toDecimal512OrDefault`](#toDecimal512OrDefault).
+    )";
+    FunctionDocumentation::Syntax syntax_toDecimal512 = "toDecimal512(expr, S)";
+    FunctionDocumentation::Arguments arguments_toDecimal512 = {
+        {"expr", "Expression returning a number or a string representation of a number.", {"Expression"}},
+        {"S", "Scale parameter between 0 and 154, specifying how many digits the fractional part of a number can have.", {"UInt8"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toDecimal512 = {"Returns a value of type Decimal512(S).", {"Decimal512(S)"}};
+    FunctionDocumentation::Examples examples_toDecimal512 = {
+    {
+        "Usage example",
+        R"(
+SELECT toDecimal512('42.7', 2), toTypeName(toDecimal512('42.7', 2))
+        )",
+        R"(
+42.7	Decimal(154, 2)
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toDecimal512 = {26, 3};
+    FunctionDocumentation::Category category_toDecimal512 = FunctionDocumentation::Category::TypeConversion;
+    return {description_toDecimal512, syntax_toDecimal512, arguments_toDecimal512, {}, returned_value_toDecimal512, examples_toDecimal512, introduced_in_toDecimal512, category_toDecimal512};
+}
+
+/// toUInt512OrZero: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToUInt512OrZero()
+{
+    FunctionDocumentation::Description description_toUInt512OrZero = R"(
+Like [`toUInt512`](#toUInt512), converts a String to a value of type [`UInt512`](/reference/data-types/int-uint), but returns `0` in case of an error.
+    )";
+    FunctionDocumentation::Syntax syntax_toUInt512OrZero = "toUInt512OrZero(x)";
+    FunctionDocumentation::Arguments arguments_toUInt512OrZero = {
+        {"x", "A String representation of a number.", {"String"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toUInt512OrZero = {"Returns a 512-bit unsigned integer value if successful, otherwise `0`.", {"UInt512"}};
+    FunctionDocumentation::Examples examples_toUInt512OrZero = {
+    {
+        "Usage example",
+        R"(
+SELECT toUInt512OrZero('512'), toUInt512OrZero('abc')
+        )",
+        R"(
+512	0
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toUInt512OrZero = {26, 3};
+    FunctionDocumentation::Category category_toUInt512OrZero = FunctionDocumentation::Category::TypeConversion;
+    return {description_toUInt512OrZero, syntax_toUInt512OrZero, arguments_toUInt512OrZero, {}, returned_value_toUInt512OrZero, examples_toUInt512OrZero, introduced_in_toUInt512OrZero, category_toUInt512OrZero};
+}
+
+/// toInt512OrZero: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToInt512OrZero()
+{
+    FunctionDocumentation::Description description_toInt512OrZero = R"(
+Like [`toInt512`](#toInt512), converts a String to a value of type [`Int512`](/reference/data-types/int-uint), but returns `0` in case of an error.
+    )";
+    FunctionDocumentation::Syntax syntax_toInt512OrZero = "toInt512OrZero(x)";
+    FunctionDocumentation::Arguments arguments_toInt512OrZero = {
+        {"x", "A String representation of a number.", {"String"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toInt512OrZero = {"Returns a 512-bit signed integer value if successful, otherwise `0`.", {"Int512"}};
+    FunctionDocumentation::Examples examples_toInt512OrZero = {
+    {
+        "Usage example",
+        R"(
+SELECT toInt512OrZero('-512'), toInt512OrZero('abc')
+        )",
+        R"(
+-512	0
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toInt512OrZero = {26, 3};
+    FunctionDocumentation::Category category_toInt512OrZero = FunctionDocumentation::Category::TypeConversion;
+    return {description_toInt512OrZero, syntax_toInt512OrZero, arguments_toInt512OrZero, {}, returned_value_toInt512OrZero, examples_toInt512OrZero, introduced_in_toInt512OrZero, category_toInt512OrZero};
+}
+
+/// toDecimal512OrZero: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToDecimal512OrZero()
+{
+    FunctionDocumentation::Description description_toDecimal512OrZero = R"(
+Like [`toDecimal512`](#toDecimal512), converts a String to a value of type [`Decimal512(S)`](/reference/data-types/decimal), but returns `0` in case of an error.
+    )";
+    FunctionDocumentation::Syntax syntax_toDecimal512OrZero = "toDecimal512OrZero(x, S)";
+    FunctionDocumentation::Arguments arguments_toDecimal512OrZero = {
+        {"x", "A String representation of a number.", {"String"}},
+        {"S", "Scale parameter between 0 and 154, specifying how many digits the fractional part of a number can have.", {"UInt8"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toDecimal512OrZero = {"Returns a value of type Decimal512(S) if successful, otherwise `0` with scale `S`.", {"Decimal512(S)"}};
+    FunctionDocumentation::Examples examples_toDecimal512OrZero = {
+    {
+        "Usage example",
+        R"(
+SELECT toDecimal512OrZero('42.7', 2), toDecimal512OrZero('invalid', 2)
+        )",
+        R"(
+42.7	0
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toDecimal512OrZero = {26, 3};
+    FunctionDocumentation::Category category_toDecimal512OrZero = FunctionDocumentation::Category::TypeConversion;
+    return {description_toDecimal512OrZero, syntax_toDecimal512OrZero, arguments_toDecimal512OrZero, {}, returned_value_toDecimal512OrZero, examples_toDecimal512OrZero, introduced_in_toDecimal512OrZero, category_toDecimal512OrZero};
+}
+
+/// toUInt512OrNull: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToUInt512OrNull()
+{
+    FunctionDocumentation::Description description_toUInt512OrNull = R"(
+Like [`toUInt512`](#toUInt512), converts a String to a value of type [`UInt512`](/reference/data-types/int-uint), but returns `NULL` in case of an error.
+    )";
+    FunctionDocumentation::Syntax syntax_toUInt512OrNull = "toUInt512OrNull(x)";
+    FunctionDocumentation::Arguments arguments_toUInt512OrNull = {
+        {"x", "A String representation of a number.", {"String"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toUInt512OrNull = {"Returns a 512-bit unsigned integer value if successful, otherwise `NULL`.", {"UInt512", "NULL"}};
+    FunctionDocumentation::Examples examples_toUInt512OrNull = {
+    {
+        "Usage example",
+        R"(
+SELECT toUInt512OrNull('512'), toUInt512OrNull('abc')
+        )",
+        R"(
+512	\N
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toUInt512OrNull = {26, 3};
+    FunctionDocumentation::Category category_toUInt512OrNull = FunctionDocumentation::Category::TypeConversion;
+    return {description_toUInt512OrNull, syntax_toUInt512OrNull, arguments_toUInt512OrNull, {}, returned_value_toUInt512OrNull, examples_toUInt512OrNull, introduced_in_toUInt512OrNull, category_toUInt512OrNull};
+}
+
+/// toInt512OrNull: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToInt512OrNull()
+{
+    FunctionDocumentation::Description description_toInt512OrNull = R"(
+Like [`toInt512`](#toInt512), converts a String to a value of type [`Int512`](/reference/data-types/int-uint), but returns `NULL` in case of an error.
+    )";
+    FunctionDocumentation::Syntax syntax_toInt512OrNull = "toInt512OrNull(x)";
+    FunctionDocumentation::Arguments arguments_toInt512OrNull = {
+        {"x", "A String representation of a number.", {"String"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toInt512OrNull = {"Returns a 512-bit signed integer value if successful, otherwise `NULL`.", {"Int512", "NULL"}};
+    FunctionDocumentation::Examples examples_toInt512OrNull = {
+    {
+        "Usage example",
+        R"(
+SELECT toInt512OrNull('-512'), toInt512OrNull('abc')
+        )",
+        R"(
+-512	\N
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toInt512OrNull = {26, 3};
+    FunctionDocumentation::Category category_toInt512OrNull = FunctionDocumentation::Category::TypeConversion;
+    return {description_toInt512OrNull, syntax_toInt512OrNull, arguments_toInt512OrNull, {}, returned_value_toInt512OrNull, examples_toInt512OrNull, introduced_in_toInt512OrNull, category_toInt512OrNull};
+}
+
+/// toDecimal512OrNull: a type of the Sentio Decimal512 fork. Built in a function of its own: the frame of registerFunctionConversion is at its limit.
+NO_INLINE FunctionDocumentation documentationToDecimal512OrNull()
+{
+    FunctionDocumentation::Description description_toDecimal512OrNull = R"(
+Like [`toDecimal512`](#toDecimal512), converts a String to a value of type [`Decimal512(S)`](/reference/data-types/decimal), but returns `NULL` in case of an error.
+    )";
+    FunctionDocumentation::Syntax syntax_toDecimal512OrNull = "toDecimal512OrNull(x, S)";
+    FunctionDocumentation::Arguments arguments_toDecimal512OrNull = {
+        {"x", "A String representation of a number.", {"String"}},
+        {"S", "Scale parameter between 0 and 154, specifying how many digits the fractional part of a number can have.", {"UInt8"}}
+    };
+    FunctionDocumentation::ReturnedValue returned_value_toDecimal512OrNull = {"Returns a value of type Decimal512(S) if successful, otherwise `NULL`.", {"Decimal512(S)", "NULL"}};
+    FunctionDocumentation::Examples examples_toDecimal512OrNull = {
+    {
+        "Usage example",
+        R"(
+SELECT toDecimal512OrNull('42.7', 2), toDecimal512OrNull('invalid', 2)
+        )",
+        R"(
+42.7	\N
+        )"
+    }
+    };
+    FunctionDocumentation::IntroducedIn introduced_in_toDecimal512OrNull = {26, 3};
+    FunctionDocumentation::Category category_toDecimal512OrNull = FunctionDocumentation::Category::TypeConversion;
+    return {description_toDecimal512OrNull, syntax_toDecimal512OrNull, arguments_toDecimal512OrNull, {}, returned_value_toDecimal512OrNull, examples_toDecimal512OrNull, introduced_in_toDecimal512OrNull, category_toDecimal512OrNull};
+}
+
+}
+
 REGISTER_FUNCTION(Conversion)
 {
     /// toUInt8 documentation
@@ -341,7 +610,7 @@ toUInt256('256'):   256
     FunctionDocumentation toUInt256_documentation = {toUInt256_description, toUInt256_syntax, toUInt256_arguments, {}, toUInt256_returned_value, toUInt256_examples, toUInt256_introduced_in, toUInt256_category};
 
     factory.registerFunction<detail::FunctionToUInt256>(toUInt256_documentation);
-    factory.registerFunction<detail::FunctionToUInt512>({});
+    factory.registerFunction<detail::FunctionToUInt512>(documentationToUInt512());
 
     /// toInt8 documentation
     FunctionDocumentation::Description toInt8_description = R"(
@@ -682,7 +951,7 @@ toInt256('-256'):   -256
     FunctionDocumentation toInt256_documentation = {toInt256_description, toInt256_syntax, toInt256_arguments, {}, toInt256_returned_value, toInt256_examples, toInt256_introduced_in, toInt256_category};
 
     factory.registerFunction<detail::FunctionToInt256>(toInt256_documentation);
-    factory.registerFunction<detail::FunctionToInt512>({});
+    factory.registerFunction<detail::FunctionToInt512>(documentationToInt512());
 
     /// toBFloat16 documentation
     FunctionDocumentation::Description toBFloat16_description = R"(
@@ -1049,7 +1318,7 @@ type_c: Decimal(76, 3)
     factory.registerFunction<detail::FunctionToDecimal64>(documentation_toDecimal64);
     factory.registerFunction<detail::FunctionToDecimal128>(documentation_toDecimal128);
     factory.registerFunction<detail::FunctionToDecimal256>(documentation_toDecimal256);
-    factory.registerFunction<detail::FunctionToDecimal512>({});
+    factory.registerFunction<detail::FunctionToDecimal512>(documentationToDecimal512());
 
     /// toDate documentation
     FunctionDocumentation::Description description_toDate = R"(
@@ -1922,7 +2191,7 @@ toUInt256OrZero('abc'): 0
     FunctionDocumentation documentation_toUInt256OrZero = {description_toUInt256OrZero, syntax_toUInt256OrZero, arguments_toUInt256OrZero, {}, returned_value_toUInt256OrZero, examples_toUInt256OrZero, introduced_in_toUInt256OrZero, category_toUInt256OrZero};
 
     factory.registerFunction<detail::FunctionToUInt256OrZero>(documentation_toUInt256OrZero);
-    factory.registerFunction<detail::FunctionToUInt512OrZero>({});
+    factory.registerFunction<detail::FunctionToUInt512OrZero>(documentationToUInt512OrZero());
 
     /// toInt8OrZero documentation
     FunctionDocumentation::Description description_toInt8OrZero = R"(
@@ -2190,7 +2459,7 @@ SELECT toInt256OrZero('abc')
     FunctionDocumentation documentation_toInt256OrZero = {description_toInt256OrZero, syntax_toInt256OrZero, arguments_toInt256OrZero, {}, returned_value_toInt256OrZero, examples_toInt256OrZero, introduced_in_toInt256OrZero, category_toInt256OrZero};
 
     factory.registerFunction<detail::FunctionToInt256OrZero>(documentation_toInt256OrZero);
-    factory.registerFunction<detail::FunctionToInt512OrZero>({});
+    factory.registerFunction<detail::FunctionToInt512OrZero>(documentationToInt512OrZero());
 
     /// toBFloat16OrZero documentation
     FunctionDocumentation::Description toBFloat16OrZero_description = R"(
@@ -2681,7 +2950,7 @@ SELECT toDecimal256OrZero('42.7', 2), toDecimal256OrZero('invalid', 2)
     FunctionDocumentation documentation_toDecimal256OrZero = {description_toDecimal256OrZero, syntax_toDecimal256OrZero, arguments_toDecimal256OrZero, {}, returned_value_toDecimal256OrZero, examples_toDecimal256OrZero, introduced_in_toDecimal256OrZero, category_toDecimal256OrZero};
 
     factory.registerFunction<detail::FunctionToDecimal256OrZero>(documentation_toDecimal256OrZero);
-    factory.registerFunction<detail::FunctionToDecimal512OrZero>({});
+    factory.registerFunction<detail::FunctionToDecimal512OrZero>(documentationToDecimal512OrZero());
 
     /// toUUIDOrZero documentation
     FunctionDocumentation::Description description_toUUIDOrZero = R"(
@@ -3105,7 +3374,7 @@ toUInt256OrNull('abc'): \N
     FunctionDocumentation documentation_toUInt256OrNull = {description_toUInt256OrNull, syntax_toUInt256OrNull, arguments_toUInt256OrNull, {}, returned_value_toUInt256OrNull, examples_toUInt256OrNull, introduced_in_toUInt256OrNull, category_toUInt256OrNull};
 
     factory.registerFunction<detail::FunctionToUInt256OrNull>(documentation_toUInt256OrNull);
-    factory.registerFunction<detail::FunctionToUInt512OrNull>({});
+    factory.registerFunction<detail::FunctionToUInt512OrNull>(documentationToUInt512OrNull());
 
     /// toInt8OrNull documentation
     FunctionDocumentation::Description description_toInt8OrNull = R"(
@@ -3406,7 +3675,7 @@ toInt256OrNull('abc'):  \N
     FunctionDocumentation documentation_toInt256OrNull = {description_toInt256OrNull, syntax_toInt256OrNull, arguments_toInt256OrNull, {}, returned_value_toInt256OrNull, examples_toInt256OrNull, introduced_in_toInt256OrNull, category_toInt256OrNull};
 
     factory.registerFunction<detail::FunctionToInt256OrNull>(documentation_toInt256OrNull);
-    factory.registerFunction<detail::FunctionToInt512OrNull>({});
+    factory.registerFunction<detail::FunctionToInt512OrNull>(documentationToInt512OrNull());
 
     /// toBFloat16OrNull documentation
     FunctionDocumentation::Description toBFloat16OrNull_description = R"(
@@ -3940,7 +4209,7 @@ SELECT toDecimal256OrNull('42.7', 2), toDecimal256OrNull('invalid', 2)
     FunctionDocumentation documentation_toDecimal256OrNull = {description_toDecimal256OrNull, syntax_toDecimal256OrNull, arguments_toDecimal256OrNull, {}, returned_value_toDecimal256OrNull, examples_toDecimal256OrNull, introduced_in_toDecimal256OrNull, category_toDecimal256OrNull};
 
     factory.registerFunction<detail::FunctionToDecimal256OrNull>(documentation_toDecimal256OrNull);
-    factory.registerFunction<detail::FunctionToDecimal512OrNull>({});
+    factory.registerFunction<detail::FunctionToDecimal512OrNull>(documentationToDecimal512OrNull());
 
     /// toUUIDOrNull documentation
     FunctionDocumentation::Description description_toUUIDOrNull = R"(
