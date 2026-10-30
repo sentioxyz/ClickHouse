@@ -69,6 +69,8 @@ namespace Setting
 namespace ErrorCodes
 {
 extern const int LOGICAL_ERROR;
+extern const int ILLEGAL_DIVISION;
+extern const int DECIMAL_OVERFLOW;
 }
 
 const KeyCondition::AtomMap KeyCondition::atom_map
@@ -5183,10 +5185,10 @@ std::optional<Range> KeyCondition::applyMonotonicFunctionsChainToRange(
     for (const auto & func : functions)
     {
         /// We check the monotonicity of each function on a specific range.
-        /// A single point is trivially monotonic only if the function is defined there.
-        /// For example, intDiv(constant, 0) must not be applied to a key-range endpoint.
-        /// Functions without monotonicity information retain the single-point shortcut.
-        IFunction::Monotonicity monotonicity = single_point && !func->hasInformationAboutMonotonicity()
+        /// If we know the given range only contains one value, then we treat all functions as positive monotonic: the point is evaluated
+        /// exactly below, so the monotonicity of the function over its whole argument type does not matter (e.g. toDate(String)). A
+        /// function that is not defined at the point (intDiv(c, 0), modulo(c, 0)) throws there, which is handled below.
+        IFunction::Monotonicity monotonicity = single_point
             ? IFunction::Monotonicity{true}
             : func->getMonotonicityForRange(*current_type.get(), key_range.left, key_range.right);
 
@@ -5211,16 +5213,28 @@ std::optional<Range> KeyCondition::applyMonotonicFunctionsChainToRange(
             /// To avoid this we make range left and right included.
             /// Any function that treats NULL specially is not monotonic.
             /// Thus we can safely use isNull() as an -Inf/+Inf indicator here.
-            if (!key_range.left.isNull())
+            try
             {
-                key_range.left = applyFunction(func, current_type, key_range.left);
-                key_range.left_included = true;
-            }
+                if (!key_range.left.isNull())
+                {
+                    key_range.left = applyFunction(func, current_type, key_range.left);
+                    key_range.left_included = true;
+                }
 
-            if (!key_range.right.isNull())
+                if (!key_range.right.isNull())
+                {
+                    key_range.right = applyFunction(func, current_type, key_range.right);
+                    key_range.right_included = true;
+                }
+            }
+            catch (const Exception & e)
             {
-                key_range.right = applyFunction(func, current_type, key_range.right);
-                key_range.right_included = true;
+                /// Undefined arithmetic at an endpoint (division by zero, the minimal signed number divided by -1, Decimal overflow).
+                /// The query may still be valid: the row can be filtered out by another condition or skipped by short-circuit
+                /// evaluation. Index analysis must not fail it; the transformed range is unknown, so nothing is pruned by it.
+                if (e.code() == ErrorCodes::ILLEGAL_DIVISION || e.code() == ErrorCodes::DECIMAL_OVERFLOW)
+                    return {};
+                throw;
             }
         }
         else
