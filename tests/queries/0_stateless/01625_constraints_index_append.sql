@@ -1,5 +1,7 @@
 -- Tags: no-parallel, no-flaky-check
 -- CNF optimization uses QueryNodeHash to order conditions. We need fixed database.table.column identifier name to stabilize result
+-- Sentio Decimal512 fork: TypeIndex has UInt512/Int512/Decimal512 inserted next to their 256-bit types, so the type ids, and with them
+-- the QueryNode hashes and the order of the AND terms below, differ from upstream (results are the same).
 SET explain_query_plan_default = 'legacy';
 DROP DATABASE IF EXISTS db_memory_01625;
 CREATE DATABASE db_memory_01625 ENGINE = Memory;
