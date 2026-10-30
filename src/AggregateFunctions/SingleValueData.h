@@ -22,7 +22,11 @@ struct SingleValueDataBase
     /// Any subclass (numeric, string, generic) must be smaller than MAX_STORAGE_SIZE
     /// We use this knowledge to create composite data classes that use them directly by reserving a 'memory_block'
     /// For example argMin holds 1 of these (for the result), while keeping a template for the value
-    static constexpr UInt32 MAX_STORAGE_SIZE = 96;
+    static constexpr UInt32 MAX_STORAGE_SIZE = 64;
+    /// The Sentio Decimal512 fork: SingleValueDataNumeric of the 512-bit types and SingleValueDataGeneric (`Field` holds
+    /// `DecimalField<Decimal512>`) need more. Only they use the wide size; every other type keeps the upstream size above, so its
+    /// aggregation states take as much memory as upstream (02714_read_bytes_aggregateFunction). The serialized states do not depend on it.
+    static constexpr UInt32 MAX_WIDE_STORAGE_SIZE = 96;
 
     virtual ~SingleValueDataBase() = default;
     virtual bool has() const = 0;
@@ -187,7 +191,7 @@ struct SingleValueDataFixed
 #define DISPATCH(TYPE) \
     extern template struct SingleValueDataFixed<TYPE>; \
     static_assert( \
-        sizeof(SingleValueDataFixed<TYPE>) <= SingleValueDataBase::MAX_STORAGE_SIZE, "Incorrect size of SingleValueDataFixed struct");
+        sizeof(SingleValueDataFixed<TYPE>) <= SingleValueDataBase::MAX_WIDE_STORAGE_SIZE, "Incorrect size of SingleValueDataFixed struct");
 
 FOR_SINGLE_VALUE_NUMERIC_TYPES(DISPATCH)
 #undef DISPATCH
@@ -200,8 +204,8 @@ struct SingleValueDataNumeric final : public SingleValueDataBase
     using Base = SingleValueDataFixed<T>;
 
 private:
-    /// 64 bytes for types of 512 bits, + 8 bytes for the virtual table pointer.
-    static constexpr size_t base_memory_reserved_size = 72;
+    /// 40 bytes as upstream for types up to 256 bits; 72 for the 512-bit types of the Sentio fork (64-byte value + flag, padded).
+    static constexpr size_t base_memory_reserved_size = sizeof(Base) <= 40 ? 40 : 72;
     struct alignas(alignof(Base)) PrivateMemory
     {
         char memory[base_memory_reserved_size];
@@ -270,7 +274,7 @@ public:
 #define DISPATCH(TYPE) \
     extern template struct SingleValueDataNumeric<TYPE>; \
     static_assert( \
-        sizeof(SingleValueDataNumeric<TYPE>) <= SingleValueDataBase::MAX_STORAGE_SIZE, "Incorrect size of SingleValueDataNumeric struct");
+        sizeof(SingleValueDataNumeric<TYPE>) <= SingleValueDataBase::MAX_WIDE_STORAGE_SIZE, "Incorrect size of SingleValueDataNumeric struct");
 
 FOR_SINGLE_VALUE_NUMERIC_TYPES(DISPATCH)
 #undef DISPATCH
@@ -361,7 +365,7 @@ public:
     static bool allocatesMemoryInArena() { return false; }
 };
 
-static_assert(sizeof(SingleValueDataGeneric) <= SingleValueDataBase::MAX_STORAGE_SIZE, "Incorrect size of SingleValueDataGeneric struct");
+static_assert(sizeof(SingleValueDataGeneric) <= SingleValueDataBase::MAX_WIDE_STORAGE_SIZE, "Incorrect size of SingleValueDataGeneric struct");
 
 /// The same as SingleValueDataGeneric but stores value inside IColumn instead of Field.
 /// It's less performant as IColumn is not optimized to store single value.
@@ -494,25 +498,38 @@ createAggregateFunctionSingleValue(const String & name, const DataTypes & argume
     return new AggregateFunctionTemplate<SingleValueDataGenericWithColumn, isMin...>(argument_types);
 }
 
-/// Helper to allocate enough memory to store any derived class
-struct SingleValueDataBaseMemoryBlock
+/// Helper to allocate enough memory to store any derived class. The wide block holds every type; the narrow one (the upstream size) every
+/// type for which singleValueTypeNeedsWideStorage is false.
+template <bool wide>
+struct SingleValueDataBaseMemoryBlockImpl
 {
     AlignedUnionT<
-        SingleValueDataBase::MAX_STORAGE_SIZE,
+        wide ? SingleValueDataBase::MAX_WIDE_STORAGE_SIZE : SingleValueDataBase::MAX_STORAGE_SIZE,
         SingleValueDataNumeric<Decimal256>, /// We check all types in generateSingleValueFromType
         SingleValueDataString,
-        SingleValueDataGeneric,
         SingleValueDataGenericWithColumn>
         memory;
     SingleValueDataBase & get() { return *reinterpret_cast<SingleValueDataBase *>(&memory); }
     const SingleValueDataBase & get() const { return *reinterpret_cast<const SingleValueDataBase *>(&memory); }
 };
 
+using SingleValueDataBaseMemoryBlock = SingleValueDataBaseMemoryBlockImpl<true>;
+using SingleValueDataBaseNarrowMemoryBlock = SingleValueDataBaseMemoryBlockImpl<false>;
+
 static_assert(alignof(SingleValueDataBaseMemoryBlock) == 8);
+static_assert(alignof(SingleValueDataBaseNarrowMemoryBlock) == 8);
+static_assert(sizeof(SingleValueDataBaseNarrowMemoryBlock) == SingleValueDataBase::MAX_STORAGE_SIZE);
+static_assert(sizeof(SingleValueDataGeneric) <= sizeof(SingleValueDataBaseMemoryBlock));
+static_assert(sizeof(SingleValueDataNumeric<Decimal512>) <= sizeof(SingleValueDataBaseMemoryBlock));
 
 /// For Data classes that want to compose on top of SingleValueDataBase values, like argMax or singleValueOrNull
-/// It will build the object based on the type on the memory block provided
-void generateSingleValueFromType(const DataTypePtr & type, SingleValueDataBaseMemoryBlock & data);
+/// It will build the object based on the type on the memory block provided. A narrow block throws LOGICAL_ERROR for a type that needs the
+/// wide one (singleValueTypeNeedsWideStorage).
+template <bool wide>
+void generateSingleValueFromType(const DataTypePtr & type, SingleValueDataBaseMemoryBlockImpl<wide> & data);
+
+/// Whether generateSingleValueFromType builds a value that needs the wide block: the 512-bit numeric types, or SingleValueDataGeneric.
+bool singleValueTypeNeedsWideStorage(const DataTypePtr & type);
 
 bool singleValueTypeAllocatesMemoryInArena(TypeIndex idx);
 }

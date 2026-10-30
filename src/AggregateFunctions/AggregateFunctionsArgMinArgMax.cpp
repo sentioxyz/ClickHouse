@@ -46,14 +46,16 @@ public:
     }
 };
 
-template <class ValueType>
+/// `wide_result`: the result is kept in the wide memory block, which a result type needs if singleValueTypeNeedsWideStorage (the 512-bit
+/// types of the Sentio fork, and SingleValueDataGeneric); every other result type takes the upstream size.
+template <class ValueType, bool wide_result>
 struct AggregateFunctionArgMinMaxDataGeneric
 {
 private:
     /// Raw storage populated by `generateSingleValueFromType` via placement construction in the
     /// `DataTypePtr` constructor. Default-initializing with `{}` would zero the whole block on every
     /// aggregate-state creation (hot for high-cardinality `GROUP BY`); skip it deliberately.
-    SingleValueDataBaseMemoryBlock result_data; // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
+    SingleValueDataBaseMemoryBlockImpl<wide_result> result_data; // NOLINT(cppcoreguidelines-pro-type-member-init,hicpp-member-init)
     ValueType value_data;
 
 public:
@@ -82,7 +84,7 @@ public:
 };
 
 static_assert(
-    sizeof(AggregateFunctionArgMinMaxDataGeneric<Int8>) <= 2 * SingleValueDataBase::MAX_STORAGE_SIZE,
+    sizeof(AggregateFunctionArgMinMaxDataGeneric<SingleValueDataFixed<Int8>, false>) <= 2 * SingleValueDataBase::MAX_STORAGE_SIZE,
     "Incorrect size of AggregateFunctionArgMinMaxData struct");
 
 /// Returns the first arg value found for the minimum/maximum value. Example: argMin(arg, value).
@@ -437,31 +439,31 @@ AggregateFunctionPtr createAggregateFunctionArgMinMax(
     {
         const DataTypePtr & value_type = argument_types[1];
         WhichDataType which(value_type);
+        const bool wide_result = singleValueTypeNeedsWideStorage(argument_types[0]);
+        auto make = [&]<typename ValueData>() -> AggregateFunctionPtr
+        {
+            if (wide_result)
+                return std::make_shared<AggregateFunctionArgMinMax<AggregateFunctionArgMinMaxDataGeneric<ValueData, true>, isMin>>(
+                    argument_types, return_both);
+            return std::make_shared<AggregateFunctionArgMinMax<AggregateFunctionArgMinMaxDataGeneric<ValueData, false>, isMin>>(
+                argument_types, return_both);
+        };
 #define DISPATCH(TYPE) \
         if (which.idx == TypeIndex::TYPE) \
-            return AggregateFunctionPtr(new AggregateFunctionArgMinMax<AggregateFunctionArgMinMaxDataGeneric<SingleValueDataFixed<TYPE>>, isMin>(argument_types, return_both)); /// NOLINT
+            return make.template operator()<SingleValueDataFixed<TYPE>>(); /// NOLINT
         FOR_SINGLE_VALUE_NUMERIC_TYPES(DISPATCH)
 #undef DISPATCH
 
         if (which.idx == TypeIndex::Date)
-            return AggregateFunctionPtr(
-                new AggregateFunctionArgMinMax<AggregateFunctionArgMinMaxDataGeneric<SingleValueDataFixed<DataTypeDate::FieldType>>, isMin>(
-                    argument_types, return_both));
+            return make.template operator()<SingleValueDataFixed<DataTypeDate::FieldType>>();
         if (which.idx == TypeIndex::DateTime)
-            return AggregateFunctionPtr(new AggregateFunctionArgMinMax<
-                                        AggregateFunctionArgMinMaxDataGeneric<SingleValueDataFixed<DataTypeDateTime::FieldType>>,
-                                        isMin>(argument_types, return_both));
+            return make.template operator()<SingleValueDataFixed<DataTypeDateTime::FieldType>>();
         if (which.idx == TypeIndex::String)
-            return AggregateFunctionPtr(new AggregateFunctionArgMinMax<AggregateFunctionArgMinMaxDataGeneric<SingleValueDataString>, isMin>(
-                argument_types, return_both));
+            return make.template operator()<SingleValueDataString>();
 
         if (canUseFieldForValueData(value_type))
-            return AggregateFunctionPtr(
-                new AggregateFunctionArgMinMax<AggregateFunctionArgMinMaxDataGeneric<SingleValueDataGeneric>, isMin>(
-                    argument_types, return_both));
-        return AggregateFunctionPtr(
-            new AggregateFunctionArgMinMax<AggregateFunctionArgMinMaxDataGeneric<SingleValueDataGenericWithColumn>, isMin>(
-                argument_types, return_both));
+            return make.template operator()<SingleValueDataGeneric>();
+        return make.template operator()<SingleValueDataGenericWithColumn>();
     }
     return result;
 }

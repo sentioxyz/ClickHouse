@@ -1813,15 +1813,30 @@ bool canUseFieldForValueData(const DataTypePtr & value_type)
     return result;
 };
 
-void generateSingleValueFromType(const DataTypePtr & type, SingleValueDataBaseMemoryBlock & data)
+namespace
+{
+
+template <typename Value, bool wide>
+void constructSingleValue(const DataTypePtr & type, SingleValueDataBaseMemoryBlockImpl<wide> & data)
+{
+    static_assert(alignof(Value) <= alignof(SingleValueDataBaseMemoryBlockImpl<wide>));
+    if constexpr (sizeof(Value) <= sizeof(data.memory))
+        new (&data.memory) Value;
+    else
+        throw Exception(ErrorCodes::LOGICAL_ERROR, "A single value of type {} does not fit the narrow memory block", type->getName());
+}
+
+}
+
+template <bool wide>
+void generateSingleValueFromType(const DataTypePtr & type, SingleValueDataBaseMemoryBlockImpl<wide> & data)
 {
     auto idx = type->getTypeId();
 #define DISPATCH(TYPE) \
     if (idx == TypeIndex::TYPE) \
     { \
         static_assert(sizeof(SingleValueDataNumeric<TYPE>) <= sizeof(SingleValueDataBaseMemoryBlock::memory)); \
-        static_assert(alignof(SingleValueDataNumeric<TYPE>) <= alignof(SingleValueDataBaseMemoryBlock)); \
-        new (&data.memory) SingleValueDataNumeric<TYPE>; \
+        constructSingleValue<SingleValueDataNumeric<TYPE>>(type, data); \
         return; \
     }
 
@@ -1830,37 +1845,48 @@ void generateSingleValueFromType(const DataTypePtr & type, SingleValueDataBaseMe
 
     if (idx == TypeIndex::Date)
     {
-        static_assert(sizeof(SingleValueDataNumeric<DataTypeDate::FieldType>) <= sizeof(SingleValueDataBaseMemoryBlock::memory));
-        static_assert(alignof(SingleValueDataNumeric<DataTypeDate::FieldType>) <= alignof(SingleValueDataBaseMemoryBlock));
-        new (&data.memory) SingleValueDataNumeric<DataTypeDate::FieldType>;
+        constructSingleValue<SingleValueDataNumeric<DataTypeDate::FieldType>>(type, data);
         return;
     }
     if (idx == TypeIndex::DateTime)
     {
-        static_assert(sizeof(SingleValueDataNumeric<DataTypeDateTime::FieldType>) <= sizeof(SingleValueDataBaseMemoryBlock::memory));
-        static_assert(alignof(SingleValueDataNumeric<DataTypeDateTime::FieldType>) <= alignof(SingleValueDataBaseMemoryBlock));
-        new (&data.memory) SingleValueDataNumeric<DataTypeDateTime::FieldType>;
+        constructSingleValue<SingleValueDataNumeric<DataTypeDateTime::FieldType>>(type, data);
         return;
     }
     if (idx == TypeIndex::String)
     {
-        static_assert(sizeof(SingleValueDataString) <= sizeof(SingleValueDataBaseMemoryBlock::memory));
-        static_assert(alignof(SingleValueDataString) <= alignof(SingleValueDataBaseMemoryBlock));
-        new (&data.memory) SingleValueDataString;
+        static_assert(sizeof(SingleValueDataString) <= sizeof(SingleValueDataBaseNarrowMemoryBlock::memory));
+        constructSingleValue<SingleValueDataString>(type, data);
         return;
     }
 
     if (canUseFieldForValueData(type))
     {
         static_assert(sizeof(SingleValueDataGeneric) <= sizeof(SingleValueDataBaseMemoryBlock::memory));
-        static_assert(alignof(SingleValueDataGeneric) <= alignof(SingleValueDataBaseMemoryBlock));
-        new (&data.memory) SingleValueDataGeneric;
+        constructSingleValue<SingleValueDataGeneric>(type, data);
         return;
     }
 
-    static_assert(sizeof(SingleValueDataGenericWithColumn) <= sizeof(SingleValueDataBaseMemoryBlock::memory));
-    static_assert(alignof(SingleValueDataGenericWithColumn) <= alignof(SingleValueDataBaseMemoryBlock));
-    new (&data.memory) SingleValueDataGenericWithColumn;
+    static_assert(sizeof(SingleValueDataGenericWithColumn) <= sizeof(SingleValueDataBaseNarrowMemoryBlock::memory));
+    constructSingleValue<SingleValueDataGenericWithColumn>(type, data);
+}
+
+template void generateSingleValueFromType<true>(const DataTypePtr & type, SingleValueDataBaseMemoryBlockImpl<true> & data);
+template void generateSingleValueFromType<false>(const DataTypePtr & type, SingleValueDataBaseMemoryBlockImpl<false> & data);
+
+bool singleValueTypeNeedsWideStorage(const DataTypePtr & type)
+{
+    auto idx = type->getTypeId();
+#define DISPATCH(TYPE) \
+    if (idx == TypeIndex::TYPE) \
+        return sizeof(SingleValueDataNumeric<TYPE>) > sizeof(SingleValueDataBaseNarrowMemoryBlock::memory);
+    FOR_SINGLE_VALUE_NUMERIC_TYPES(DISPATCH)
+#undef DISPATCH
+    if (idx == TypeIndex::Date || idx == TypeIndex::DateTime || idx == TypeIndex::String)
+        return false;
+    if (canUseFieldForValueData(type))
+        return sizeof(SingleValueDataGeneric) > sizeof(SingleValueDataBaseNarrowMemoryBlock::memory);
+    return false;
 }
 
 bool singleValueTypeAllocatesMemoryInArena(TypeIndex idx)
