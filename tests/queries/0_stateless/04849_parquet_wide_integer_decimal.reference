@@ -38,9 +38,9 @@ dictionary filtering remains safely ineligible
 schema inference
 1
 precision 78 inference requires an explicit structure
-rejected
+Decimal(78, 0)	6
 precision 77 inference requires an explicit structure
-rejected
+Decimal(77, 0)	1
 negative decimal to UInt128
 rejected
 UInt128 overflow to Int128

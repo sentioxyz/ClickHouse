@@ -730,13 +730,17 @@ expect_rejected()
     fi
 }
 
-expect_rejected "precision 78 inference requires an explicit structure" "
-    SELECT u256 FROM file('${DECIMAL_FILE}', Parquet) FORMAT Null
-" "precision 78 exceeds"
+# Sentio Decimal512 fork: a Parquet decimal with a precision of 77 to 154 is inferred as Decimal512 (Decimal(P, S)), as the 26.3 fork
+# in production does, instead of being refused; the explicit Int256 structures below are still checked.
+echo "precision 78 inference requires an explicit structure"
+${CLICKHOUSE_LOCAL} --query="
+    SELECT toTypeName(u256), count() FROM file('${DECIMAL_FILE}', Parquet) GROUP BY 1
+"
 
-expect_rejected "precision 77 inference requires an explicit structure" "
-    SELECT overflow FROM file('${INT256_OVERFLOW_FILE}', Parquet) FORMAT Null
-" "precision 77 exceeds"
+echo "precision 77 inference requires an explicit structure"
+${CLICKHOUSE_LOCAL} --query="
+    SELECT toTypeName(overflow), count() FROM file('${INT256_OVERFLOW_FILE}', Parquet) GROUP BY 1
+"
 
 expect_rejected "negative decimal to UInt128" "
     SELECT i128 FROM file('${DECIMAL_FILE}', Parquet, 'i128 UInt128') FORMAT Null

@@ -30,5 +30,7 @@ SELECT  least(toUInt64('18446744073709551615'), toUInt256(0)) x, least(toUInt64(
         greatest(toUInt64('18446744073709551615'), toUInt256(0)) y, greatest(toUInt64('18446744073709551615'), toUInt256('18446744073709551616')) y2,
         toTypeName(x), toTypeName(y);
 
-SELECT least(toUInt32(0), toInt256(0)), greatest(toInt32(0), toUInt256(0)); -- { serverError ILLEGAL_TYPE_OF_ARGUMENT }
-SELECT least(toInt32(0), toUInt256(0)), greatest(toInt32(0), toUInt256(0)); -- { serverError ILLEGAL_TYPE_OF_ARGUMENT }
+-- Sentio Decimal512 fork: Int512 is the common type of a signed integer and UInt256 (as in the 26.3 fork in production), so these are
+-- answered instead of refused with ILLEGAL_TYPE_OF_ARGUMENT.
+SELECT least(toUInt32(0), toInt256(0)), greatest(toInt32(0), toUInt256(0));
+SELECT least(toInt32(0), toUInt256(0)), greatest(toInt32(0), toUInt256(0)), toTypeName(least(toInt32(0), toUInt256(0)));
