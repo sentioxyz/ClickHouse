@@ -941,6 +941,10 @@ def matches(sel: dict, rec: dict) -> bool:
     return "ids" not in sel or rec.get("id") in sel["ids"]
 
 
+# fields an `accepted` registry entry must fill (see known_defects.json "about")
+ACCEPTANCE_FIELDS = ("by", "on", "scope", "mitigation")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--manifest", required=True)
@@ -984,6 +988,7 @@ def main() -> int:
     for nr in m.get("not_run") or []:
         (g.problems if tier == "release" else g.notes).append(f"not run: {nr.get('name')}: {nr.get('reason')}")
     open_hits: dict[str, int] = {}
+    accepted_hits: dict[str, int] = {}
     ran = set(suites)
     for d in reg.get("defects") or []:
         sels = d.get("match") or []
@@ -992,7 +997,14 @@ def main() -> int:
         for s in sels:
             if s.get("suite") in ran and not any(matches(s, r) for r in g.rows_seen):
                 g.problems.append(f"known defect {d['id']}: selector {s} matches no row of suite {s['suite']} (registry out of sync)")
-        if d.get("status") == "open":
+        if d.get("status") == "accepted":
+            # accepted by the release owner: still checked and reported, never silent; it does not block a release.
+            # The acceptance must say who accepted it, when, for which rollout, and under which mitigation.
+            acc = d.get("acceptance") or {}
+            missing = [k for k in ACCEPTANCE_FIELDS if not str(acc.get(k) or "").strip()]
+            if missing:
+                g.problems.append(f"known defect {d['id']} is accepted without {missing} in its acceptance record")
+        if d.get("status") in ("open", "accepted"):
             # a vacuous test (runs no query, e.g. a disabled script that prints its reference) is not a pass
             for r in seen:
                 if r["status"] == "PASS" and any(s.get("vacuous") and matches(s, r) for s in sels):
@@ -1002,9 +1014,9 @@ def main() -> int:
             for r in failing:
                 r["known"] = d["id"]
             if seen and not failing:
-                g.problems.append(f"known defect {d['id']} is open but all {len(seen)} of its checks pass: mark it fixed (with evidence) in the registry")
+                g.problems.append(f"known defect {d['id']} is {d['status']} but all {len(seen)} of its checks pass: mark it fixed (with evidence) in the registry")
             if failing:
-                open_hits[d["id"]] = len(failing)
+                (accepted_hits if d["status"] == "accepted" else open_hits)[d["id"]] = len(failing)
         elif d.get("status") == "fixed" and d.get("proof") and tier == "release":
             spec = d["proof"]
             if not any(p["proven"] and p["matrix"] == spec.get("matrix") and set(spec.get("targets") or []) <= p["targets"] for p in g.proofs.values()):
@@ -1034,12 +1046,16 @@ def main() -> int:
     for d, n in sorted(open_hits.items()):
         title = next((x.get("title") for x in reg.get("defects") or [] if x["id"] == d), "")
         print(f"- OPEN KNOWN DEFECT {d}: {n} failing check(s): {title}")
+    for d, n in sorted(accepted_hits.items()):
+        acc = next((x.get("acceptance") or {} for x in reg.get("defects") or [] if x["id"] == d), {})
+        print(f"- ACCEPTED KNOWN DEFECT {d}: {n} failing check(s), accepted by {acc.get('by')} on {acc.get('on')} for {acc.get('scope')}; "
+              f"mitigation: {acc.get('mitigation')}")
     for p in g.problems:
         print(f"- PROBLEM: {p}")
     if a.json:
         with open(a.json, "w", encoding="utf-8") as f:
             json.dump({"tier": tier, "verdict": verdict, "exit": rc, "binary": binary, "baseline": g.baseline,
-                       "identity": g.identity, "open_known_defects": open_hits, "problems": g.problems, "notes": g.notes,
+                       "identity": g.identity, "open_known_defects": open_hits, "accepted_known_defects": accepted_hits, "problems": g.problems, "notes": g.notes,
                        "proofs": {k: dict(v, targets=sorted(v["targets"])) for k, v in g.proofs.items()}}, f, indent=1)
     return rc
 

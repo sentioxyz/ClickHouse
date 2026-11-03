@@ -81,8 +81,10 @@ for d in reg["defects"]:
         for c in pr.get("targets") or []:
             if not lock.get(pr.get("matrix"), {}).get("categories", {}).get(c):
                 problems.append(f"{d['id']}: proof target {c!r} has no locked cases in {pr.get('matrix')}")
-    if d.get("status") not in ("open", "fixed"):
+    if d.get("status") not in ("open", "accepted", "fixed"):
         problems.append(f"{d['id']}: status {d.get('status')!r}")
+    if d.get("status") == "accepted" and any(not str((d.get("acceptance") or {}).get(k) or "").strip() for k in ("by", "on", "scope", "mitigation")):
+        problems.append(f"{d['id']}: accepted without by/on/scope/mitigation")
     if d.get("status") == "fixed" and not d.get("fixed_by"):
         problems.append(f"{d['id']}: fixed without fixed_by")
     if "@SHA" in json.dumps(d):
@@ -98,8 +100,8 @@ for line in open(os.path.join(here, "stateless_tests.txt")):
         problems.append(f"selected test {name} has no .sql/.sh or no .reference")
     if "# exclude:" in line:
         kd = line.split("# exclude:", 1)[1].split(":", 1)[0].strip()
-        if not any(x["id"] == kd and x.get("status") == "open" for x in reg["defects"]):
-            problems.append(f"{name} is excluded for {kd}, which is not an open defect")
+        if not any(x["id"] == kd and x.get("status") in ("open", "accepted") for x in reg["defects"]):
+            problems.append(f"{name} is excluded for {kd}, which is not an open or accepted defect")
 if len(sel) != len(set(sel)):
     problems.append("duplicate names in stateless_tests.txt")
 for p in problems:

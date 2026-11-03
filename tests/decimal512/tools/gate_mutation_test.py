@@ -5,7 +5,7 @@ PRODUCTION BOUNDARY: builds synthetic evidence in a temp dir; the "binaries" are
 /usr/bin/false (hashed and read with readelf, never executed); no engine, no server, no network.
 
 It proves each evidence check is load-bearing: a valid synthetic evidence set passes (quick exit 3 with one open
-known defect, a clean quick exit 0, release blocked only by its open known defects, a clean release exit 0), and
+known defect, a clean quick exit 0, release blocked only by its open known defects, a clean release exit 0, open defects marked accepted exit 0), and
 every mutation - truncated, duplicated, foreign or stale matrix data, tampered statuses or expectations, another
 engine, missing run-time attestation, compat without both cross-version directions or with unbound labels or rc != 0,
 protocol steps missing, swapped or DIFF, proofs on the wrong binaries or without a baseline failure, missing proofs
@@ -363,6 +363,32 @@ def main():
         basep = set(res["problems"])
         check("valid release evidence: BLOCKED only by its open known defects",
               rc == 1 and basep and all("open known defects" in p for p in basep), f"rc={rc} {sorted(basep)}")
+        # status `accepted`: the same failing checks no longer block, but only with a complete acceptance record
+        ACC = {"by": "fixture release owner", "on": "2026-11-03", "scope": "fixture rollout", "mitigation": "fixture mitigation"}
+        reg = json.load(open(os.path.join(base, "kd.json")))
+        for x in reg["defects"]:
+            if x["status"] == "open":
+                x.update(status="accepted", acceptance=dict(ACC))
+        jdump(os.path.join(base, "kd_accepted.json"), reg)
+        jdump(os.path.join(clean, "kd_accepted.json"), reg)
+        rc, res = gate(base, "release.json", "kd_accepted.json")
+        check("valid release evidence with its open defects accepted: exit 0, reported as accepted",
+              rc == 0 and not res["problems"] and set(res.get("accepted_known_defects") or {}) == {"KD-OPEN", "KD-T"}
+              and not res.get("open_known_defects"), f"rc={rc} {res.get('problems')} {res.get('accepted_known_defects')}")
+        rc, res = gate(base, "quick.json", "kd_accepted.json")
+        check("valid quick evidence with its open defects accepted: exit 0", rc == 0 and not res["problems"], f"rc={rc} {res.get('problems')}")
+        for field in ACC:
+            bad = json.loads(json.dumps(reg))
+            for x in bad["defects"]:
+                if x["id"] == "KD-OPEN":
+                    x["acceptance"][field] = " "
+            jdump(os.path.join(base, f"kd_accepted_no_{field}.json"), bad)
+            rc, res = gate(base, "release.json", f"kd_accepted_no_{field}.json")
+            check(f"mutation rejected: accepted defect without acceptance.{field}",
+                  rc == 1 and any("accepted without" in p and field in p for p in res["problems"]), f"rc={rc} {res.get('problems')}")
+        rc, res = gate(clean, "quick.json", "kd_accepted.json")
+        check("mutation rejected: accepted defect whose checks all pass (stale, must be marked fixed)",
+              rc == 1 and any("KD-OPEN is accepted but all" in p for p in res["problems"]), f"rc={rc} {res.get('problems')}")
         crel = os.path.join(root, "clean_release")
         shutil.copytree(clean, crel)
         open(os.path.join(crel, "sel.txt"), "w").write("t_ok\n")

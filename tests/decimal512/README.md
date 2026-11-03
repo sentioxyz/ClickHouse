@@ -47,6 +47,11 @@ Exit status (from `tools/check_gate.py`):
 |---|---|
 | 0 | PASS |
 | 3 | PASS WITH OPEN KNOWN DEFECTS: nothing unexpected failed, but the build is not releasable |
+
+A failing check that matches a registry entry with status `accepted` does not change the exit status: the release owner
+accepted that defect for a named rollout, and the entry must record `acceptance.by`, `.on`, `.scope` and `.mitigation`
+(otherwise the gate fails). Its checks keep running and every failing one is printed as `ACCEPTED KNOWN DEFECT`; once
+they all pass the entry is stale and must be marked `fixed`.
 | 1 | FAIL, or BLOCKED for a release |
 | 2 | usage error |
 
