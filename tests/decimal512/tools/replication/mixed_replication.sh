@@ -6,7 +6,11 @@
 #   part fetches baseline -> candidate and candidate -> baseline, mutations initiated on either build, a merge executed
 #   by the candidate whose result the baseline downloads (r1 has always_fetch_merged_part), the reads right after the
 #   upgrade and after the rollback, and replication after the rollback. Tables use Wide and Compact parts and hold
-#   Decimal512, Nullable(Decimal512), Int512, UInt512, Dynamic (512-bit variants) and sum states of Decimal512.
+#   Decimal512, Nullable(Decimal512), Int512, UInt512 and sum states of Decimal512. Dynamic values cross the builds only
+#   by refusal (binary type origin design, 2026-10-29): repl.t_dyn (Dynamic with 512-bit variants) is written on the
+#   baseline; the candidate must refuse to read it (Code 117, dyn.read_after_upgrade), and after the rollback both
+#   replicas must read it alike (dyn.read_after_rollback). Both replicas run the rollout configuration
+#   auto_statistics_types = '' (26.8 writes statistics.packed otherwise; mutations then differ between the builds).
 #   One informational step (not required) records what happens to a mutation that only the candidate can execute
 #   (Int512 arithmetic) while the other replica still runs the baseline.
 #
@@ -131,9 +135,10 @@ XML
 start_server() {  # <r1|r2> <binary copy> <role label> <step name>
   local n=$1 bin=$2 role=$3 sname=$4 D=$ISO/$1
   mkdir -p "$D"/{data,tmp,log,user_files,format_schemas}
-  local merge_tree=""
+  # the rollout configuration of a mixed window: no automatic statistics (an empty setting is the 26.3 default)
+  local merge_tree="<merge_tree><auto_statistics_types></auto_statistics_types></merge_tree>"
   # r1 never merges by itself: it downloads the parts that r2 merges (with r2 on the candidate: candidate-written merges)
-  [ "$n" = r1 ] && merge_tree="<merge_tree><always_fetch_merged_part>1</always_fetch_merged_part></merge_tree>"
+  [ "$n" = r1 ] && merge_tree="<merge_tree><always_fetch_merged_part>1</always_fetch_merged_part><auto_statistics_types></auto_statistics_types></merge_tree>"
   cat > "$D/config.xml" <<XML
 <clickhouse>
     <logger><level>information</level><log>$D/log/server.log</log><errorlog>$D/log/server.err.log</errorlog><size>200M</size><count>2</count></logger>
@@ -179,7 +184,7 @@ dump() {  # <replica> <label>: sha256 of every table, ordered, as TSV
   : > "$f"
   for t in $TABLES; do
     echo "## $t" >> "$f"
-    q "$1" "SELECT id, d, dn, i, u, v, dynamicType(v), finalizeAggregation(s) FROM repl.$t ORDER BY id FORMAT TSV" >> "$f" || return 1
+    q "$1" "SELECT id, d, dn, i, u, finalizeAggregation(s) FROM repl.$t ORDER BY id FORMAT TSV" >> "$f" || return 1
   done
   sha256sum "$f" | cut -d' ' -f1
 }
@@ -214,7 +219,6 @@ insert_batch() {  # <replica> <offset> <rows>
         if(number % 5 = 0, NULL, toDecimal512(concat(if(number % 2 = 0, '-', ''), '0.', leftPad(toString(number * 104729), 60, '0')), 60)) AS dn,
         toInt512(concat(if(number % 2 = 0, '-', ''), toString(number + $2), repeat('7', number % 100))) AS i,
         toUInt512(concat(toString(number + $2), repeat('3', number % 120))) AS u,
-        multiIf(number % 3 = 0, CAST(toInt512(concat('-', toString(number + $2))) AS Dynamic), number % 3 = 1, CAST(d AS Dynamic), CAST(toUInt512(number) AS Dynamic)) AS v,
         initializeAggregation('sumState', d) AS s
       FROM numbers($3)" || rc=1
   done
@@ -227,8 +231,8 @@ imax, imin, umax = 2**511 - 1, -2**511, 2**512 - 1
 dmax, dmin = imax - 10**18, imin + 10**18
 def fmt(v, s):
     neg = v < 0; t = str(abs(v)).rjust(s + 1, "0"); return ("-" if neg else "") + t[:-s] + "." + t[-s:]
-print(f"(1000000000, CAST('{fmt(dmax, 18)}' AS Decimal(154, 18)), CAST('{fmt(imin, 60)}' AS Decimal(154, 60)), toInt512('{imin}'), toUInt512('{umax}'), CAST(toInt512('{imax}') AS Dynamic), initializeAggregation('sumState', CAST('{fmt(dmax, 18)}' AS Decimal(154, 18)))),"
-      f"(1000000001, CAST('{fmt(dmin, 18)}' AS Decimal(154, 18)), NULL, toInt512('{imax}'), toUInt512('0'), CAST(toUInt512('{umax}') AS Dynamic), initializeAggregation('sumState', CAST('{fmt(dmin, 18)}' AS Decimal(154, 18))))")
+print(f"(1000000000, CAST('{fmt(dmax, 18)}' AS Decimal(154, 18)), CAST('{fmt(imin, 60)}' AS Decimal(154, 60)), toInt512('{imin}'), toUInt512('{umax}'), initializeAggregation('sumState', CAST('{fmt(dmax, 18)}' AS Decimal(154, 18)))),"
+      f"(1000000001, CAST('{fmt(dmin, 18)}' AS Decimal(154, 18)), NULL, toInt512('{imax}'), toUInt512('0'), initializeAggregation('sumState', CAST('{fmt(dmin, 18)}' AS Decimal(154, 18))))")
 EOF
 )
 
@@ -241,22 +245,30 @@ for n in r1 r2; do
   q "$n" "CREATE DATABASE IF NOT EXISTS repl" || rc=1
   for t in $TABLES; do
     wide=""; [ "$t" = t_wide ] && wide="SETTINGS min_bytes_for_wide_part = 0, min_rows_for_wide_part = 0"
-    q "$n" "CREATE TABLE repl.$t (id UInt64, d Decimal(154, 18), dn Nullable(Decimal(154, 60)), i Int512, u UInt512, v Dynamic, s AggregateFunction(sum, Decimal(154, 18)))
+    q "$n" "CREATE TABLE repl.$t (id UInt64, d Decimal(154, 18), dn Nullable(Decimal(154, 60)), i Int512, u UInt512, s AggregateFunction(sum, Decimal(154, 18)))
             ENGINE = ReplicatedMergeTree('/clickhouse/tables/repl/$t', '{replica}') ORDER BY id $wide" || rc=1
   done
+  q "$n" "CREATE TABLE repl.t_dyn (id UInt64, v Dynamic) ENGINE = ReplicatedMergeTree('/clickhouse/tables/repl/t_dyn', '{replica}') ORDER BY id" || rc=1
   q "$n" "CREATE TABLE repl.t_risk (id UInt64, i Int512) ENGINE = ReplicatedMergeTree('/clickhouse/tables/repl/t_risk', '{replica}') ORDER BY id" || rc=1
 done
 step create both $rc "$([ $rc = 0 ] && echo OK || echo ERROR)" "databases and tables on r1 and r2"
 
 insert_batch r1 0 3000; irc=$?
 for t in $TABLES; do q r1 "INSERT INTO repl.$t VALUES $EXTREMES" || irc=1; done
+q r1 "INSERT INTO repl.t_dyn SELECT number, multiIf(number % 3 = 0, CAST(toInt512(concat('-', toString(number), repeat('7', number % 90))) AS Dynamic), number % 3 = 1, CAST(toDecimal512(concat(toString(number), '.25'), 2) AS Dynamic), CAST(toUInt512(concat(toString(number), repeat('3', number % 120))) AS Dynamic)) FROM numbers(300)" || irc=1
 sync_replica r2 || irc=1
+q r2 "SYSTEM SYNC REPLICA repl.t_dyn" > /dev/null 2>> "$OUT/logs/sync.err" || irc=1
+dyn_dump() { q "$1" "SELECT id, toString(v), dynamicType(v) FROM repl.t_dyn ORDER BY id FORMAT TSV" > "$OUT/dumps/$2.$1.tsv" 2> "$OUT/dumps/$2.$1.err"; }
 [ $irc = 0 ] || step insert.baseline_to_baseline baseline 1 ERROR "insert or sync failed"
 compare fetch.baseline_to_baseline baseline
 
 stop_one r2; step r2.stop.for_upgrade baseline 0 OK "rolling upgrade: r2 stops on the baseline"
 start_server r2 "$CBIN" candidate r2.start.candidate
 sync_replica r2; compare read.after_upgrade candidate
+# the candidate must refuse the baseline's Dynamic data (legacy binary type indexes without a declared origin), not read it
+if dyn_dump r2 dyn.read_after_upgrade; then step dyn.read_after_upgrade candidate 1 ERROR "the candidate read 26.3 Dynamic data instead of refusing it (dumps/dyn.read_after_upgrade.r2.tsv)"
+elif e=$(grep -m1 -oE 'Code: 117\. DB::Exception: .{0,160}' "$OUT/dumps/dyn.read_after_upgrade.r2.err") && [[ $e == *"ambiguous without a declared origin"* ]]; then step dyn.read_after_upgrade candidate 0 OK "refused (fail closed): $e"
+else step dyn.read_after_upgrade candidate 1 ERROR "not the expected refusal: $(head -c 300 "$OUT/dumps/dyn.read_after_upgrade.r2.err" | tr '\n\t' '  ')"; fi
 
 insert_batch r1 10000 2000; x=$?; sync_replica r2 || x=1
 [ $x = 0 ] || step fetch.baseline_to_candidate.insert baseline 1 ERROR "insert on r1 or sync on r2 failed"
@@ -305,6 +317,10 @@ q r2 "KILL MUTATION WHERE database = 'repl' AND table = 't_risk'" > /dev/null 2>
 stop_one r2; step r2.stop.for_rollback candidate 0 OK "rollback: r2 stops on the candidate"
 start_server r2 "$BBIN" baseline r2.rollback.baseline
 sync_replica r2; compare read.after_rollback baseline
+if dyn_dump r1 dyn.read_after_rollback && dyn_dump r2 dyn.read_after_rollback && [ -s "$OUT/dumps/dyn.read_after_rollback.r1.tsv" ] \
+   && cmp -s "$OUT/dumps/dyn.read_after_rollback.r1.tsv" "$OUT/dumps/dyn.read_after_rollback.r2.tsv"; then
+  step dyn.read_after_rollback baseline 0 SAME "$(wc -l < "$OUT/dumps/dyn.read_after_rollback.r1.tsv") Dynamic rows, both replicas on the baseline"
+else step dyn.read_after_rollback baseline 1 DIFF "Dynamic data differs or is unreadable after the rollback: $(head -c 200 "$OUT/dumps/dyn.read_after_rollback.r2.err" | tr '\n\t' '  ')"; fi
 
 insert_batch r2 30000 1000; x=$?; insert_batch r1 40000 1000 || x=1; sync_replica r1 || x=1; sync_replica r2 || x=1
 [ $x = 0 ] || step replication.after_rollback.insert baseline 1 ERROR "insert or sync failed after the rollback"
@@ -313,7 +329,7 @@ compare replication.after_rollback baseline
 cleanup; trap - EXIT
 rm -f "$ISO"/bin/*
 for n in r1 r2; do grep -c '<Error>' "$ISO/$n/log/server.err.log" 2>/dev/null | sed "s/^/$n server.err.log <Error> lines: /" >> "$OUT/logs/run.log"; done
-REQUIRED="keeper.start r1.start.baseline r2.start.baseline create fetch.baseline_to_baseline r2.start.candidate read.after_upgrade fetch.baseline_to_candidate fetch.candidate_to_baseline mutation.baseline_initiated mutation.candidate_initiated merge.candidate_fetched_by_baseline merge.downloaded_by_baseline r2.rollback.baseline read.after_rollback replication.after_rollback"
+REQUIRED="keeper.start r1.start.baseline r2.start.baseline create fetch.baseline_to_baseline r2.start.candidate read.after_upgrade fetch.baseline_to_candidate fetch.candidate_to_baseline mutation.baseline_initiated mutation.candidate_initiated merge.candidate_fetched_by_baseline merge.downloaded_by_baseline r2.rollback.baseline read.after_rollback replication.after_rollback dyn.read_after_upgrade dyn.read_after_rollback"
 fail=0
 for s in $REQUIRED; do
   awk -F'\t' -v s="$s" '$1 == s && $3 == 0 && ($4 == "SAME" || $4 == "OK") {f = 1} END {exit !f}' "$OUT/steps.tsv" || { log "required step $s missing or not OK"; fail=1; }

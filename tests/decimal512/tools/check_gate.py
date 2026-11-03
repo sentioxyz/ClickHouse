@@ -91,7 +91,10 @@ SUMMARY_ATTESTATION = ("sql_sha256", "oracle_sha256", "ids_sha256", "cases", "re
 REPLICATION_REQUIRED_STEPS = ("keeper.start", "r1.start.baseline", "r2.start.baseline", "create", "fetch.baseline_to_baseline",
                               "r2.start.candidate", "read.after_upgrade", "fetch.baseline_to_candidate", "fetch.candidate_to_baseline",
                               "mutation.baseline_initiated", "mutation.candidate_initiated", "merge.candidate_fetched_by_baseline",
-                              "merge.downloaded_by_baseline", "r2.rollback.baseline", "read.after_rollback", "replication.after_rollback")
+                              "merge.downloaded_by_baseline", "r2.rollback.baseline", "read.after_rollback", "replication.after_rollback",
+                              "dyn.read_after_upgrade", "dyn.read_after_rollback")
+# steps whose OK must carry the fail-closed refusal in their detail (see fail_closed): name -> the expected error code
+REPLICATION_FAIL_CLOSED_STEPS = {"dyn.read_after_upgrade": "117"}
 REPLICATION_BAD_VERDICTS = ("DIFF", "ERROR", "REFUSED", "NOT_FETCHED")
 # performance thresholds: engineering judgment (initial, 2026-09-25), NOT a user-approved SLO; perf_compare.py uses the same
 PERF_RATIO_MAX, PERF_NOISE_FLOOR_S, PERF_CONTROL_BAND, PERF_MIN_ROUNDS = 1.10, 0.010, (0.90, 1.10), 5
@@ -99,17 +102,26 @@ PROTOCOL_ROLES = ("OLD", "NEW")
 
 
 def protocol_required_steps() -> dict:
-    """native_compat.sh steps between OLD and NEW: name -> must the step carry a (SAME) comparison."""
+    """native_compat.sh steps between OLD and NEW: name -> mode.
+    "same": rc 0 and a (SAME) comparison (plain 512-bit columns in every direction; Dynamic within one build).
+    "cross": a Dynamic value crossing the builds: (SAME), or fail closed (see fail_closed); never DIFF or another error."""
     steps = {}
     for c in PROTOCOL_ROLES:
         for s in PROTOCOL_ROLES:
-            steps[f"sel_dyn.{c}.{s}"] = True
-            steps[f"sel_plain.{c}.{s}"] = False
-            steps[f"ins_dyn.{c}.{s}"] = True
+            steps[f"sel_dyn.{c}.{s}"] = "same" if c == s else "cross"
+            steps[f"sel_plain.{c}.{s}"] = "same"
+            steps[f"ins_dyn.{c}.{s}"] = "same" if c == s else "cross"
     for x, y in (("OLD", "NEW"), ("NEW", "OLD")):
-        steps[f"remote_sel.{x}.from.{y}"] = True
-        steps[f"remote_ins.{x}.to.{y}"] = True
+        steps[f"remote_sel.{x}.from.{y}"] = "cross"
+        steps[f"remote_ins.{x}.to.{y}"] = "cross"
     return steps
+
+
+def fail_closed(rc: str, detail: str) -> bool:
+    """The two refusals of the binary type origin design (2026-10-29) for SentioWide Dynamic/JSON values crossing 26.3 and 26.8:
+    the candidate refuses the 26.3 fork's legacy 512-bit binary type indexes without a declared origin (Code 117), and the 26.3
+    build does not know the candidate's SentioWide_v1 type names (Code 50). Both refuse the data; neither reads it wrongly."""
+    return (rc == "117" and "ambiguous without a declared origin" in detail) or (rc == "50" and "SentioWide_v1" in detail)
 
 
 def expected_ok(e: dict, got: dict) -> bool:
@@ -527,6 +539,7 @@ def suite_compat(g: Gate, s: dict, binary: dict) -> None:
     if base:
         role_of[base["sha256"]] = "baseline"
     seen, writers = {}, set()
+    dyn_outcomes = collections.defaultdict(collections.Counter)
     for path in s.get("results") or []:
         text = open(g.path(path), encoding="utf-8").read()
         labels = {lab: sha for lab, sha in re.findall(r"^engine=(\S+) sha256=([0-9a-f]{64})\b", text, re.M)}
@@ -542,6 +555,21 @@ def suite_compat(g: Gate, s: dict, binary: dict) -> None:
             g.problems.append(f"{name}: {path}: {wrole} did not write and read back cleanly (write_rc={w.group(2)} self_read_rc={w.group(3)})")
             continue
         writers.add(wrole)
+        for lab, tag, rc, verdict in re.findall(r"^reader_dyn=(\S+) query=(\S+) rc=(\d+) (.*)$", text, re.M):
+            rrole = role_of.get(labels.get(lab))
+            if not rrole:
+                g.problems.append(f"{name}: {path}: reader_dyn {lab!r} is not bound to the candidate or the baseline")
+                continue
+            same = rc == "0" and verdict == "SAME"
+            closed = wrole != rrole and fail_closed(rc, verdict)
+            ok = same or closed
+            key = ("reader_dyn", wrole, rrole)
+            seen[key] = seen.get(key, True) and ok
+            dyn_outcomes[(wrole, rrole)]["SAME" if same else "FAILED_CLOSED" if closed else "BAD"] += 1
+            g.rows_seen.append({"suite": name, "id": f"reader_dyn:{wrole}->{rrole}:{tag}", "status": "PASS" if ok else "FAIL"})
+            if not ok:
+                g.problems.append(f"{name}: Dynamic/JSON query {tag} on {wrole} data read by {rrole}: rc={rc} {verdict[:160]}"
+                                  + ("" if wrole == rrole else " (neither SAME nor the expected fail-closed refusal)"))
         for kind, lab, rc, verdict in re.findall(r"^(reader|mixed)=(\S+) rc=(\d+) (\S+)", text, re.M):
             rrole = role_of.get(labels.get(lab))
             if not rrole:
@@ -554,10 +582,12 @@ def suite_compat(g: Gate, s: dict, binary: dict) -> None:
             if not ok:
                 g.problems.append(f"{name}: {kind} {wrole} data read by {rrole}: rc={rc} {verdict}")
     for key in (("reader", "baseline", "candidate"), ("reader", "candidate", "baseline"),
+                ("reader_dyn", "baseline", "candidate"), ("reader_dyn", "candidate", "baseline"),
                 ("mixed", "baseline", "candidate"), ("mixed", "candidate", "baseline")):
         if key not in seen:
             g.problems.append(f"{name}: missing {key[0]} of {key[1]}-written data by the {key[2]} (both directions are required)")
-    g.notes.append(f"{name}: writers {sorted(writers)}; verified {sorted(f'{k}:{w}->{r}' for (k, w, r), ok in seen.items() if ok)}")
+    g.notes.append(f"{name}: writers {sorted(writers)}; verified {sorted(f'{k}:{w}->{r}' for (k, w, r), ok in seen.items() if ok)}; "
+                   f"Dynamic/JSON queries {({f'{w}->{r}': dict(c) for (w, r), c in sorted(dyn_outcomes.items())})}")
 
 
 def suite_protocol(g: Gate, s: dict, binary: dict) -> None:
@@ -577,22 +607,29 @@ def suite_protocol(g: Gate, s: dict, binary: dict) -> None:
     lines = open(g.path(s["result"]), encoding="utf-8").read().splitlines()[1:]
     got = collections.defaultdict(list)
     for line in lines:
-        step, client, server, rc, _ = (line.split("\t") + [""] * 5)[:5]
-        got[step.split("(")[0]].append((step, rc))
-    for step, compared in protocol_required_steps().items():
+        step, client, server, rc, detail = (line.split("\t") + [""] * 5)[:5]
+        got[step.split("(")[0]].append((step, rc, detail))
+    crossed = collections.Counter()
+    for step, mode in protocol_required_steps().items():
         entries = got.get(step, [])
         if not entries:
             g.problems.append(f"{name}: required step {step} missing")
             continue
         if len(entries) > 1:
             g.problems.append(f"{name}: step {step} appears {len(entries)} times")
-        full, rc = entries[0]
-        ok = rc == "0" and (not compared or full.endswith("(SAME)"))
+        full, rc, detail = entries[0]
+        same = rc == "0" and full.endswith("(SAME)")
+        closed = mode == "cross" and fail_closed(rc, detail)
+        ok = same or closed
+        if mode == "cross":
+            crossed["SAME" if same else "FAILED_CLOSED" if closed else "BAD"] += 1
         g.rows_seen.append({"suite": name, "id": step, "status": "PASS" if ok else "FAIL"})
         if not ok:
-            g.problems.append(f"{name}: {full} rc={rc}" + (" (not SAME)" if compared and rc == "0" else ""))
+            g.problems.append(f"{name}: {full} rc={rc}" + (" (not SAME)" if rc == "0" else
+                              " (neither SAME nor the expected fail-closed refusal)" if mode == "cross" else "") + f": {detail[:160]}")
     other = sorted(k for k in got if k not in protocol_required_steps())
-    g.notes.append(f"{name}: {len(protocol_required_steps())} required OLD/NEW steps checked; other steps not gated: {other[:6]}")
+    g.notes.append(f"{name}: {len(protocol_required_steps())} required OLD/NEW steps checked (Dynamic across builds: {dict(crossed)}); "
+                   f"other steps not gated: {other[:6]}")
 
 
 def selection_from_file(path: str) -> tuple[list, list]:
@@ -718,6 +755,9 @@ def suite_replication(g: Gate, s: dict, binary: dict) -> None:
         if len(got) > 1:
             g.problems.append(f"{name}: step {st} appears {len(got)} times")
         ok = got[0][2] == "0" and got[0][3] in ("SAME", "OK")
+        if ok and st in REPLICATION_FAIL_CLOSED_STEPS and not fail_closed(REPLICATION_FAIL_CLOSED_STEPS[st], got[0][4]):
+            ok = False
+            g.problems.append(f"{name}: step {st} does not show the fail-closed refusal (Code {REPLICATION_FAIL_CLOSED_STEPS[st]}): {got[0][4][:160]}")
         g.rows_seen.append({"suite": name, "id": st, "status": "PASS" if ok else "FAIL"})
         if not ok:
             g.problems.append(f"{name}: required step {st} rc={got[0][2]} {got[0][3]}")

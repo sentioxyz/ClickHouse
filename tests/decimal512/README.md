@@ -57,6 +57,12 @@ they all pass the entry is stale and must be marked `fixed`.
 
 Rules the gate enforces:
 
+- **Dynamic/JSON across the builds fails closed (binary type origin design, 2026-10-29).** Plain 512-bit columns and
+  aggregate states must read exactly alike in every direction. A Dynamic/JSON value crossing 26.3 and 26.8 (disk,
+  Native protocol, remote(), replication) must either read exactly alike or be refused with the design's own errors
+  (Code 117 `... is ambiguous without a declared origin` by the candidate, Code 50 `... SentioWide_v1_...` by 26.3);
+  a different result or any other error fails. Within one build Dynamic must read exactly alike.
+
 - **Missing evidence fails.** So do a check that ran zero cases, a skipped test, an excluded test without an open
   known defect, and a `not_run` entry in a release.
 - **Exact matrix coverage.** The SQL and oracle files must be the ones pinned in `tools/matrix/cases.lock.json`

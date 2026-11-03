@@ -144,14 +144,24 @@ def build(d):
                                            "fixed": {"result": suites[SUITE_OF[m]]["result"], "summary": suites[SUITE_OF[m]]["summary"]}}
     cs, bs_, cb, bb = sha(cand), sha(base), bid(cand), bid(base)
     idl = f"engine=old sha256={bs_} build_id={bb} path={base}\nengine=tested sha256={cs} build_id={cb} path={cand}\n"
-    open(os.path.join(d, "compat/summary.old.txt"), "w").write(idl + "writer=old write_rc=0 self_read_rc=0\nreader=tested rc=0 SAME\nmixed=old rc=0 SAME\nmixed=tested rc=0 SAME\n")
-    open(os.path.join(d, "compat/summary.tested.txt"), "w").write(idl + "writer=tested write_rc=0 self_read_rc=0\nreader=old rc=0 SAME\nmixed=tested rc=0 SAME\nmixed=old rc=0 SAME\n")
+    # Dynamic/JSON across the builds: one query reads alike, the others fail closed in the direction's own way
+    dyn_old = ("reader_dyn=tested query=json rc=0 SAME\nreader_dyn=tested query=dyn rc=117 ERROR(rc=117; code mod 256) Code: 117. DB::Exception: "
+               "Binary type index 0x38 is ambiguous without a declared origin: fixture\n")
+    dyn_tested = ("reader_dyn=old query=json rc=0 SAME\nreader_dyn=old query=dyn rc=50 ERROR(rc=50; code mod 256) Code: 50. DB::Exception: "
+                  "Unknown data type family: SentioWide_v1_Int512. (UNKNOWN_TYPE)\n")
+    open(os.path.join(d, "compat/summary.old.txt"), "w").write(idl + "writer=old write_rc=0 self_read_rc=0\nreader=tested rc=0 SAME\n" + dyn_old + "mixed=old rc=0 SAME\nmixed=tested rc=0 SAME\n")
+    open(os.path.join(d, "compat/summary.tested.txt"), "w").write(idl + "writer=tested write_rc=0 self_read_rc=0\nreader=old rc=0 SAME\n" + dyn_tested + "mixed=tested rc=0 SAME\nmixed=old rc=0 SAME\n")
     suites["compat-disk"] = {"name": "compat-disk", "kind": "compat", "results": ["compat/summary.old.txt", "compat/summary.tested.txt"]}
     with open(os.path.join(d, "results/native_matrix.tsv"), "w") as f:
         f.write("step\tclient\tserver\trc\tresult\n")
-        for step, compared in C.protocol_required_steps().items():
+        for step, mode in C.protocol_required_steps().items():
             parts = step.split(".")
-            f.write(f"{step}{'(SAME)' if compared else ''}\t{parts[1]}\t{parts[-1]}\t0\tok\n")
+            if step == "remote_sel.OLD.from.NEW":  # a refusal of the 26.3 build (unknown SentioWide type name)
+                f.write(f"{step}\t{parts[1]}\t{parts[-1]}\t50\tERROR Code: 50. DB::Exception: Unknown data type family: SentioWide_v1_Int512.\n")
+            elif step == "remote_sel.NEW.from.OLD":  # a refusal of the candidate (legacy index without a declared origin)
+                f.write(f"{step}\t{parts[1]}\t{parts[-1]}\t117\tERROR Code: 117. DB::Exception: Binary type index 0x38 is ambiguous without a declared origin\n")
+            else:
+                f.write(f"{step}(SAME)\t{parts[1]}\t{parts[-1]}\t0\tok\n")
     open(os.path.join(d, "results/identities.tsv"), "w").write(f"OLD\t{base}\t{bs_}\t{bb}\nNEW\t{cand}\t{cs}\t{cb}\n")
     suites["compat-protocol"] = {"name": "compat-protocol", "kind": "protocol", "result": "results/native_matrix.tsv", "identities": "results/identities.tsv"}
     open(os.path.join(d, "sel.txt"), "w").write("t_ok\nt_excluded  # exclude: KD-T: fixture\n")
@@ -172,8 +182,9 @@ def build(d):
     with open(os.path.join(d, "replication/steps.tsv"), "w") as f:
         f.write("step\tactor\trc\tverdict\tdetail\n")
         for st in C.REPLICATION_REQUIRED_STEPS:
-            same = st.split(".")[0] in ("fetch", "read", "mutation", "replication") or st == "merge.candidate_fetched_by_baseline"
-            f.write(f"{st}\tfixture\t0\t{'SAME' if same else 'OK'}\tfixture\n")
+            same = st.split(".")[0] in ("fetch", "read", "mutation", "replication") or st in ("merge.candidate_fetched_by_baseline", "dyn.read_after_rollback")
+            detail = "refused (fail closed): Binary type index 0x38 is ambiguous without a declared origin" if st in C.REPLICATION_FAIL_CLOSED_STEPS else "fixture"
+            f.write(f"{st}\tfixture\t0\t{'SAME' if same else 'OK'}\t{detail}\n")
         f.write("info.candidate_only_mutation\tcandidate\t0\tINFO\tfixture\n")
     suites["keeper-replication"] = {"name": "keeper-replication", "kind": "replication", "steps": "replication/steps.tsv",
                                     "identities": "replication/identities.tsv", "keeper_expected_sha256": ks, "keeper_basis": "fixture"}
@@ -498,10 +509,26 @@ def main():
         mutate("compat labels not bound to identities", "not bound", lambda d: (sub(d, CO, "engine=", "x_engine="), sub(d, CT, "engine=", "x_engine=")))
         mutate("compat mixed merge missing", "missing mixed", lambda d: sub(d, CO, "mixed=tested rc=0 SAME\n", ""))
         mutate("compat writer failed", "did not write", lambda d: sub(d, CT, "write_rc=0", "write_rc=3"))
+        mutate("compat: Dynamic query across the builds DIFF (a silent misread)", "Dynamic/JSON query json on baseline data read by candidate",
+               lambda d: sub(d, CO, "reader_dyn=tested query=json rc=0 SAME", "reader_dyn=tested query=json rc=0 DIFF"))
+        mutate("compat: Dynamic query across the builds fails with another error", "neither SAME nor the expected fail-closed refusal",
+               lambda d: sub(d, CT, "Unknown data type family: SentioWide_v1_Int512", "Memory limit exceeded"))
+        mutate("compat: Dynamic reads of one direction missing", "missing reader_dyn of candidate-written data by the baseline",
+               lambda d: (sub(d, CT, "reader_dyn=old query=json rc=0 SAME\n", ""), sub(d, CT, "reader_dyn=old query=dyn rc=50", "x_reader_dyn=old query=dyn rc=50")))
         mutate("protocol required step missing", "required step remote_ins.NEW.to.OLD missing",
                lambda d: sub(d, "results/native_matrix.tsv", "remote_ins.NEW.to.OLD(SAME)\tNEW\tOLD\t0\tok\n", ""))
         mutate("protocol roles swapped", "NEW is not the candidate", swap_roles)
         mutate("protocol step DIFF", "(not SAME)", lambda d: sub(d, "results/native_matrix.tsv", "sel_dyn.OLD.NEW(SAME)", "sel_dyn.OLD.NEW(DIFF)"))
+        mutate("protocol: Dynamic across the builds DIFF (a silent misread)", "(not SAME)",
+               lambda d: sub(d, "results/native_matrix.tsv", "ins_dyn.OLD.NEW(SAME)", "ins_dyn.OLD.NEW(DIFF)"))
+        mutate("protocol: Dynamic across the builds fails with another error", "neither SAME nor the expected fail-closed refusal",
+               lambda d: sub(d, "results/native_matrix.tsv", "\t117\tERROR Code: 117. DB::Exception: Binary type index 0x38 is ambiguous without a declared origin",
+                             "\t117\tERROR Code: 117. DB::Exception: Cannot parse input"))
+        mutate("protocol: a Dynamic refusal within one build is not accepted", "sel_dyn.NEW.NEW",
+               lambda d: sub(d, "results/native_matrix.tsv", "sel_dyn.NEW.NEW(SAME)\tNEW\tNEW\t0\tok",
+                             "sel_dyn.NEW.NEW\tNEW\tNEW\t117\tERROR Code: 117. DB::Exception: Binary type index 0x38 is ambiguous without a declared origin"))
+        mutate("protocol: plain 512-bit columns across the builds not SAME", "sel_plain.OLD.NEW(DIFF) rc=0 (not SAME)",
+               lambda d: sub(d, "results/native_matrix.tsv", "sel_plain.OLD.NEW(SAME)", "sel_plain.OLD.NEW(DIFF)"))
         mutate("protocol identities missing", "identities file missing",
                lambda d: edit_json(os.path.join(d, "release.json"), lambda m: [s.pop("identities") for s in m["suites"] if s["name"] == "compat-protocol"]))
         mutate("proof buggy side ran on the candidate", "artifact mismatch",
@@ -537,6 +564,8 @@ def main():
                lambda d: sub(d, RS, "merge.downloaded_by_baseline\tfixture\t0\tOK\tfixture\n", ""))
         mutate("replication step DIFF", "step read.after_rollback (fixture) rc=0 DIFF",
                lambda d: sub(d, RS, "read.after_rollback\tfixture\t0\tSAME", "read.after_rollback\tfixture\t0\tDIFF"))
+        mutate("replication: the candidate read 26.3 Dynamic data instead of refusing it", "does not show the fail-closed refusal",
+               lambda d: sub(d, RS, "refused (fail closed): Binary type index 0x38 is ambiguous without a declared origin", "read 300 rows"))
         mutate("replication step duplicated", "appears 2 times", lambda d: open(os.path.join(d, RS), "a").write("keeper.start\tfixture\t0\tOK\tagain\n"))
         mutate("replication candidate is another binary", "CANDIDATE ran sha256",
                lambda d: sub(d, RI, f"CANDIDATE\t{os.path.join(d, 'bin/cand.bin').replace(d, base)}\t{sha(os.path.join(base, 'bin/cand.bin'))}",

@@ -12,7 +12,7 @@
 #
 # Channels: client<->server SELECT (client decodes Dynamic incl. shared variant) and INSERT Native, server<->server
 # remote() SELECT and INSERT INTO FUNCTION remote() in both directions (a canary replica next to old replicas),
-# plain typed columns as control; NEW<->UP strided QBit inside Dynamic (the ambiguous binary type index 0x37).
+# plain typed columns (compared with the candidate's own rendering in every direction); NEW<->UP strided QBit inside Dynamic (the ambiguous binary type index 0x37).
 # Output: <out-dir>/native_matrix.tsv. SAME = identical to the writer's own rendering. <out-dir>/identities.tsv binds
 # each role to a binary (role, path, sha256, build-id; measured before the servers start).
 set -u
@@ -82,13 +82,17 @@ for s in OLD NEW; do
   done
 done
 cl NEW NEW "SELECT id, toString(v), dynamicType(v) FROM compat.t_dyn_shared ORDER BY id FORMAT TSV" > "$OUT/expected.tsv"
+PLAIN="SELECT id, i, u, d FROM compat.t_plain WHERE id IN (0, 1, 11) ORDER BY id FORMAT TSV"
+cl NEW NEW "$PLAIN" > "$OUT/expected_plain.tsv"
 same() { diff -q "$1" "$2" > /dev/null && echo SAME || echo DIFF; }
 
 for c in OLD NEW; do for s in OLD NEW; do
   st=sel_dyn.$c.$s; cl "$c" "$s" "SELECT id, v FROM compat.t_dyn_shared ORDER BY id FORMAT TSV" > "$OUT/$st.out" 2> "$OUT/$st.err"; rc=$?
   [ $rc -eq 0 ] && { cut -f1,2 "$OUT/expected.tsv" > "$OUT/expected12.tsv"; st2="$st($(same "$OUT/expected12.tsv" "$OUT/$st.out"))"; } || st2=$st
   rec "$st2" "$c" "$s" $rc "$OUT/$st.out" "$OUT/$st.err"
-  st=sel_plain.$c.$s; cl "$c" "$s" "SELECT id, i, u, d FROM compat.t_plain WHERE id IN (0, 1, 11) ORDER BY id FORMAT TSV" > "$OUT/$st.out" 2> "$OUT/$st.err"; rec "$st" "$c" "$s" $? "$OUT/$st.out" "$OUT/$st.err"
+  st=sel_plain.$c.$s; st2=$st; cl "$c" "$s" "$PLAIN" > "$OUT/$st.out" 2> "$OUT/$st.err"; rc=$?
+  [ $rc -eq 0 ] && st2="$st($(same "$OUT/expected_plain.tsv" "$OUT/$st.out"))"
+  rec "$st2" "$c" "$s" $rc "$OUT/$st.out" "$OUT/$st.err"
 done; done
 
 for c in OLD NEW; do
