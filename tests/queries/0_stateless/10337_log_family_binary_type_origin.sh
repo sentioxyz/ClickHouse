@@ -83,7 +83,9 @@ reject 'with the grant, twice' BAD_ARGUMENTS 'has the stored binary type origin 
 $CLICKHOUSE_CLIENT --query "DROP TABLE t_grant; DROP USER ${USER_NAME}"
 
 echo '--- a table without a UUID'
-$CLICKHOUSE_CLIENT --allow_deprecated_database_ordinary 1 --query "CREATE DATABASE ${ORDINARY_DATABASE} ENGINE = Ordinary"
+# --send_logs_level=error: the first Ordinary database of a server process logs a one-time deprecation warning
+# (Context::addWarningMessageAboutDatabaseOrdinary), which would reach stderr only when this test happens to be first (as 03822 does).
+$CLICKHOUSE_CLIENT --send_logs_level=error --allow_deprecated_database_ordinary 1 --query "CREATE DATABASE ${ORDINARY_DATABASE} ENGINE = Ordinary"
 $CLICKHOUSE_CLIENT --query "CREATE TABLE ${ORDINARY_DATABASE}.t (id Int32) ENGINE = Log"
 reject 'no UUID' BAD_ARGUMENTS 'has no UUID' $CLICKHOUSE_CLIENT --query "ALTER TABLE ${ORDINARY_DATABASE}.t ${REGISTER}"
 $CLICKHOUSE_CLIENT --query "DROP DATABASE ${ORDINARY_DATABASE}"
