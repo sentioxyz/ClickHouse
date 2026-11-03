@@ -98,6 +98,7 @@ REPLICATION_FAIL_CLOSED_STEPS = {"dyn.read_after_upgrade": "117"}
 REPLICATION_BAD_VERDICTS = ("DIFF", "ERROR", "REFUSED", "NOT_FETCHED")
 # performance thresholds: engineering judgment (initial, 2026-09-25), NOT a user-approved SLO; perf_compare.py uses the same
 PERF_RATIO_MAX, PERF_NOISE_FLOOR_S, PERF_CONTROL_BAND, PERF_MIN_ROUNDS = 1.10, 0.010, (0.90, 1.10), 5
+PERF_MIN_CONTROLS = 2
 PROTOCOL_ROLES = ("OLD", "NEW")
 
 
@@ -935,6 +936,9 @@ def suite_perf(g: Gate, s: dict, binary: dict) -> None:
         g.problems.append(f"{name}: zero queries")
     reported = {r.get("query"): r.get("verdict") for r in sm.get("results") or []}
     slower, noisy, failed = [], [], []
+    controls = [q.get("id") for q in qs if q.get("category") == "control"]
+    if len(controls) < PERF_MIN_CONTROLS:
+        g.problems.append(f"{name}: {len(controls)} control queries {controls} (need >= {PERF_MIN_CONTROLS}: without them host noise cannot be told apart)")
     for q in qs:
         qid, cat = q.get("id"), q.get("category")
         med = {}

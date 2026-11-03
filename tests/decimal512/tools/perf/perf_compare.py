@@ -71,7 +71,9 @@ def queries(scale: float) -> list[tuple[str, str, str]]:
         ("parse_d256_text", "unchanged", f"SELECT sum(toDecimal256(toString(number), 18)) FROM numbers({big})"),
         ("int64_arith", "control", f"SELECT sum(number * 3 + intHash64(number) % 7) FROM numbers({big * 5})"),
         ("string_search", "control", f"SELECT count() FROM numbers({big}) WHERE position(toString(number), '77') > 0"),
-        ("groupby_uint64", "control", f"SELECT count() FROM (SELECT number % 100000 AS k, count() FROM numbers({big}) GROUP BY k)"),
+        # not a control since 2026-11-03 (release owner): 26.8 upstream is steadily 25-35% faster on this UInt64 GROUP BY than 26.3
+        # (4 runs, spread 3-6 ms), so it measured the upstream change, not the host; still checked for slowdowns as "unchanged"
+        ("groupby_uint64", "unchanged", f"SELECT count() FROM (SELECT number % 100000 AS k, count() FROM numbers({big}) GROUP BY k)"),
         ("int512_arith", "new", f"SELECT sum(toInt512(number) * toInt512(3) + toInt512(1)) FROM numbers({big})"),
         ("int512_single_key_in", "new", f"SELECT count() FROM numbers({big}) WHERE toInt512(number) IN (SELECT toInt512(number * 3) FROM numbers(100000))"),
         ("midpoint_int512", "new", f"SELECT sum(midpoint(toInt512(number), toInt512(number + 7))) FROM numbers({big})"),

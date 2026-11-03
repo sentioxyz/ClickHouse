@@ -274,7 +274,15 @@ EOF
 compare_replicas() {  # <phase> <a> <b>: both replicas hold the same rows in app.events and app.ingest
   local ph=$1 a=$2 b=$3 ha hb t
   for t in events ingest; do
-    q "$a" "SYSTEM SYNC REPLICA app.$t" > /dev/null 2>&1; q "$b" "SYSTEM SYNC REPLICA app.$t" > /dev/null 2>&1
+    # a replica can stay read-only for minutes after a Keeper restart (26.3 reconnects with a backoff): SYSTEM SYNC REPLICA then
+    # fails at once. Compare only after both replicas synced (bounded); a replica that never syncs is a DIFF with its reason
+    local n ok err=""
+    for n in "$a" "$b"; do
+      ok=0
+      for _ in $(seq 1 60); do q "$n" "SYSTEM SYNC REPLICA app.$t" > /dev/null 2> "$OUT/logs/sync.$ph.$n.$t.err" && { ok=1; break; }; sleep 5; done
+      [ $ok = 1 ] || err="$err $n: SYNC REPLICA app.$t failed for 300 s ($(grep -m1 -oE 'Code: [0-9]+\. DB::Exception: .{0,100}' "$OUT/logs/sync.$ph.$n.$t.err"))"
+    done
+    if [ -n "$err" ]; then rec "$ph" "replicas:$t" "$a=$b" - - DIFF "not synced:$err"; continue; fi
     ha=$(q "$a" "SELECT * FROM app.$t ORDER BY ALL FORMAT TSV" | tee "$OUT/dumps/$ph.$a.tsv" | sha256sum | cut -c1-64)
     hb=$(q "$b" "SELECT * FROM app.$t ORDER BY ALL FORMAT TSV" | tee "$OUT/dumps/$ph.$b.tsv" | sha256sum | cut -c1-64)
     local rows; rows=$(wc -l < "$OUT/dumps/$ph.$a.tsv")

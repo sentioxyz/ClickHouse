@@ -89,7 +89,7 @@ MATRICES = {
 }
 SUITE_OF = {"midpoint": "midpoint-matrix", "midpoint_vector": "midpoint-vector-matrix", "ops": "ops-matrix", "keys": "keys-matrix",
             "appsql": "appsql-matrix", "random": "random-matrix", "random_nightly": "random-nightly-matrix"}
-PERF_Q = [("q_changed", "changed", 1.00, 1.02), ("q_control", "control", 0.50, 0.50), ("q_new", "new", None, 0.30)]  # id, category, base, cand
+PERF_Q = [("q_changed", "changed", 1.00, 1.02), ("q_control", "control", 0.50, 0.50), ("q_control2", "control", 0.40, 0.41), ("q_new", "new", None, 0.30)]  # id, category, base, cand
 
 
 def write_run(d, matrix, who, engine, gotcol):
@@ -203,7 +203,7 @@ def build(d):
                        "basis": "engineering judgment (fixture); not a user-approved SLO"},
         "environment": {"loadavg_before": [1.0, 1.0, 1.0], "loadavg_after": [1.0, 1.0, 1.0]},
         "queries": [{"id": q[0], "category": q[1], "sql": "SELECT 1"} for q in PERF_Q],
-        "results": [{"query": "q_changed", "verdict": "OK"}, {"query": "q_control", "verdict": "OK"}, {"query": "q_new", "verdict": "NEW (candidate only)"}]})
+        "results": [{"query": "q_changed", "verdict": "OK"}, {"query": "q_control", "verdict": "OK"}, {"query": "q_control2", "verdict": "OK"}, {"query": "q_new", "verdict": "NEW (candidate only)"}]})
     suites["performance"] = {"name": "performance", "kind": "perf", "summary": "perf/perf_summary.json", "raw": "perf/perf_raw.tsv"}
     # mixed-version distributed GROUP BY, shaped like tools/replication/mixed_distributed_groupby.sh output
     os.makedirs(os.path.join(d, "groupby/results"), exist_ok=True)
@@ -614,6 +614,8 @@ def main():
         mutate("performance: noisy control", "noisy controls",
                lambda d: (sub(d, PR, "\tcandidate\tq_control\t0.500\n", "\tcandidate\tq_control\t0.800\n"),
                           edit_json(os.path.join(d, PS), lambda s: [r.update(verdict="NOISY") for r in s["results"] if r["query"] == "q_control"])))
+        mutate("performance: a control reclassified away (one control left)", "control queries",
+               lambda d: edit_json(os.path.join(d, PS), lambda s: [q.update(category="unchanged") for q in s["queries"] if q["id"] == "q_control2"]))
         mutate("performance: a new query failed on the candidate", "failed queries",
                lambda d: (sub(d, PR, "\tcandidate\tq_new\t0.300\n", "\tcandidate\tq_new\t\n"),
                           edit_json(os.path.join(d, PS), lambda s: [r.update(verdict="FAILED") for r in s["results"] if r["query"] == "q_new"])))
